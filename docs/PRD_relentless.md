@@ -189,8 +189,8 @@ Use this rule instead:
 Final pricing structure, subscription plan design, and entitlement model details are TBD. Baseline iOS purchase path is locked to Apple IAP / StoreKit, with Superwall as the paywall layer.
 
 11. Core architecture decisions
-Use the same base stack as the current app by default.
-Only change the stack if a concrete product requirement forces a deviation.
+Baseline stack for Relentless is React Native + Expo for the iOS app, Supabase for auth/backend/database, Apple IAP / StoreKit for iOS digital subscription purchases, Superwall for paywall presentation and purchase flow orchestration, and Upstash Redis for rate limiting.
+ Do not change it unless a concrete product requirement forces a deviation.
 Because this app has a paywall, use Superwall as the paywall layer.
 Auth, backend, and database should remain on the same platform as the current app unless a clearly defined requirement requires otherwise.
 
