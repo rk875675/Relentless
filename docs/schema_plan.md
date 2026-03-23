@@ -20,19 +20,19 @@ It does not define final product behavior, scoring formulas, pricing, or UX.
 | `entitlement_events` | Append-only log of access state changes | Own-row read; service-role write |
 | `idempotency_keys` | Replay safety for protected mutations | Service-role only |
 | `audit_log` | Server-side state change history | Service-role only |
-| `feature_flags` | Environment/rollout configuration | Authenticated read; service-role write |
+| `feature_flags` | Environment/rollout configuration | Service-role only |
 
 ### Product-direction entities (Phase 1b)
 
 | Entity | Purpose | RLS |
 |---|---|---|
-| `coaches` | Content partner metadata | Authenticated read; service-role write |
-| `lessons` | Structured lesson content objects | Authenticated read; service-role write |
-| `lesson_categories` | Many-to-many: lessons to 4 C's | Authenticated read; service-role write |
-| `user_lesson_completions` | Per-user lesson completion records | Own-row read; service-role write |
-| `user_progress` | Per-user progress across the 4 C's | Own-row read; service-role write |
-| `user_streaks` | Per-user streak state | Own-row read; service-role write |
-| `journal_entries` | Per-user reflection entries | Own-row CRUD |
+| `coaches` | Content partner metadata | Service-role only (premium content) |
+| `lessons` | Structured lesson content objects | Service-role only (premium content) |
+| `lesson_categories` | Many-to-many: lessons to 4 C's | Service-role only (premium content) |
+| `user_lesson_completions` | Per-user lesson completion records | Own-row select (defense-in-depth); service-role write; entitlement-enforced |
+| `user_progress` | Per-user progress across the 4 C's | Own-row select (defense-in-depth); service-role write; entitlement-enforced |
+| `user_streaks` | Per-user streak state | Own-row select (defense-in-depth); service-role write; entitlement-enforced |
+| `journal_entries` | Per-user reflection entries | Own-row select (defense-in-depth); service-role write; entitlement-enforced |
 
 ### Deferred entities
 
@@ -52,8 +52,6 @@ Rate-limiting state lives in Upstash Redis, not PostgreSQL.
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
 | `id` | `uuid` | PK, references `auth.users(id)` on delete cascade | Supabase Auth provides the user ID |
-| `display_name` | `text` | nullable | |
-| `sport` | `text` | not null, default `'track'` | V1 is track-only |
 | `competition_date` | `date` | nullable | Optional, captured in onboarding |
 | `onboarding_completed` | `boolean` | not null, default `false` | |
 | `created_at` | `timestamptz` | not null, default `now()` | |
@@ -210,6 +208,8 @@ Whether re-completions count toward progress depends on the formula (TBD).
 
 All tables in the `public` schema have RLS enabled.
 
+Because backend entitlement enforcement is required for all premium content and premium user data in V1 (PRD §10), the intended access path for protected tables is through Supabase Edge Functions that verify entitlement before serving data. No protected table assumes direct client DB access.
+
 | Table | SELECT | INSERT | UPDATE | DELETE |
 |---|---|---|---|---|
 | `profiles` | own row | auto via trigger | own row | — |
@@ -217,24 +217,27 @@ All tables in the `public` schema have RLS enabled.
 | `entitlement_events` | own row | service role | — | — |
 | `idempotency_keys` | — | service role | service role | service role |
 | `audit_log` | — | service role | — | — |
-| `feature_flags` | authenticated | service role | service role | service role |
-| `coaches` | authenticated | service role | service role | service role |
-| `lessons` | authenticated | service role | service role | service role |
-| `lesson_categories` | authenticated | service role | service role | service role |
-| `user_lesson_completions` | own rows | service role | — | — |
-| `user_progress` | own row | service role | service role | — |
-| `user_streaks` | own row | service role | service role | — |
-| `journal_entries` | own rows | own row | own row | own row |
+| `feature_flags` | — | service role | service role | service role |
+| `coaches` | — | service role | service role | service role |
+| `lessons` | — | service role | service role | service role |
+| `lesson_categories` | — | service role | service role | service role |
+| `user_lesson_completions` | own rows (d-i-d) | service role | — | — |
+| `user_progress` | own row (d-i-d) | service role | service role | — |
+| `user_streaks` | own row (d-i-d) | service role | service role | — |
+| `journal_entries` | own rows (d-i-d) | service role | service role | service role |
 
 **Terminology:**
-- "Service role" = writes go through Supabase Edge Functions using the service-role key, never directly from the client.
-- "Own row" = `auth.uid() = user_id`.
-- "Authenticated" = any logged-in user.
+- "Service role" = access via Supabase Edge Functions using the service-role key. The Edge Function verifies entitlement before executing the operation. The client never uses the service-role key directly.
+- "Own row" / "Own rows" = RLS policy enforcing `auth.uid() = user_id`.
+- "d-i-d" = defense-in-depth. An own-row RLS select policy exists to prevent cross-user reads if the client ever reaches the DB directly, but the intended access path for premium user data is through Edge Functions with entitlement verification.
+- "—" = no RLS policy for this operation. The client cannot perform this operation directly; only service-role access via Edge Functions.
 
 **Design rationale:**
-- `user_lesson_completions`, `user_progress`, and `user_streaks` are service-role write because they affect protected progress state (PRD: server is source of truth for protected state).
-- `journal_entries` allows direct client CRUD since the journal is lightweight personal data without protected-state implications. Can be tightened later if needed.
-- Content tables (`coaches`, `lessons`, `lesson_categories`) are readable by any authenticated user but writable only via service role (admin/content management).
+- Content tables (`coaches`, `lessons`, `lesson_categories`) have no direct client read access. All content is premium post-onboarding; reads go through Edge Functions that verify entitlement before returning data.
+- `feature_flags` has no direct client access. The backend evaluates flags and serves resolved configuration to the client.
+- Premium user data (`user_lesson_completions`, `user_progress`, `user_streaks`, `journal_entries`) has own-row RLS select policies as defense-in-depth, but all access is backend-mediated with entitlement verification.
+- All writes to premium user data go through Edge Functions (service role) to maintain server authority over protected state.
+- `profiles` and `entitlements` retain direct own-row read because identity and subscription status are needed for client-side UX gating before any premium action.
 
 ---
 
@@ -290,9 +293,9 @@ These items from the PRD remain TBD and must not be guessed:
 
 ## Implementation plan
 
-When this schema plan is approved, implementation proceeds in two migrations:
+### Next step: Migration 1 — Infrastructure tables (Phase 1a)
 
-### Migration 1 — Infrastructure tables (Phase 1a)
+When this schema plan is approved, the next implementation step is Migration 1 only:
 
 - `profiles` (with `auth.users` trigger for auto-creation)
 - `entitlements`
@@ -303,7 +306,11 @@ When this schema plan is approved, implementation proceeds in two migrations:
 - All RLS policies for these tables
 - Key indexes
 
-### Migration 2 — Product-direction tables (Phase 1b)
+Migration 1 should be reviewed and confirmed working before proceeding.
+
+### Future: Migration 2 — Product-direction tables (Phase 1b)
+
+After Migration 1 is stable and approved, a separate implementation step covers:
 
 - `coaches`
 - `lessons`
@@ -316,7 +323,9 @@ When this schema plan is approved, implementation proceeds in two migrations:
 - Key indexes
 - Seed data: one coach record for V1 partner (name TBD)
 
-### Not included in first pass
+Migration 2 requires a separate approval step before implementation.
+
+### Not included in schema migrations
 
 - `billing_events` (Phase 3, when Apple webhook billing is wired)
 - `usage_ledger` (if metered/quota behavior is added later)
