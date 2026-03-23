@@ -1,0 +1,21 @@
+---
+description: Guardrails for the Relentless app. Use the PRD as source of truth. Do not invent missing product details.
+alwaysApply: true
+---
+
+Use `docs/PRD_relentless.md` as the source of truth for this project.
+
+Hard rules:
+- Do not invent product features, UX flows, pricing details, onboarding details, formulas, or engagement logic that are not explicitly defined in the PRD.
+- Keep architecture/server-authority/security/monetization decisions aligned with the PRD.
+- Prefer minimal diffs. Do not refactor unrelated files.
+- Preserve known-good behavior unless the task explicitly changes it.
+- If a required low-level detail is missing, do not guess. Output `Human Input Needed` and list the missing decisions.
+- For implementation tasks, change only the files needed for that task.
+- For planning tasks, separate output into:
+  1. Confirmed from PRD
+  2. Open questions
+  3. Proposed narrow file changes
+- Do not silently choose subscription details, trial length, pricing, paywall copy, exact formulas, or exact UX details.
+- Treat the app as subscription-based, iOS-first, Apple IAP/StoreKit + Superwall, as defined in the PRD.
+- Assume the same base stack as the current app unless the task explicitly says otherwise.
