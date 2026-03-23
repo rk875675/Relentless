@@ -181,8 +181,12 @@ If backend enforcement of premium access is required, sync entitlement / subscri
 Any entitlement update or billing-adjacent state change must be idempotent.
 The client may reflect entitlement state for UX purposes, but any backend-protected premium access must rely on backend-controlled state when applicable.
 Important monetization boundary
-Do not force unnecessary backend entitlement complexity before product behavior requires it.
-But if the app introduces backend-protected premium functionality, backend enforcement becomes required.
+Backend entitlement enforcement is required for any backend-served protected content, progress state, journal data, or other premium user data/actions in V1.
+Do not over-specify the exact protected endpoint list yet.
+Post-expiration behavior
+After the free trial ends or a subscription becomes inactive, the app should be unusable for protected product usage.
+Do not over-specify the exact UX yet.
+At most, allow only minimal subscription-management / restore-access paths if needed.
 Wording correction incorporated
 This PRD no longer frames billing provider choice as open-ended.
 Use this rule instead:
@@ -190,9 +194,8 @@ Final pricing structure, subscription plan design, and entitlement model details
 
 11. Core architecture decisions
 Baseline stack for Relentless is React Native + Expo for the iOS app, Supabase for auth/backend/database, Apple IAP / StoreKit for iOS digital subscription purchases, Superwall for paywall presentation and purchase flow orchestration, and Upstash Redis for rate limiting.
- Do not change it unless a concrete product requirement forces a deviation.
-Because this app has a paywall, use Superwall as the paywall layer.
-Auth, backend, and database should remain on the same platform as the current app unless a clearly defined requirement requires otherwise.
+Do not change this stack unless a concrete product requirement forces a deviation and the change is explicitly approved.
+Auth, backend, and database remain on Supabase unless explicitly approved otherwise.
 
 12. Core platform principles
 1) Thin client, server-authoritative backend
