@@ -361,6 +361,31 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+# Disable built-in JWT verification for batch 1 Edge Functions.
+# Auth is enforced inside each function via supabase.auth.getUser().
+# Required because Supabase's built-in verify_jwt is incompatible with
+# newer JWT signing key formats on some projects.
+[functions.config]
+verify_jwt = false
+
+[functions.lessons]
+verify_jwt = false
+
+[functions.coaches]
+verify_jwt = false
+
+[functions.onboarding-sample-lesson]
+verify_jwt = false
+
+[functions.progress]
+verify_jwt = false
+
+[functions.streak]
+verify_jwt = false
+
+[functions.journal]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
