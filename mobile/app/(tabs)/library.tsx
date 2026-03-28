@@ -1,0 +1,29 @@
+import { StyleSheet, Text, View } from 'react-native';
+
+export default function LibraryScreen() {
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Library</Text>
+      <Text style={styles.subtitle}>Unlocks after today's Daily Workout.</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 8,
+  },
+});
