@@ -12,6 +12,7 @@ import {
   checkIdempotencyKey,
   storeIdempotencyKey,
 } from "../_shared/idempotency.ts";
+import { checkRateLimit } from "../_shared/ratelimit.ts";
 
 // Confirmed batch 1 decision: default 20, max 50.
 const DEFAULT_PAGE_SIZE = 20;
@@ -53,6 +54,12 @@ Deno.serve(async (req) => {
   const supabase = createServiceClient();
   const auth = await getUser(req, supabase, requestId);
   if (!auth.ok) return auth.response;
+
+  const rl = await checkRateLimit(
+    auth.userId, requestId,
+    req.method === "GET" ? "authenticated-read" : "authenticated-write",
+  );
+  if (!rl.ok) return rl.response;
 
   const entitlement = await requireEntitlement(
     supabase,

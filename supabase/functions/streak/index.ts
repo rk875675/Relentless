@@ -6,6 +6,7 @@ import {
   successResponse,
 } from "../_shared/response.ts";
 import { getUser } from "../_shared/auth.ts";
+import { requireEntitlement } from "../_shared/entitlement.ts";
 import { checkRateLimit } from "../_shared/ratelimit.ts";
 
 Deno.serve(async (req) => {
@@ -26,20 +27,27 @@ Deno.serve(async (req) => {
   const rl = await checkRateLimit(auth.userId, requestId, "authenticated-read");
   if (!rl.ok) return rl.response;
 
-  // Returns only key + enabled per flag. metadata is omitted until a doc
-  // decision specifies which metadata fields, if any, are safe for client consumption.
-  const { data: flags, error } = await supabase
-    .from("feature_flags")
-    .select("key, enabled");
+  const entitlement = await requireEntitlement(supabase, auth.userId, requestId);
+  if (!entitlement.ok) return entitlement.response;
 
-  if (error) {
-    return errorResponse(500, "INTERNAL_ERROR", "Failed to fetch configuration", requestId);
+  const { data, error } = await supabase
+    .from("user_streaks")
+    .select("current_streak, longest_streak, last_activity_date, updated_at")
+    .eq("user_id", auth.userId)
+    .single();
+
+  if (error || !data) {
+    // No streak row yet — return schema column defaults
+    return successResponse(
+      {
+        current_streak: 0,
+        longest_streak: 0,
+        last_activity_date: null,
+        updated_at: null,
+      },
+      requestId,
+    );
   }
 
-  const resolved: Record<string, { enabled: boolean }> = {};
-  for (const flag of flags ?? []) {
-    resolved[flag.key] = { enabled: flag.enabled };
-  }
-
-  return successResponse({ flags: resolved }, requestId);
+  return successResponse(data, requestId);
 });

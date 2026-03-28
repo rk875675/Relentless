@@ -8,6 +8,7 @@ import {
 } from "../_shared/response.ts";
 import { getUser } from "../_shared/auth.ts";
 import { requireEntitlement } from "../_shared/entitlement.ts";
+import { checkRateLimit } from "../_shared/ratelimit.ts";
 
 const UuidSchema = z.string().uuid();
 
@@ -30,6 +31,9 @@ Deno.serve(async (req) => {
   const supabase = createServiceClient();
   const auth = await getUser(req, supabase, requestId);
   if (!auth.ok) return auth.response;
+
+  const rl = await checkRateLimit(auth.userId, requestId, "authenticated-read");
+  if (!rl.ok) return rl.response;
 
   const entitlement = await requireEntitlement(
     supabase,

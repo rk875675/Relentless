@@ -28,9 +28,9 @@ It does not define final product behavior, scoring formulas, pricing, or UX.
 |---|---|---|
 | `coaches` | Content partner metadata | Service-role only (premium content) |
 | `lessons` | Structured lesson content objects | Service-role only (premium content) |
-| `lesson_categories` | Many-to-many: lessons to 4 C's | Service-role only (premium content) |
+| `lesson_categories` | Many-to-many: lessons to MAC categories | Service-role only (premium content) |
 | `user_lesson_completions` | Per-user lesson completion records | Own-row select (defense-in-depth); service-role write; entitlement-enforced |
-| `user_progress` | Per-user progress across the 4 C's | Own-row select (defense-in-depth); service-role write; entitlement-enforced |
+| `user_progress` | Per-user progress across the 3 MAC categories | Own-row select (defense-in-depth); service-role write; entitlement-enforced |
 | `user_streaks` | Per-user streak state | Own-row select (defense-in-depth); service-role write; entitlement-enforced |
 | `journal_entries` | Per-user reflection entries | Own-row select (defense-in-depth); service-role write; entitlement-enforced |
 
@@ -141,7 +141,7 @@ Rate-limiting state lives in Upstash Redis, not PostgreSQL.
 | `voiceover_url` | `text` | nullable | Asset URL or storage path |
 | `on_screen_text` | `text` | nullable | Summary/coaching text; may evolve to structured format |
 | `reflection_prompt` | `text` | nullable | Optional reflection question |
-| `progress_metadata` | `jsonb` | nullable | 4 C contribution weights; formula TBD |
+| `progress_metadata` | `jsonb` | nullable | MAC contribution weights; formula TBD |
 | `sort_order` | `integer` | not null, default `0` | Drives sequential recommended flow |
 | `published` | `boolean` | not null, default `false` | Content gating |
 | `created_at` | `timestamptz` | not null, default `now()` | |
@@ -152,7 +152,7 @@ Rate-limiting state lives in Upstash Redis, not PostgreSQL.
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
 | `lesson_id` | `uuid` | not null, references `lessons(id)` on delete cascade | |
-| `category` | `text` | not null, check in (`control`, `commitment`, `challenge`, `confidence`) | The 4 C's |
+| `category` | `text` | not null, check in (`mindfulness`, `acceptance`, `commitment`) | The 3 MAC categories |
 | | | PK (`lesson_id`, `category`) | Many-to-many via composite key |
 
 ### `user_lesson_completions`
@@ -173,10 +173,9 @@ Whether re-completions count toward progress depends on the formula (TBD).
 |---|---|---|---|
 | `id` | `uuid` | PK, default `gen_random_uuid()` | |
 | `user_id` | `uuid` | not null, unique, references `profiles(id)` on delete cascade | One row per user |
-| `control_score` | `numeric` | not null, default `0` | Update logic TBD |
+| `mindfulness_score` | `numeric` | not null, default `0` | Update logic TBD |
+| `acceptance_score` | `numeric` | not null, default `0` | |
 | `commitment_score` | `numeric` | not null, default `0` | |
-| `challenge_score` | `numeric` | not null, default `0` | |
-| `confidence_score` | `numeric` | not null, default `0` | |
 | `updated_at` | `timestamptz` | not null, default `now()` | |
 
 ### `user_streaks`

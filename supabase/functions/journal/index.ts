@@ -8,6 +8,7 @@ import {
 } from "../_shared/response.ts";
 import { getUser } from "../_shared/auth.ts";
 import { requireEntitlement } from "../_shared/entitlement.ts";
+import { checkRateLimit } from "../_shared/ratelimit.ts";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
@@ -55,6 +56,12 @@ Deno.serve(async (req) => {
   const supabase = createServiceClient();
   const auth = await getUser(req, supabase, requestId);
   if (!auth.ok) return auth.response;
+
+  const rl = await checkRateLimit(
+    auth.userId, requestId,
+    req.method === "GET" ? "authenticated-read" : "authenticated-write",
+  );
+  if (!rl.ok) return rl.response;
 
   const entitlement = await requireEntitlement(supabase, auth.userId, requestId);
   if (!entitlement.ok) return entitlement.response;

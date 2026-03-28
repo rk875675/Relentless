@@ -1,17 +1,8 @@
 # Relentless — Product Requirements Document (PRD)
 
-**Status:** Foundation placeholder. Replace the section below with the complete, authoritative PRD for Relentless.
-
-Until the full PRD is present in this file, treat missing product definition as **undecided**—do not invent features, flows, pricing, formulas, or engagement logic.
-
----
-
-## PRD body
-
 PRD — Relentless
 Status
-Combined architecture + current product-direction draft.
-This PRD is the current source of truth for the project.
+This PRD is the authoritative source of truth for the project.
 It intentionally defines:
 product direction
 platform architecture
@@ -69,16 +60,16 @@ Do not define extra product functionality that is not explicitly approved.
 Do not lock detailed formulas, scoring mechanics, pricing details, or offer details prematurely.
 
 4. Core product direction
+Program structure
+V1 uses a fixed 30-day program.
+The guided daily unit is called the Daily Workout.
+Users progress through one structured program day at a time.
 Core content model
-Core content is made of short expert-led lessons / exercises.
-There are two main content lengths:
-2–3 minute bite-sized lessons focused mainly on the “what”
-~5 minute Workout of the Day content focused on both the “what” and the “why”
-Every activity is tagged to one or more of the 4 C’s:
-Control
+Core content is made of expert-led lessons / exercises.
+Every lesson is tagged to one of the three MAC categories:
+Mindfulness
+Acceptance
 Commitment
-Challenge
-Confidence
 All lessons should support:
 coach voiceover
 synchronized on-screen text
@@ -87,26 +78,39 @@ Content/data architecture must support:
 easy addition of new lessons
 future additional coaches
 future additional sports
+Daily Workout
+Each program day has one assigned Daily Workout.
+The Daily Workout is the primary guided experience each day.
+The assigned Daily Workout can be replayed unlimited times.
+Repeat completions may use diminishing returns / reduced repeat credit. The exact repeat-credit formula is TBD. `Human Input Needed` before implementation.
+Library
+The library tab contains 6 lessons total:
+2 lessons per MAC category (Mindfulness, Acceptance, Commitment)
+1 short lesson and 1 long lesson for each category
+The library unlocks only after the user has completed the required Daily Workout(s) needed to be caught up.
+If the user is behind, they may complete multiple missed Daily Workouts in one day until caught up.
+Once caught up for that day, the library opens.
 Lesson structure rule
 The PRD should assume lessons are structured content objects, not hardcoded one-offs.
 At a minimum, lesson content architecture should support fields such as:
-lesson name
-duration
-category tag(s)
-coach voiceover asset
-on-screen coaching text / summary
-lesson interaction / presentation type
-optional reflection prompt
-progress contribution metadata
+lesson title
+lesson description
+lesson time / duration
+audio track / audio asset
+instruction text
+exercise visualization spec
+journal prompt
+contribution category / contribution metadata
 Keep this abstract enough for schema planning.
- Do not lock exact formulas or over-specify every implementation field unless later needed.
+Do not lock exact formulas or over-specify every implementation field unless later needed.
 
 5. Core user experience
 Primary experience
-The app should guide the user through recommended content in sequence.
-The main daily CTA should be resume recommended lesson / exercise.
-Recommended lesson flow is the primary experience in V1.
+The app guides the user through the 30-day program one Daily Workout at a time.
+The main daily CTA is to complete the current Daily Workout.
+The Daily Workout flow is the primary experience in V1.
 V1 should not be treated as an open browse-heavy content library product.
+The library is a secondary experience that unlocks only once the user is caught up on Daily Workouts for that day.
 UX direction constraints
 Lesson UI should feel consistent across content types.
 The product should feel guided rather than library-first.
@@ -116,7 +120,7 @@ UX/design specifics should remain intentionally abstract until explicitly decide
 Onboarding should:
 establish credibility / proof
 surface the user’s struggle(s)
-introduce the 4 C’s at a high level
+introduce the MAC categories (Mindfulness, Acceptance, Commitment) at a high level
 give the user a quick sample exercise
 optionally capture next competition date
 end in the paywall / subscription step
@@ -128,29 +132,48 @@ Do not over-specify onboarding sequence, exact copy, or final screen structure u
 
 7. Progression / retention
 Relentless includes:
-a visible mindset progress system split across the 4 C’s
-a simple daily streak mechanic
+a visible mindset progress system split across the 3 MAC categories (Mindfulness, Acceptance, Commitment)
+a daily streak mechanic tied to Daily Workout completion
 a competition countdown tied to the user’s next competition
 Progress rules
-Progress should be based on completed lessons.
+Progress is based on completed lessons and Daily Workouts, framed across the 3 MAC categories.
+Exact growth / progress formulas remain TBD. `Human Input Needed` before implementation.
 Keep the scoring logic abstract in the PRD.
 Do not over-specify the formula yet.
+Decay
+Progress may decay with inactivity.
+The exact decay formula, schedule, and reset behavior remain TBD. `Human Input Needed` before implementation.
 Streak rules
-Include a simple daily streak mechanic.
-Keep streak logic simple.
-Do not include shield / grace-period mechanics in V1 unless explicitly added later.
+Streak is tied to Daily Workout completion.
+Each 30-day program includes one freebie miss.
+The first missed day in that 30-day program does not break the streak.
+Every later missed day breaks the streak.
+Every missed day after the freebie also triggers a required reflection journal.
+The contents and logic of the miss reflection journal remain abstract for now.
 Competition countdown
 Competition countdown is in scope as a retention / context feature.
 It is tied to the user’s next competition date if that exists.
 
 8. Journal / reflection
 There is no AI journal.
-V1 may include a simple journal / reflection storage feature only.
-Journal behavior should stay lightweight.
+Journaling is required.
+Journaling is text-only. Prompts are text-only.
+Journaling may occur before or after the Daily Workout.
 Journal storage should support entries tied to:
 lessons
+Daily Workouts
 and/or competition context
+Missed-day reflection journaling
+Every missed day after the freebie triggers a required reflection journal entry.
+This is separate from normal session journaling for clarity.
+The contents and logic of the miss reflection journal remain abstract for now.
 Do not invent AI interpretation, coaching generation, or complex journaling behavior.
+
+8.5. Lock-in mode
+The app is intended to be a low-friction, high-focus environment.
+If the user backgrounds, minimizes, or leaves the app during an active session, the session is terminated.
+Terminated sessions give 0 credit.
+The user must fully restart the session.
 
 9. Coach / partner model
 V1 includes one content partner / coach.
@@ -432,18 +455,19 @@ abuse / security event records
 billing event records if webhook billing is added
 admin adjustment records if support tools exist later
 Product-direction-informed content entities
-The system should be planned to support structured lesson content and lightweight progress / journal features.
+The system should be planned to support structured lesson content, Daily Workout progression, and journal features.
 At a high level, schema planning should anticipate entities in the following areas:
 lesson content objects
-lesson categorization / 4 C mapping
+lesson categorization / MAC category mapping (Mindfulness, Acceptance, Commitment)
 content partner / coach metadata
+Daily Workout assignment and completion state
 user lesson completion state
-user progress state across the 4 C’s
+user progress state across the 3 MAC categories
 streak-related user state
 optional competition-date user context
-journal / reflection entries tied to lesson and/or competition context
+journal / reflection entries tied to lesson, Daily Workout, and/or competition context
 Keep this abstract enough for schema planning.
- Do not over-lock formulas, field minutiae, or implementation-specific structures before the schema pass.
+Do not over-lock formulas, field minutiae, or implementation-specific structures before the schema pass.
 Explicit schema rule
 Infrastructure schema can be planned first.
 Product-feature schema should only be defined to the level needed by the now-approved app direction.
@@ -647,13 +671,16 @@ free-trial length
 paywall copy
 exact purchase-option naming
 exact onboarding sequence
-precise progress scoring formula
+precise progress scoring formula across the 3 MAC categories
 precise streak formula / reset rule
 exact post-expiration UX behavior
 exact lesson interaction types beyond approved structured-content framing
 exact backend entitlement sync implementation if backend-protected premium actions are still not concrete
 exact analytics / KPIs tied to user actions
 exact support / admin tooling behavior
+repeat-completion / diminishing-return credit formula
+decay formula, schedule, and reset behavior
+detailed miss-reflection journal contents and logic
 
 23. Human-step inputs for future implementation passes
 Before implementation of monetization or product logic, require human confirmation for details such as:
@@ -662,16 +689,20 @@ final subscription offerings
 whether monthly / annual or other cadence is desired
 exact post-trial / post-expiration access behavior
 whether any backend-protected premium actions exist
-exact progress scoring formula
+exact progress scoring formula across the 3 MAC categories
 exact streak reset rule
 exact onboarding screen sequence
 exact lesson presentation / interaction subtypes if needed by schema
 exact outbound coach-link behavior
+repeat-completion / diminishing-return credit formula
+decay formula, schedule, and reset behavior
+detailed miss-reflection journal contents and logic
 Cursor should not guess these.
 
 24. One-line carryover principles
 Relentless is a mental resilience / mental performance app for athletes, not a motivation app.
-V1 is track / running only and guided by sequential recommended content.
+V1 is track / running only, built around a fixed 30-day program with sequential Daily Workouts.
+Progress is framed across the 3 MAC categories: Mindfulness, Acceptance, Commitment.
 Client is untrusted for access, limits, usage, and protected state; server is source of truth where protected backend state exists.
 All paid / usage-sensitive mutations must be atomic and idempotent.
 Every public endpoint must have layered rate limiting.

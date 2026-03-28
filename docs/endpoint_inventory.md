@@ -145,7 +145,7 @@ entitlement.
 | # | Endpoint | Method | Class | Entitlement | Idempotent | Bounds | Description |
 |---|---|---|---|---|---|---|---|
 | P1 | `/lessons/:id/complete` | POST | Entitlement-protected write | Required | Idempotency key | — | Record lesson completion; triggers progress and streak updates |
-| P2 | `/progress` | GET | Entitlement-protected read | Required | N/A | — | Get own progress scores across the 4 C's |
+| P2 | `/progress` | GET | Entitlement-protected read | Required | N/A | — | Get own progress scores across the 3 MAC categories |
 | P3 | `/streak` | GET | Entitlement-protected read | Required | N/A | — | Get own streak state (current, longest, last activity) |
 
 **Notes:**

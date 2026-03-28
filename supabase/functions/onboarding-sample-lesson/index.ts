@@ -6,6 +6,7 @@ import {
   successResponse,
 } from "../_shared/response.ts";
 import { getUser } from "../_shared/auth.ts";
+import { checkRateLimit } from "../_shared/ratelimit.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -21,6 +22,9 @@ Deno.serve(async (req) => {
   const supabase = createServiceClient();
   const auth = await getUser(req, supabase, requestId);
   if (!auth.ok) return auth.response;
+
+  const rl = await checkRateLimit(auth.userId, requestId, "authenticated-read");
+  if (!rl.ok) return rl.response;
 
   // Deferred until lesson seed data exists. Set ONBOARDING_SAMPLE_LESSON_ID
   // to the UUID of the designated sample lesson before O1 goes live.
