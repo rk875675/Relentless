@@ -1,7 +1,16 @@
 import { useCallback, useState } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { apiFetch } from '@/lib/api';
+import { ProgressRing } from '@/components/ProgressRing';
+import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 
 type Lesson = {
   id: string;
@@ -18,45 +27,72 @@ type LessonsResponse = {
   total: number;
 };
 
-const MAC_ORDER = ['mindfulness', 'acceptance', 'commitment'];
+type Progress = {
+  mindfulness_score: number;
+  acceptance_score: number;
+  commitment_score: number;
+};
+
+type Streak = {
+  current_streak: number;
+  longest_streak: number;
+  last_activity_date: string | null;
+};
+
+const MAC_ORDER = ['mindfulness', 'acceptance', 'commitment'] as const;
+
+const MAC_LABELS: Record<string, string> = {
+  mindfulness: 'Mindfulness',
+  acceptance: 'Acceptance',
+  commitment: 'Commitment',
+};
 
 export default function LibraryScreen() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [streak, setStreak] = useState<Streak | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const fetchLessons = async () => {
+  const fetchData = async () => {
     setLoading(true);
     setError('');
-    const { data, error: err } = await apiFetch<LessonsResponse>('/lessons?limit=50');
-    if (err) {
-      setError(err);
-    } else if (data) {
-      const library = data.items.filter((l) => l.lesson_type !== 'onboarding-sample');
-      setLessons(library);
+    const [lessonsRes, progressRes, streakRes] = await Promise.all([
+      apiFetch<LessonsResponse>('/lessons?limit=50'),
+      apiFetch<Progress>('/progress'),
+      apiFetch<Streak>('/streak'),
+    ]);
+    if (lessonsRes.error) {
+      setError(lessonsRes.error);
+    } else if (lessonsRes.data) {
+      setLessons(
+        lessonsRes.data.items.filter((l) => l.lesson_type !== 'onboarding-sample'),
+      );
     }
+    if (progressRes.data) setProgress(progressRes.data);
+    if (streakRes.data) setStreak(streakRes.data);
     setLoading(false);
   };
 
   useFocusEffect(
     useCallback(() => {
-      fetchLessons();
+      fetchData();
     }, []),
   );
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator color="#fff" size="large" />
+      <View style={styles.centered}>
+        <ActivityIndicator color={colors.white} size="large" />
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.container}>
+      <View style={styles.centered}>
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={fetchLessons}>
+        <TouchableOpacity style={styles.retryBtn} onPress={fetchData}>
           <Text style={styles.retryText}>Retry</Text>
         </TouchableOpacity>
       </View>
@@ -65,119 +101,163 @@ export default function LibraryScreen() {
 
   const grouped = MAC_ORDER.map((cat) => ({
     category: cat,
+    label: MAC_LABELS[cat],
     items: lessons.filter((l) => l.categories.includes(cat)),
   })).filter((g) => g.items.length > 0);
 
   return (
-    <FlatList
-      style={styles.list}
-      contentContainerStyle={styles.listContent}
-      data={grouped}
-      keyExtractor={(item) => item.category}
-      renderItem={({ item: group }) => (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{group.category}</Text>
-          {group.items.map((lesson) => {
-            const mins = Math.ceil(lesson.duration_seconds / 60);
-            const isShort = lesson.lesson_type.includes('short');
-            return (
-              <View key={lesson.id} style={styles.card}>
-                <View style={styles.cardLeft}>
-                  <Text style={styles.cardTitle}>{lesson.title}</Text>
-                  <Text style={styles.cardMeta}>{mins} min</Text>
-                </View>
-                <View style={[styles.lengthBadge, isShort ? styles.badgeShort : styles.badgeLong]}>
-                  <Text style={styles.badgeText}>{isShort ? 'Short' : 'Long'}</Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.brand}>RELENTLESS</Text>
+        <Text style={styles.streak}>{streak?.current_streak ?? 0}🔥</Text>
+      </View>
+
+      {/* MAC Progress Rings */}
+      <View style={styles.ringsRow}>
+        <ProgressRing
+          percentage={progress?.mindfulness_score ?? 0}
+          label="Mindfulness"
+        />
+        <ProgressRing
+          percentage={progress?.acceptance_score ?? 0}
+          label="Acceptance"
+        />
+        <ProgressRing
+          percentage={progress?.commitment_score ?? 0}
+          label="Commitment"
+        />
+      </View>
+
+      {/* Lesson Cards */}
+      {grouped.map((group) =>
+        group.items.map((lesson) => {
+          const mins = Math.floor(lesson.duration_seconds / 60);
+          const secs = lesson.duration_seconds % 60;
+          const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+          return (
+            <TouchableOpacity
+              key={lesson.id}
+              style={styles.lessonCard}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.lessonCategory}>{group.label}:</Text>
+              <Text style={styles.lessonInfo}>
+                {timeStr} - {lesson.title}
+              </Text>
+            </TouchableOpacity>
+          );
+        }),
       )}
-    />
+
+      {/* Coach CTA — PRD: subtle outbound path to coach for 1:1 help */}
+      <TouchableOpacity style={styles.ctaCard} activeOpacity={0.8}>
+        <Text style={styles.ctaTitle}>
+          CTA - 1 on 1 lessons with Grant
+        </Text>
+        <Text style={styles.ctaSub}>
+          (his specific offer for those looking for individuality)
+        </Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#000',
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.xl,
   },
-  list: {
+  screen: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.background,
   },
-  listContent: {
-    padding: 20,
-    paddingBottom: 40,
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: 60,
+    paddingBottom: TAB_BAR_CLEARANCE,
   },
-  section: {
-    marginBottom: 28,
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
   },
-  sectionTitle: {
+  brand: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: colors.white,
+    letterSpacing: 2,
+  },
+  streak: {
+    fontSize: 22,
+    color: colors.white,
+    fontWeight: '700',
+  },
+  ringsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: spacing.xl,
+    paddingHorizontal: spacing.md,
+  },
+  lessonCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: spacing.lg,
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  lessonCategory: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.white,
+    marginBottom: spacing.xs,
+  },
+  lessonInfo: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  ctaCard: {
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 14,
+    padding: spacing.lg,
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  ctaTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
-    textTransform: 'capitalize',
-    marginBottom: 12,
-    letterSpacing: 1,
+    color: colors.white,
+    textAlign: 'center',
   },
-  card: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cardLeft: {
-    flex: 1,
-    marginRight: 12,
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  cardMeta: {
-    fontSize: 13,
-    color: '#888',
-    marginTop: 4,
-  },
-  lengthBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  badgeShort: {
-    backgroundColor: '#1e3a2f',
-  },
-  badgeLong: {
-    backgroundColor: '#2a1f3d',
-  },
-  badgeText: {
-    color: '#ccc',
+  ctaSub: {
     fontSize: 12,
-    fontWeight: '600',
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+    textAlign: 'center',
   },
   errorText: {
-    color: '#ff4444',
+    color: colors.error,
     fontSize: 14,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
-  retryButton: {
+  retryBtn: {
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: colors.surfaceLight,
     borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 24,
   },
   retryText: {
-    color: '#fff',
+    color: colors.white,
     fontSize: 14,
   },
 });

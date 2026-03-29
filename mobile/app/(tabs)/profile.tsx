@@ -1,8 +1,17 @@
 import { useCallback, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  ActivityIndicator,
+  ScrollView,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
+import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 
 type Progress = {
   mindfulness_score: number;
@@ -18,17 +27,14 @@ type Streak = {
 
 export default function ProfileScreen() {
   const { session, signOut } = useAuth();
-  const [progress, setProgress] = useState<Progress | null>(null);
   const [streak, setStreak] = useState<Streak | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
     setLoading(true);
-    const [pRes, sRes] = await Promise.all([
-      apiFetch<Progress>('/progress'),
+    const [sRes] = await Promise.all([
       apiFetch<Streak>('/streak'),
     ]);
-    if (pRes.data) setProgress(pRes.data);
     if (sRes.data) setStreak(sRes.data);
     setLoading(false);
   };
@@ -39,148 +45,158 @@ export default function ProfileScreen() {
     }, []),
   );
 
-  return (
-    <View style={styles.container}>
-      <Text style={styles.heading}>Profile</Text>
+  const email = session?.user?.email ?? '';
+  const displayName = email ? email.split('@')[0] : 'Athlete';
 
-      {session?.user?.email ? (
-        <Text style={styles.email}>{session.user.email}</Text>
-      ) : null}
+  return (
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.brand}>RELENTLESS</Text>
+        <Text style={styles.streak}>{streak?.current_streak ?? 0}🔥</Text>
+      </View>
+
+      {/* User Info */}
+      <View style={styles.userRow}>
+        <View style={styles.avatar}>
+          <Ionicons name="person" size={32} color={colors.accentLight} />
+        </View>
+        <View style={styles.userInfo}>
+          <Text style={styles.userName}>{displayName}</Text>
+          <Text style={styles.userSport}>Track and Field Athlete</Text>
+        </View>
+      </View>
 
       {loading ? (
-        <ActivityIndicator color="#fff" style={styles.loader} />
+        <ActivityIndicator color={colors.white} style={styles.loader} />
       ) : (
         <>
-          {/* Streak */}
-          <View style={styles.streakCard}>
-            <Text style={styles.streakNumber}>{streak?.current_streak ?? 0}</Text>
-            <Text style={styles.streakLabel}>Day Streak</Text>
-            <Text style={styles.streakSub}>Longest: {streak?.longest_streak ?? 0}</Text>
-          </View>
-
-          {/* MAC Progress */}
-          <View style={styles.progressSection}>
-            <Text style={styles.progressHeading}>MAC Progress</Text>
-            <ProgressRow label="Mindfulness" value={progress?.mindfulness_score ?? 0} />
-            <ProgressRow label="Acceptance" value={progress?.acceptance_score ?? 0} />
-            <ProgressRow label="Commitment" value={progress?.commitment_score ?? 0} />
-          </View>
+          <ProfileRow label="Lessons Done:" value="—" />
+          <ProfileRow label="Update Competition Date:" value="—" />
+          <ProfileRow label="See Prev. Journal Entries:" chevron />
         </>
       )}
 
-      <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
+      {/* Sign Out */}
+      <TouchableOpacity style={styles.signOutBtn} onPress={signOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
-function ProgressRow({ label, value }: { label: string; value: number }) {
-  const pct = Math.min(Math.round(value), 100);
+function ProfileRow({
+  label,
+  value,
+  chevron,
+}: {
+  label: string;
+  value?: string;
+  chevron?: boolean;
+}) {
   return (
-    <View style={styles.progressRow}>
-      <View style={styles.progressLabelRow}>
-        <Text style={styles.progressLabel}>{label}</Text>
-        <Text style={styles.progressPct}>{pct}%</Text>
-      </View>
-      <View style={styles.progressBarBg}>
-        <View style={[styles.progressBarFill, { width: `${pct}%` }]} />
-      </View>
-    </View>
+    <TouchableOpacity
+      style={styles.profileRow}
+      activeOpacity={chevron ? 0.7 : 1}
+    >
+      <Text style={styles.rowLabel}>{label}</Text>
+      {chevron ? (
+        <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+      ) : (
+        <Text style={styles.rowValue}>{value}</Text>
+      )}
+    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    backgroundColor: '#000',
-    paddingHorizontal: 24,
-    paddingTop: 60,
+    backgroundColor: colors.background,
   },
-  heading: {
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: 60,
+    paddingBottom: TAB_BAR_CLEARANCE,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  brand: {
     fontSize: 28,
     fontWeight: '900',
-    color: '#fff',
-    marginBottom: 4,
+    color: colors.white,
+    letterSpacing: 2,
   },
-  email: {
+  streak: {
+    fontSize: 22,
+    color: colors.white,
+    fontWeight: '700',
+  },
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.white,
+  },
+  userSport: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 28,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   loader: {
     marginTop: 40,
   },
-  streakCard: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  streakNumber: {
-    fontSize: 48,
-    fontWeight: '900',
-    color: '#fff',
-  },
-  streakLabel: {
-    fontSize: 14,
-    color: '#aaa',
-    marginTop: 4,
-  },
-  streakSub: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
-  },
-  progressSection: {
-    marginBottom: 28,
-  },
-  progressHeading: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 16,
-    letterSpacing: 1,
-  },
-  progressRow: {
-    marginBottom: 14,
-  },
-  progressLabelRow: {
+  profileRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.surface,
   },
-  progressLabel: {
-    fontSize: 14,
-    color: '#ccc',
+  rowLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.white,
   },
-  progressPct: {
-    fontSize: 14,
-    color: '#888',
+  rowValue: {
+    fontSize: 15,
+    color: colors.textMuted,
   },
-  progressBarBg: {
-    height: 8,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: 8,
-    backgroundColor: '#fff',
-    borderRadius: 4,
-  },
-  signOutButton: {
-    marginTop: 'auto',
-    marginBottom: 40,
+  signOutBtn: {
+    marginTop: 40,
     paddingVertical: 14,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: colors.surfaceLight,
     alignItems: 'center',
   },
   signOutText: {
-    color: '#ff4444',
+    color: colors.error,
     fontSize: 14,
     fontWeight: '600',
   },
