@@ -12,12 +12,6 @@ import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 
-type Progress = {
-  mindfulness_score: number;
-  acceptance_score: number;
-  commitment_score: number;
-};
-
 type Streak = {
   current_streak: number;
   longest_streak: number;
@@ -53,13 +47,16 @@ export default function ProfileScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.brand}>RELENTLESS</Text>
-        <Text style={styles.streak}>{streak?.current_streak ?? 0}🔥</Text>
+        <View style={styles.streakPill}>
+          <Text style={styles.streakNum}>{streak?.current_streak ?? 0}</Text>
+          <Text style={styles.streakFire}>🔥</Text>
+        </View>
       </View>
 
       {/* User Info */}
       <View style={styles.userRow}>
         <View style={styles.avatar}>
-          <Ionicons name="person" size={32} color={colors.accentLight} />
+          <Ionicons name="person" size={28} color={colors.accent} />
         </View>
         <View style={styles.userInfo}>
           <Text style={styles.userName}>{displayName}</Text>
@@ -67,9 +64,12 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <ProfileRow label="Lessons Done:" value="—" />
-      <ProfileRow label="Update Competition Date:" value="—" />
-      <ProfileRow label="See Prev. Journal Entries:" chevron />
+      {/* Profile Rows */}
+      <View style={styles.rowsContainer}>
+        <ProfileRow label="Lessons Done" value="—" />
+        <ProfileRow label="Update Competition Date" value="—" />
+        <ProfileRow label="See Prev. Journal Entries" chevron />
+      </View>
 
       {/* Sign Out */}
       <TouchableOpacity style={styles.signOutBtn} onPress={signOut}>
@@ -95,7 +95,7 @@ function ProfileRow({
     >
       <Text style={styles.rowLabel}>{label}</Text>
       {chevron ? (
-        <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       ) : (
         <Text style={styles.rowValue}>{value}</Text>
       )}
@@ -109,37 +109,53 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingTop: 64,
     paddingBottom: TAB_BAR_CLEARANCE,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: 28,
   },
   brand: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: colors.white,
-    letterSpacing: 2,
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    letterSpacing: 3,
   },
-  streak: {
-    fontSize: 22,
-    color: colors.white,
+  streakPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  streakNum: {
+    fontSize: 18,
     fontWeight: '700',
+    color: colors.textPrimary,
+    marginRight: 4,
+  },
+  streakFire: {
+    fontSize: 16,
   },
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: 28,
   },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.surface,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.accentSubtle,
+    borderWidth: 1,
+    borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
@@ -149,26 +165,35 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 20,
-    fontWeight: '800',
-    color: colors.white,
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
   userSport: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: 3,
+    letterSpacing: 0.2,
+  },
+  rowsContainer: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
   },
   profileRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.surface,
+    borderBottomColor: colors.border,
   },
   rowLabel: {
     fontSize: 15,
-    fontWeight: '600',
-    color: colors.white,
+    fontWeight: '500',
+    color: colors.textPrimary,
   },
   rowValue: {
     fontSize: 15,
@@ -177,9 +202,9 @@ const styles = StyleSheet.create({
   signOutBtn: {
     marginTop: 40,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.surfaceLight,
+    borderColor: colors.border,
     alignItems: 'center',
   },
   signOutText: {

@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   ScrollView,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { apiFetch } from '@/lib/api';
@@ -89,15 +91,24 @@ export default function HomeScreen() {
   const mins = lesson ? Math.ceil(lesson.duration_seconds / 60) : 0;
 
   return (
-    <ScrollView
+    <KeyboardAvoidingView
       style={styles.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={90}
+    >
+    <ScrollView
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
     >
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.brand}>RELENTLESS</Text>
-        <Text style={styles.streak}>{streak?.current_streak ?? 0}🔥</Text>
+        <View style={styles.streakPill}>
+          <Text style={styles.streakNum}>{streak?.current_streak ?? 0}</Text>
+          <Text style={styles.streakFire}>🔥</Text>
+        </View>
       </View>
 
       {/* MAC Progress Rings */}
@@ -141,26 +152,28 @@ export default function HomeScreen() {
           onPress={handleStartWorkout}
           disabled={loading || !lesson || completing}
         >
-          <Text style={styles.workoutHeading}>Workout of the Day:</Text>
+          <Text style={styles.workoutLabel}>WORKOUT OF THE DAY</Text>
           {loading ? (
-            <ActivityIndicator color={colors.white} style={{ marginTop: spacing.md }} />
+            <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.lg }} />
           ) : lesson ? (
             <>
               <Text style={styles.workoutTitle}>{lesson.title}</Text>
               <Text style={styles.workoutDesc}>
                 focuses on the 'why' and teaching{'\n'}through the 'what'
               </Text>
-              <Text style={styles.workoutMeta}>{mins}-min lesson</Text>
+              <View style={styles.workoutMetaPill}>
+                <Text style={styles.workoutMeta}>{mins}-min lesson</Text>
+              </View>
             </>
           ) : (
             <>
               <Text style={styles.workoutTitle}>All caught up!</Text>
-              <Text style={styles.workoutMeta}>Check back tomorrow</Text>
+              <Text style={styles.workoutDesc}>Check back tomorrow</Text>
             </>
           )}
           {completing && (
             <ActivityIndicator
-              color={colors.white}
+              color={colors.accent}
               style={{ marginTop: spacing.md }}
             />
           )}
@@ -182,6 +195,7 @@ export default function HomeScreen() {
         />
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -191,64 +205,96 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: 60,
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingTop: 64,
     paddingBottom: TAB_BAR_CLEARANCE,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: 28,
   },
   brand: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: colors.white,
-    letterSpacing: 2,
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    letterSpacing: 3,
   },
-  streak: {
-    fontSize: 22,
-    color: colors.white,
+  streakPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  streakNum: {
+    fontSize: 18,
     fontWeight: '700',
+    color: colors.textPrimary,
+    marginRight: 4,
+  },
+  streakFire: {
+    fontSize: 16,
   },
   ringsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: spacing.xl,
-    paddingHorizontal: spacing.md,
+    marginBottom: 28,
   },
   workoutCard: {
     backgroundColor: colors.surface,
-    borderRadius: 16,
-    paddingVertical: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 44,
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
     marginBottom: spacing.md,
   },
-  workoutHeading: {
-    fontSize: 18,
+  workoutLabel: {
+    fontSize: 11,
     fontWeight: '700',
-    color: colors.white,
+    color: colors.textMuted,
+    letterSpacing: 2,
+    marginBottom: 14,
+  },
+  workoutHeading: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.textPrimary,
     marginBottom: spacing.sm,
   },
   workoutTitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.textPrimary,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 24,
   },
   workoutDesc: {
     fontSize: 14,
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
-    marginTop: spacing.sm,
+    marginTop: 10,
+  },
+  workoutMetaPill: {
+    backgroundColor: colors.accentSubtle,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    marginTop: 16,
   },
   workoutMeta: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: spacing.md,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.accent,
+    letterSpacing: 0.3,
   },
   workoutSub: {
     fontSize: 14,
@@ -263,35 +309,39 @@ const styles = StyleSheet.create({
   },
   nextBtn: {
     borderWidth: 1,
-    borderColor: colors.surfaceLight,
-    borderRadius: 10,
+    borderColor: colors.border,
+    borderRadius: 12,
     paddingVertical: 12,
-    paddingHorizontal: 24,
+    paddingHorizontal: 28,
     marginTop: spacing.md,
   },
   nextBtnText: {
-    color: colors.white,
+    color: colors.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },
   journalCard: {
     backgroundColor: colors.surface,
-    borderRadius: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: spacing.lg,
   },
   competitionLabel: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    color: colors.white,
-    marginBottom: spacing.md,
+    color: colors.textPrimary,
+    marginBottom: 14,
   },
   journalInput: {
     backgroundColor: colors.surfaceLight,
-    borderRadius: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: spacing.md,
-    color: colors.white,
+    color: colors.textPrimary,
     fontSize: 14,
-    minHeight: 60,
+    minHeight: 64,
     textAlignVertical: 'top',
   },
   inlineError: {
@@ -306,13 +356,14 @@ const styles = StyleSheet.create({
   },
   retryBtn: {
     borderWidth: 1,
-    borderColor: colors.surfaceLight,
-    borderRadius: 10,
+    borderColor: colors.border,
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 24,
   },
   retryText: {
-    color: colors.white,
+    color: colors.textPrimary,
     fontSize: 14,
+    fontWeight: '500',
   },
 });

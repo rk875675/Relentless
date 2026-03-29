@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   listContent: {
-    padding: spacing.lg,
+    padding: 20,
     paddingBottom: 40,
   },
   listCentered: {
@@ -123,19 +123,22 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: spacing.lg,
-    marginBottom: spacing.md,
+    marginBottom: 12,
   },
   cardTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: colors.white,
+    fontWeight: '600',
+    color: colors.textPrimary,
   },
   cardMeta: {
     fontSize: 13,
     color: colors.textSecondary,
-    marginTop: spacing.xs,
+    marginTop: 6,
+    letterSpacing: 0.3,
   },
   emptyText: {
     color: colors.textMuted,
@@ -151,13 +154,14 @@ const styles = StyleSheet.create({
   },
   retryBtn: {
     borderWidth: 1,
-    borderColor: colors.surfaceLight,
-    borderRadius: 10,
+    borderColor: colors.border,
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 24,
   },
   retryText: {
-    color: colors.white,
+    color: colors.textPrimary,
     fontSize: 14,
+    fontWeight: '500',
   },
 });

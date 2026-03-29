@@ -16,7 +16,7 @@ function TabIcon({
 }) {
   return (
     <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-      <Ionicons name={name} size={size} color={color} />
+      <Ionicons name={name} size={size - 2} color={color} />
     </View>
   );
 }
@@ -26,30 +26,33 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#000',
-        tabBarInactiveTintColor: '#999',
+        tabBarActiveTintColor: colors.accentLight,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           position: 'absolute',
           bottom: 28,
-          left: 24,
-          right: 24,
-          height: 64,
-          borderRadius: 32,
+          left: 20,
+          right: 20,
+          height: 62,
+          borderRadius: 31,
           backgroundColor: colors.tabBarBg,
           borderTopWidth: 0,
+          borderWidth: 1,
+          borderColor: colors.tabBarBorder,
           elevation: 0,
           shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.15,
-          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.3,
+          shadowRadius: 16,
           paddingBottom: 0,
         },
         tabBarItemStyle: {
           paddingVertical: 8,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '600',
+          letterSpacing: 0.3,
         },
       }}
     >
@@ -86,9 +89,9 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   iconWrap: {
-    width: 48,
-    height: 32,
-    borderRadius: 16,
+    width: 44,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -1,18 +1,21 @@
 export const colors = {
   background: '#000000',
-  surface: '#2a2a2a',
-  surfaceLight: '#333333',
+  surface: '#141414',
+  surfaceLight: '#1e1e1e',
+  border: '#2a2a2a',
   white: '#ffffff',
-  textPrimary: '#ffffff',
-  textSecondary: '#aaaaaa',
-  textMuted: '#666666',
-  accent: '#7c3aed',
+  textPrimary: '#f5f5f5',
+  textSecondary: '#9a9a9a',
+  textMuted: '#555555',
+  accent: '#8b5cf6',
   accentLight: '#a78bfa',
-  error: '#ff4444',
+  accentSubtle: 'rgba(139, 92, 246, 0.10)',
+  error: '#ef4444',
   success: '#4ade80',
-  tabBarBg: '#f5f0eb',
-  tabBarActive: '#e8dff5',
-  ringTrack: '#333333',
+  tabBarBg: '#111111',
+  tabBarBorder: '#1e1e1e',
+  tabBarActive: 'rgba(139, 92, 246, 0.15)',
+  ringTrack: '#252525',
 };
 
 export const spacing = {
@@ -23,4 +26,4 @@ export const spacing = {
   xl: 32,
 };
 
-export const TAB_BAR_CLEARANCE = 100;
+export const TAB_BAR_CLEARANCE = 110;

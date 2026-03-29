@@ -64,7 +64,10 @@ export default function LibraryScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.brand}>RELENTLESS</Text>
-        <Text style={styles.streak}>{streak?.current_streak ?? 0}🔥</Text>
+        <View style={styles.streakPill}>
+          <Text style={styles.streakNum}>{streak?.current_streak ?? 0}</Text>
+          <Text style={styles.streakFire}>🔥</Text>
+        </View>
       </View>
 
       {/* MAC Progress Rings */}
@@ -97,20 +100,22 @@ export default function LibraryScreen() {
         <TouchableOpacity
           key={cat.id}
           style={styles.categoryBtn}
-          activeOpacity={0.8}
+          activeOpacity={0.7}
           onPress={() => router.push(`/category/${cat.id}`)}
         >
+          <View style={styles.categoryAccent} />
           <Text style={styles.categoryLabel}>{cat.label}</Text>
         </TouchableOpacity>
       ))}
 
       {/* Coach CTA — PRD: subtle outbound path to coach for 1:1 help */}
       <TouchableOpacity style={styles.ctaCard} activeOpacity={0.8}>
+        <Text style={styles.ctaLabel}>1 ON 1</Text>
         <Text style={styles.ctaTitle}>
-          CTA - 1 on 1 lessons with Grant
+          Sessions with Grant
         </Text>
         <Text style={styles.ctaSub}>
-          (his specific offer for those looking for individuality)
+          Personalized coaching for your specific goals
         </Text>
       </TouchableOpacity>
     </ScrollView>
@@ -123,63 +128,98 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingTop: 64,
     paddingBottom: TAB_BAR_CLEARANCE,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: 28,
   },
   brand: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: colors.white,
-    letterSpacing: 2,
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    letterSpacing: 3,
   },
-  streak: {
-    fontSize: 22,
-    color: colors.white,
+  streakPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  streakNum: {
+    fontSize: 18,
     fontWeight: '700',
+    color: colors.textPrimary,
+    marginRight: 4,
+  },
+  streakFire: {
+    fontSize: 16,
   },
   ringsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: spacing.xl,
-    paddingHorizontal: spacing.md,
+    marginBottom: 28,
   },
   categoryBtn: {
     backgroundColor: colors.surface,
-    borderRadius: 14,
-    paddingVertical: 28,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 26,
+    paddingHorizontal: spacing.lg,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: 12,
+  },
+  categoryAccent: {
+    width: 4,
+    height: 24,
+    borderRadius: 2,
+    backgroundColor: colors.accent,
+    marginRight: 16,
   },
   categoryLabel: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
-    color: colors.white,
+    color: colors.textPrimary,
+    letterSpacing: 0.3,
   },
   ctaCard: {
-    backgroundColor: colors.surfaceLight,
-    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.accent,
     padding: spacing.lg,
     alignItems: 'center',
     marginTop: spacing.sm,
   },
+  ctaLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.accent,
+    letterSpacing: 2,
+    marginBottom: 6,
+  },
   ctaTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.white,
+    color: colors.textPrimary,
     textAlign: 'center',
   },
   ctaSub: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 6,
     textAlign: 'center',
+    lineHeight: 18,
   },
   inlineError: {
     alignItems: 'center',
@@ -193,13 +233,14 @@ const styles = StyleSheet.create({
   },
   retryBtn: {
     borderWidth: 1,
-    borderColor: colors.surfaceLight,
-    borderRadius: 10,
+    borderColor: colors.border,
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 24,
   },
   retryText: {
-    color: colors.white,
+    color: colors.textPrimary,
     fontSize: 14,
+    fontWeight: '500',
   },
 });

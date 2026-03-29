@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 
@@ -54,7 +54,7 @@ export default function SignupScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.inner}>
+      <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled" bounces={false}>
         <Text style={styles.logo}>RELENTLESS</Text>
         <Text style={styles.tagline}>Create your account</Text>
 
@@ -104,7 +104,7 @@ export default function SignupScreen() {
             <Text style={styles.linkText}>Already have an account? Sign In</Text>
           </TouchableOpacity>
         </Link>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   inner: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 32,
   },

@@ -12,7 +12,7 @@ type Props = {
 export function ProgressRing({
   percentage,
   label,
-  size = 64,
+  size = 72,
   strokeWidth = 5,
 }: Props) {
   const radius = (size - strokeWidth) / 2;
@@ -36,7 +36,7 @@ export function ProgressRing({
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke={colors.accentLight}
+            stroke={colors.accent}
             strokeWidth={strokeWidth}
             fill="none"
             strokeDasharray={`${circumference}`}
@@ -57,6 +57,17 @@ export function ProgressRing({
 const styles = StyleSheet.create({
   wrapper: { alignItems: 'center' },
   centerLabel: { alignItems: 'center', justifyContent: 'center' },
-  pctText: { color: colors.white, fontSize: 12, fontWeight: '700' },
-  catLabel: { color: colors.textSecondary, fontSize: 11, marginTop: 6 },
+  pctText: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  catLabel: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 8,
+    letterSpacing: 0.2,
+  },
 });

@@ -43,7 +43,12 @@ function RouteGuard() {
           headerShown: true,
           headerBackTitle: 'Library',
           headerStyle: { backgroundColor: '#000' },
-          headerTintColor: '#fff',
+          headerTintColor: '#a78bfa',
+          headerTitleStyle: {
+            fontSize: 17,
+            fontWeight: '600',
+            color: '#f5f5f5',
+          },
           title: '',
         }}
       />
