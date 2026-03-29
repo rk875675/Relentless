@@ -5,27 +5,12 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { apiFetch } from '@/lib/api';
 import { ProgressRing } from '@/components/ProgressRing';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
-
-type Lesson = {
-  id: string;
-  title: string;
-  duration_seconds: number;
-  lesson_type: string;
-  categories: string[];
-};
-
-type LessonsResponse = {
-  items: Lesson[];
-  page: number;
-  limit: number;
-  total: number;
-};
 
 type Progress = {
   mindfulness_score: number;
@@ -39,39 +24,29 @@ type Streak = {
   last_activity_date: string | null;
 };
 
-const MAC_ORDER = ['mindfulness', 'acceptance', 'commitment'] as const;
-
-const MAC_LABELS: Record<string, string> = {
-  mindfulness: 'Mindfulness',
-  acceptance: 'Acceptance',
-  commitment: 'Commitment',
-};
+const MAC_CATEGORIES = [
+  { id: 'mindfulness', label: 'Mindfulness' },
+  { id: 'acceptance', label: 'Acceptance' },
+  { id: 'commitment', label: 'Commitment' },
+] as const;
 
 export default function LibraryScreen() {
-  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const router = useRouter();
   const [progress, setProgress] = useState<Progress | null>(null);
   const [streak, setStreak] = useState<Streak | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const fetchData = async () => {
-    setLoading(true);
     setError('');
-    const [lessonsRes, progressRes, streakRes] = await Promise.all([
-      apiFetch<LessonsResponse>('/lessons?limit=50'),
+    const [progressRes, streakRes] = await Promise.all([
       apiFetch<Progress>('/progress'),
       apiFetch<Streak>('/streak'),
     ]);
-    if (lessonsRes.error) {
-      setError(lessonsRes.error);
-    } else if (lessonsRes.data) {
-      setLessons(
-        lessonsRes.data.items.filter((l) => l.lesson_type !== 'onboarding-sample'),
-      );
+    if (progressRes.error) {
+      setError(progressRes.error);
     }
     if (progressRes.data) setProgress(progressRes.data);
     if (streakRes.data) setStreak(streakRes.data);
-    setLoading(false);
   };
 
   useFocusEffect(
@@ -79,31 +54,6 @@ export default function LibraryScreen() {
       fetchData();
     }, []),
   );
-
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.white} size="large" />
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={fetchData}>
-          <Text style={styles.retryText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  const grouped = MAC_ORDER.map((cat) => ({
-    category: cat,
-    label: MAC_LABELS[cat],
-    items: lessons.filter((l) => l.categories.includes(cat)),
-  })).filter((g) => g.items.length > 0);
 
   return (
     <ScrollView
@@ -133,26 +83,26 @@ export default function LibraryScreen() {
         />
       </View>
 
-      {/* Lesson Cards */}
-      {grouped.map((group) =>
-        group.items.map((lesson) => {
-          const mins = Math.floor(lesson.duration_seconds / 60);
-          const secs = lesson.duration_seconds % 60;
-          const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
-          return (
-            <TouchableOpacity
-              key={lesson.id}
-              style={styles.lessonCard}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.lessonCategory}>{group.label}:</Text>
-              <Text style={styles.lessonInfo}>
-                {timeStr} - {lesson.title}
-              </Text>
-            </TouchableOpacity>
-          );
-        }),
-      )}
+      {error ? (
+        <View style={styles.inlineError}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={fetchData}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {/* MAC Category Buttons */}
+      {MAC_CATEGORIES.map((cat) => (
+        <TouchableOpacity
+          key={cat.id}
+          style={styles.categoryBtn}
+          activeOpacity={0.8}
+          onPress={() => router.push(`/category/${cat.id}`)}
+        >
+          <Text style={styles.categoryLabel}>{cat.label}</Text>
+        </TouchableOpacity>
+      ))}
 
       {/* Coach CTA — PRD: subtle outbound path to coach for 1:1 help */}
       <TouchableOpacity style={styles.ctaCard} activeOpacity={0.8}>
@@ -168,13 +118,6 @@ export default function LibraryScreen() {
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.xl,
-  },
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -207,22 +150,17 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     paddingHorizontal: spacing.md,
   },
-  lessonCard: {
+  categoryBtn: {
     backgroundColor: colors.surface,
     borderRadius: 14,
-    padding: spacing.lg,
+    paddingVertical: 28,
     alignItems: 'center',
     marginBottom: spacing.md,
   },
-  lessonCategory: {
-    fontSize: 18,
+  categoryLabel: {
+    fontSize: 20,
     fontWeight: '700',
     color: colors.white,
-    marginBottom: spacing.xs,
-  },
-  lessonInfo: {
-    fontSize: 14,
-    color: colors.textSecondary,
   },
   ctaCard: {
     backgroundColor: colors.surfaceLight,
@@ -242,6 +180,10 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: spacing.xs,
     textAlign: 'center',
+  },
+  inlineError: {
+    alignItems: 'center',
+    marginBottom: spacing.md,
   },
   errorText: {
     color: colors.error,

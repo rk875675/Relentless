@@ -37,6 +37,16 @@ function RouteGuard() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen
+        name="category/[id]"
+        options={{
+          headerShown: true,
+          headerBackTitle: 'Library',
+          headerStyle: { backgroundColor: '#000' },
+          headerTintColor: '#fff',
+          title: '',
+        }}
+      />
     </Stack>
   );
 }

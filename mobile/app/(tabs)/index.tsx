@@ -43,8 +43,9 @@ export default function HomeScreen() {
   const [error, setError] = useState('');
   const [journalText, setJournalText] = useState('');
 
+  const journalPrompt = 'How are you feeling..?';
+
   const fetchData = async () => {
-    setLoading(true);
     setError('');
     setCompleted(false);
     const [lessonRes, progressRes, streakRes] = await Promise.all([
@@ -85,25 +86,6 @@ export default function HomeScreen() {
     }
   };
 
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={colors.white} size="large" />
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={fetchData}>
-          <Text style={styles.retryText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   const mins = lesson ? Math.ceil(lesson.duration_seconds / 60) : 0;
 
   return (
@@ -134,8 +116,14 @@ export default function HomeScreen() {
         />
       </View>
 
-      {/* Workout of the Day */}
-      {completed ? (
+      {error ? (
+        <View style={styles.inlineError}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={fetchData}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : completed ? (
         <View style={styles.workoutCard}>
           <Text style={styles.doneIcon}>✓</Text>
           <Text style={styles.workoutHeading}>Workout Complete</Text>
@@ -151,12 +139,17 @@ export default function HomeScreen() {
           style={styles.workoutCard}
           activeOpacity={0.8}
           onPress={handleStartWorkout}
-          disabled={!lesson || completing}
+          disabled={loading || !lesson || completing}
         >
           <Text style={styles.workoutHeading}>Workout of the Day:</Text>
-          {lesson ? (
+          {loading ? (
+            <ActivityIndicator color={colors.white} style={{ marginTop: spacing.md }} />
+          ) : lesson ? (
             <>
               <Text style={styles.workoutTitle}>{lesson.title}</Text>
+              <Text style={styles.workoutDesc}>
+                focuses on the 'why' and teaching{'\n'}through the 'what'
+              </Text>
               <Text style={styles.workoutMeta}>{mins}-min lesson</Text>
             </>
           ) : (
@@ -181,7 +174,7 @@ export default function HomeScreen() {
         </Text>
         <TextInput
           style={styles.journalInput}
-          placeholder="How are you feeling..?"
+          placeholder={journalPrompt}
           placeholderTextColor={colors.textMuted}
           value={journalText}
           onChangeText={setJournalText}
@@ -193,13 +186,6 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.xl,
-  },
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -235,7 +221,8 @@ const styles = StyleSheet.create({
   workoutCard: {
     backgroundColor: colors.surface,
     borderRadius: 16,
-    padding: spacing.lg,
+    paddingVertical: 40,
+    paddingHorizontal: spacing.lg,
     alignItems: 'center',
     marginBottom: spacing.md,
   },
@@ -251,10 +238,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+  workoutDesc: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: spacing.sm,
+  },
   workoutMeta: {
     fontSize: 13,
     color: colors.textMuted,
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
   },
   workoutSub: {
     fontSize: 14,
@@ -299,6 +293,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     minHeight: 60,
     textAlignVertical: 'top',
+  },
+  inlineError: {
+    alignItems: 'center',
+    marginBottom: spacing.md,
   },
   errorText: {
     color: colors.error,

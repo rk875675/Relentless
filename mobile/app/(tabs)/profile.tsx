@@ -4,7 +4,6 @@ import {
   Text,
   View,
   TouchableOpacity,
-  ActivityIndicator,
   ScrollView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -28,15 +27,12 @@ type Streak = {
 export default function ProfileScreen() {
   const { session, signOut } = useAuth();
   const [streak, setStreak] = useState<Streak | null>(null);
-  const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
-    setLoading(true);
     const [sRes] = await Promise.all([
       apiFetch<Streak>('/streak'),
     ]);
     if (sRes.data) setStreak(sRes.data);
-    setLoading(false);
   };
 
   useFocusEffect(
@@ -71,15 +67,9 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {loading ? (
-        <ActivityIndicator color={colors.white} style={styles.loader} />
-      ) : (
-        <>
-          <ProfileRow label="Lessons Done:" value="—" />
-          <ProfileRow label="Update Competition Date:" value="—" />
-          <ProfileRow label="See Prev. Journal Entries:" chevron />
-        </>
-      )}
+      <ProfileRow label="Lessons Done:" value="—" />
+      <ProfileRow label="Update Competition Date:" value="—" />
+      <ProfileRow label="See Prev. Journal Entries:" chevron />
 
       {/* Sign Out */}
       <TouchableOpacity style={styles.signOutBtn} onPress={signOut}>
@@ -166,9 +156,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginTop: 2,
-  },
-  loader: {
-    marginTop: 40,
   },
   profileRow: {
     flexDirection: 'row',
