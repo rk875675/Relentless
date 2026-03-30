@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -44,6 +44,8 @@ export default function HomeScreen() {
   const [completed, setCompleted] = useState(false);
   const [error, setError] = useState('');
   const [journalText, setJournalText] = useState('');
+  const scrollRef = useRef<ScrollView>(null);
+  const journalCardY = useRef(0);
 
   const journalPrompt = 'How are you feeling..?';
 
@@ -97,6 +99,7 @@ export default function HomeScreen() {
       keyboardVerticalOffset={90}
     >
     <ScrollView
+      ref={scrollRef}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
@@ -181,7 +184,10 @@ export default function HomeScreen() {
       )}
 
       {/* Competition Countdown + Journal */}
-      <View style={styles.journalCard}>
+      <View
+        style={styles.journalCard}
+        onLayout={(e) => { journalCardY.current = e.nativeEvent.layout.y; }}
+      >
         <Text style={styles.competitionLabel}>
           Days until competition: —
         </Text>
@@ -192,6 +198,12 @@ export default function HomeScreen() {
           value={journalText}
           onChangeText={setJournalText}
           multiline
+          onFocus={() => {
+            scrollRef.current?.scrollTo({
+              y: journalCardY.current - 24,
+              animated: true,
+            });
+          }}
         />
       </View>
     </ScrollView>
