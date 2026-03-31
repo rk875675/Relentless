@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { apiFetch } from '@/lib/api';
 import { ProgressRing } from '@/components/ProgressRing';
@@ -66,7 +67,7 @@ export default function LibraryScreen() {
         <Text style={styles.brand}>RELENTLESS</Text>
         <View style={styles.streakPill}>
           <Text style={styles.streakNum}>{streak?.current_streak ?? 0}</Text>
-          <Text style={styles.streakFire}>🔥</Text>
+          <Ionicons name="flame" size={16} color="#f59e0b" />
         </View>
       </View>
 
@@ -147,6 +148,7 @@ const styles = StyleSheet.create({
   streakPill: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
     backgroundColor: colors.surface,
     borderRadius: 20,
     paddingHorizontal: 14,
@@ -158,10 +160,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.textPrimary,
-    marginRight: 4,
-  },
-  streakFire: {
-    fontSize: 16,
   },
   ringsRow: {
     flexDirection: 'row',

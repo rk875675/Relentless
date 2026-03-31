@@ -6,7 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
 } from 'react-native';
-import { useLocalSearchParams, Stack } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { apiFetch } from '@/lib/api';
 import { colors, spacing } from '@/lib/theme';
 
@@ -33,6 +33,7 @@ const MAC_LABELS: Record<string, string> = {
 
 export default function CategoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const label = MAC_LABELS[id ?? ''] ?? id ?? '';
 
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -93,7 +94,11 @@ export default function CategoryScreen() {
           const secs = lesson.duration_seconds % 60;
           const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
           return (
-            <TouchableOpacity style={styles.card} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.card}
+              activeOpacity={0.8}
+              onPress={() => router.push(`/lesson/${lesson.id}` as any)}
+            >
               <Text style={styles.cardTitle}>{lesson.title}</Text>
               <Text style={styles.cardMeta}>{timeStr}</Text>
             </TouchableOpacity>

@@ -18,8 +18,14 @@ type Streak = {
   last_activity_date: string | null;
 };
 
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return '—';
+  const [y, m, d] = dateStr.split('-');
+  return `${m}/${d}/${y}`;
+}
+
 export default function ProfileScreen() {
-  const { session, signOut } = useAuth();
+  const { session, signOut, competitionDate } = useAuth();
   const [streak, setStreak] = useState<Streak | null>(null);
 
   const fetchData = async () => {
@@ -49,7 +55,7 @@ export default function ProfileScreen() {
         <Text style={styles.brand}>RELENTLESS</Text>
         <View style={styles.streakPill}>
           <Text style={styles.streakNum}>{streak?.current_streak ?? 0}</Text>
-          <Text style={styles.streakFire}>🔥</Text>
+          <Ionicons name="flame" size={16} color="#f59e0b" />
         </View>
       </View>
 
@@ -67,7 +73,7 @@ export default function ProfileScreen() {
       {/* Profile Rows */}
       <View style={styles.rowsContainer}>
         <ProfileRow label="Lessons Done" value="—" />
-        <ProfileRow label="Update Competition Date" value="—" />
+        <ProfileRow label="Update Competition Date" value={formatDate(competitionDate)} />
         <ProfileRow label="See Prev. Journal Entries" chevron />
       </View>
 
@@ -128,6 +134,7 @@ const styles = StyleSheet.create({
   streakPill: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
     backgroundColor: colors.surface,
     borderRadius: 20,
     paddingHorizontal: 14,
@@ -139,10 +146,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.textPrimary,
-    marginRight: 4,
-  },
-  streakFire: {
-    fontSize: 16,
   },
   userRow: {
     flexDirection: 'row',

@@ -10,7 +10,10 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
+import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
 import { ProgressRing } from '@/components/ProgressRing';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
@@ -35,23 +38,31 @@ type Streak = {
   last_activity_date: string | null;
 };
 
+function getDaysUntil(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const target = new Date(dateStr + 'T00:00:00');
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diff = Math.ceil((target.getTime() - today.getTime()) / 86400000);
+  return diff >= 0 ? diff : null;
+}
+
 export default function HomeScreen() {
+  const { competitionDate } = useAuth();
+  const router = useRouter();
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [streak, setStreak] = useState<Streak | null>(null);
   const [loading, setLoading] = useState(true);
-  const [completing, setCompleting] = useState(false);
-  const [completed, setCompleted] = useState(false);
   const [error, setError] = useState('');
   const [journalText, setJournalText] = useState('');
   const scrollRef = useRef<ScrollView>(null);
   const journalCardY = useRef(0);
 
-  const journalPrompt = 'How are you feeling..?';
+  const journalPrompt = "What's one thing you want to focus on during today's workout?";
 
   const fetchData = async () => {
     setError('');
-    setCompleted(false);
     const [lessonRes, progressRes, streakRes] = await Promise.all([
       apiFetch<Lesson>('/lessons/next'),
       apiFetch<Progress>('/progress'),
@@ -72,22 +83,9 @@ export default function HomeScreen() {
     }, []),
   );
 
-  const handleStartWorkout = async () => {
+  const handleStartWorkout = () => {
     if (!lesson) return;
-    setCompleting(true);
-    const { error: err } = await apiFetch(
-      '/lessons/' + lesson.id + '/complete',
-      {
-        method: 'POST',
-        headers: { 'Idempotency-Key': `${lesson.id}-${Date.now()}` },
-      },
-    );
-    setCompleting(false);
-    if (err) {
-      setError(err);
-    } else {
-      setCompleted(true);
-    }
+    router.push(`/lesson/${lesson.id}` as any);
   };
 
   const mins = lesson ? Math.ceil(lesson.duration_seconds / 60) : 0;
@@ -108,9 +106,22 @@ export default function HomeScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.brand}>RELENTLESS</Text>
-        <View style={styles.streakPill}>
-          <Text style={styles.streakNum}>{streak?.current_streak ?? 0}</Text>
-          <Text style={styles.streakFire}>🔥</Text>
+        <View style={styles.headerRight}>
+          {(() => {
+            const days = getDaysUntil(competitionDate);
+            return (
+              <View style={styles.countdownPill}>
+                <Ionicons name="flag-outline" size={13} color={days != null ? colors.accentLight : colors.textMuted} />
+                <Text style={[styles.countdownText, days != null && { color: colors.accentLight }]}>
+                  {days != null ? `${days}d` : '—'}
+                </Text>
+              </View>
+            );
+          })()}
+          <View style={styles.streakPill}>
+            <Text style={styles.streakNum}>{streak?.current_streak ?? 0}</Text>
+            <Ionicons name="flame" size={16} color="#f59e0b" />
+          </View>
         </View>
       </View>
 
@@ -137,23 +148,12 @@ export default function HomeScreen() {
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
-      ) : completed ? (
-        <View style={styles.workoutCard}>
-          <Text style={styles.doneIcon}>✓</Text>
-          <Text style={styles.workoutHeading}>Workout Complete</Text>
-          <Text style={styles.workoutSub}>
-            Nice work. The Library is now unlocked.
-          </Text>
-          <TouchableOpacity style={styles.nextBtn} onPress={fetchData}>
-            <Text style={styles.nextBtnText}>Next Workout</Text>
-          </TouchableOpacity>
-        </View>
       ) : (
         <TouchableOpacity
           style={styles.workoutCard}
           activeOpacity={0.8}
           onPress={handleStartWorkout}
-          disabled={loading || !lesson || completing}
+          disabled={loading || !lesson}
         >
           <Text style={styles.workoutLabel}>WORKOUT OF THE DAY</Text>
           {loading ? (
@@ -174,23 +174,15 @@ export default function HomeScreen() {
               <Text style={styles.workoutDesc}>Check back tomorrow</Text>
             </>
           )}
-          {completing && (
-            <ActivityIndicator
-              color={colors.accent}
-              style={{ marginTop: spacing.md }}
-            />
-          )}
         </TouchableOpacity>
       )}
 
-      {/* Competition Countdown + Journal */}
+      {/* Journal Prompt */}
       <View
         style={styles.journalCard}
         onLayout={(e) => { journalCardY.current = e.nativeEvent.layout.y; }}
       >
-        <Text style={styles.competitionLabel}>
-          Days until competition: —
-        </Text>
+        <Text style={styles.journalLabel}>PRE-WORKOUT CHECK-IN</Text>
         <TextInput
           style={styles.journalInput}
           placeholder={journalPrompt}
@@ -234,9 +226,31 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     letterSpacing: 3,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  countdownPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  countdownText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
   streakPill: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
     backgroundColor: colors.surface,
     borderRadius: 20,
     paddingHorizontal: 14,
@@ -248,10 +262,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.textPrimary,
-    marginRight: 4,
-  },
-  streakFire: {
-    fontSize: 16,
   },
   ringsRow: {
     flexDirection: 'row',
@@ -274,12 +284,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     letterSpacing: 2,
     marginBottom: 14,
-  },
-  workoutHeading: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
   },
   workoutTitle: {
     fontSize: 17,
@@ -308,30 +312,6 @@ const styles = StyleSheet.create({
     color: colors.accent,
     letterSpacing: 0.3,
   },
-  workoutSub: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: spacing.xs,
-  },
-  doneIcon: {
-    fontSize: 40,
-    color: colors.success,
-    marginBottom: spacing.sm,
-  },
-  nextBtn: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    marginTop: spacing.md,
-  },
-  nextBtnText: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
   journalCard: {
     backgroundColor: colors.surface,
     borderRadius: 20,
@@ -339,11 +319,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.lg,
   },
-  competitionLabel: {
-    fontSize: 15,
+  journalLabel: {
+    fontSize: 11,
     fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 14,
+    color: colors.textMuted,
+    letterSpacing: 2,
+    marginBottom: 12,
   },
   journalInput: {
     backgroundColor: colors.surfaceLight,

@@ -17,7 +17,9 @@
       "bundleIdentifier": "com.rkuma.relentless"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "@react-native-community/datetimepicker",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true
