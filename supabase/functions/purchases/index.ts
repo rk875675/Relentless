@@ -4,6 +4,7 @@ import {
   corsHeaders,
   generateRequestId,
   errorResponse,
+  successResponse,
 } from "../_shared/response.ts";
 import { getUser } from "../_shared/auth.ts";
 import { checkRateLimit } from "../_shared/ratelimit.ts";
@@ -12,14 +13,36 @@ import {
   storeIdempotencyKey,
 } from "../_shared/idempotency.ts";
 
-const RestoreSchema = z
-  .object({
-    originalTransactionId: z.string().min(1),
-  })
-  .strict();
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-// Apple subscription statuses that grant access
-const ENTITLED_STATUSES = [1, 3, 4]; // Active, BillingRetryPeriod, GracePeriod
+const BUNDLE_ID = "com.rkuma.relentless";
+
+const APPLE_PRODUCTION_URL =
+  "https://api.storekit.itunes.apple.com/inApps/v1/subscriptions";
+const APPLE_SANDBOX_URL =
+  "https://api.storekit-sandbox.itunes.apple.com/inApps/v1/subscriptions";
+
+/**
+ * Apple App Store Server API subscription status codes.
+ * https://developer.apple.com/documentation/appstoreserverapi/status
+ */
+const APPLE_STATUS = {
+  ACTIVE: 1,
+  EXPIRED: 2,
+  BILLING_RETRY: 3,  // grace period — treat as active
+  BILLING_GRACE: 4,  // billing grace — treat as active
+  REVOKED: 5,
+} as const;
+
+const RestoreBodySchema = z.object({
+  originalTransactionId: z.string().min(1).max(256),
+});
+
+// ---------------------------------------------------------------------------
+// Entry
+// ---------------------------------------------------------------------------
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -33,33 +56,28 @@ Deno.serve(async (req) => {
   }
 
   const url = new URL(req.url);
-  if (!url.pathname.match(/\/purchases\/restore\/?$/)) {
-    return errorResponse(405, "VALIDATION_ERROR", "Method not allowed for this path", requestId);
+  const pathMatch = url.pathname.match(/\/purchases(?:\/(.+))?$/);
+  const subPath = (pathMatch?.[1] ?? "").replace(/\/$/, "");
+
+  if (subPath !== "restore") {
+    return errorResponse(404, "NOT_FOUND", "Unknown purchases path", requestId);
   }
 
   const supabase = createServiceClient();
   const auth = await getUser(req, supabase, requestId);
   if (!auth.ok) return auth.response;
 
-  const rl = await checkRateLimit(auth.userId, requestId, "billing");
+  const rl = await checkRateLimit(auth.userId, requestId, "authenticated-write");
   if (!rl.ok) return rl.response;
 
-  const idempotencyKey = req.headers.get("Idempotency-Key");
-  if (!idempotencyKey) {
-    return errorResponse(400, "VALIDATION_ERROR", "Idempotency-Key header is required", requestId);
-  }
-
-  const check = await checkIdempotencyKey(supabase, idempotencyKey, auth.userId, requestId);
-  if (check.replay) return check.response;
-
-  let rawBody: unknown;
+  let body: unknown;
   try {
-    rawBody = await req.json();
+    body = await req.json();
   } catch {
     return errorResponse(400, "VALIDATION_ERROR", "Invalid JSON body", requestId);
   }
 
-  const parsed = RestoreSchema.safeParse(rawBody);
+  const parsed = RestoreBodySchema.safeParse(body);
   if (!parsed.success) {
     return errorResponse(
       400,
@@ -71,154 +89,269 @@ Deno.serve(async (req) => {
 
   const { originalTransactionId } = parsed.data;
 
-  let appleJwt: string;
-  try {
-    appleJwt = await generateAppleJwt();
-  } catch {
-    return errorResponse(500, "INTERNAL_ERROR", "Apple API configuration error", requestId);
+  const idempotencyKey = req.headers.get("Idempotency-Key");
+  if (!idempotencyKey) {
+    return errorResponse(400, "VALIDATION_ERROR", "Idempotency-Key header is required", requestId);
   }
 
-  const appleEnv = Deno.env.get("APPLE_ENVIRONMENT") ?? "Production";
-  const appleBase =
-    appleEnv === "Sandbox"
-      ? "https://api.storekit-sandbox.itunes.apple.com"
-      : "https://api.storekit.itunes.apple.com";
+  const idem = await checkIdempotencyKey(supabase, idempotencyKey, auth.userId, requestId);
+  if (idem.replay) return idem.response;
 
-  let appleRes: Response;
+  // ---------------------------------------------------------------------------
+  // Apple App Store Server API verification
+  // ---------------------------------------------------------------------------
+
+  const privateKey = Deno.env.get("APPLE_IAP_PRIVATE_KEY") ?? "";
+  const keyId = Deno.env.get("APPLE_IAP_KEY_ID") ?? "";
+  const issuerId = Deno.env.get("APPLE_IAP_ISSUER_ID") ?? "";
+
+  if (!privateKey || !keyId || !issuerId) {
+    console.error("[purchases/restore] Apple IAP secrets not configured");
+    return errorResponse(500, "INTERNAL_ERROR", "Purchase verification not configured", requestId);
+  }
+
+  let appleToken: string;
   try {
-    appleRes = await fetch(
-      `${appleBase}/inApps/v1/subscriptions/${originalTransactionId}`,
-      { headers: { Authorization: `Bearer ${appleJwt}` } },
+    appleToken = await buildAppleJwt(privateKey, keyId, issuerId);
+  } catch (err) {
+    console.error("[purchases/restore] Failed to build Apple JWT", err);
+    return errorResponse(500, "INTERNAL_ERROR", "Failed to build purchase verification token", requestId);
+  }
+
+  // Try production; fall back to sandbox on environment mismatch
+  let appleData: AppleSubscriptionResponse | null = null;
+  let isSandbox = false;
+
+  const productionResult = await fetchAppleSubscription(
+    APPLE_PRODUCTION_URL,
+    originalTransactionId,
+    appleToken,
+  );
+
+  if (productionResult.ok) {
+    appleData = productionResult.data;
+  } else if (productionResult.environmentMismatch) {
+    const sandboxResult = await fetchAppleSubscription(
+      APPLE_SANDBOX_URL,
+      originalTransactionId,
+      appleToken,
     );
-  } catch {
-    return errorResponse(502, "INTERNAL_ERROR", "Failed to reach App Store API", requestId);
-  }
-
-  if (appleRes.status === 404) {
-    return errorResponse(404, "NOT_FOUND", "Transaction not found in App Store", requestId);
-  }
-  if (!appleRes.ok) {
-    return errorResponse(502, "INTERNAL_ERROR", "App Store API error", requestId);
-  }
-
-  const appleBody = await appleRes.json();
-
-  let entitled = false;
-  let productId: string | null = null;
-  let expiresAt: string | null = null;
-
-  for (const group of appleBody.data ?? []) {
-    for (const tx of group.lastTransactions ?? []) {
-      if (ENTITLED_STATUSES.includes(tx.status) && tx.signedTransactionInfo) {
-        entitled = true;
-        const txInfo = decodeJwsPayload(tx.signedTransactionInfo);
-        productId = (txInfo.productId as string) ?? null;
-        if (txInfo.expiresDate) {
-          expiresAt = new Date(txInfo.expiresDate as number).toISOString();
-        }
-        break;
-      }
+    if (sandboxResult.ok) {
+      appleData = sandboxResult.data;
+      isSandbox = true;
+    } else {
+      return errorResponse(
+        422,
+        "VALIDATION_ERROR",
+        "Purchase could not be verified with Apple",
+        requestId,
+      );
     }
-    if (entitled) break;
+  } else {
+    return errorResponse(
+      422,
+      "VALIDATION_ERROR",
+      "Purchase could not be verified with Apple",
+      requestId,
+    );
   }
 
-  const newStatus = entitled ? "active" : "expired";
+  // ---------------------------------------------------------------------------
+  // Determine entitlement status from Apple response
+  // ---------------------------------------------------------------------------
 
-  const updateData: Record<string, unknown> = { status: newStatus };
-  if (entitled && productId) updateData.product_id = productId;
-  if (entitled && expiresAt) updateData.expires_at = expiresAt;
+  const { entitlementStatus, productId, expiresAt } = resolveEntitlement(appleData);
 
-  await supabase
+  // ---------------------------------------------------------------------------
+  // Update entitlements table
+  // ---------------------------------------------------------------------------
+
+  const { error: upsertErr } = await supabase
     .from("entitlements")
-    .update(updateData)
+    .update({
+      status: entitlementStatus,
+      product_id: productId ?? null,
+      expires_at: expiresAt ?? null,
+    })
     .eq("user_id", auth.userId);
 
+  if (upsertErr) {
+    console.error("[purchases/restore] Failed to update entitlements", upsertErr);
+    return errorResponse(500, "INTERNAL_ERROR", "Failed to update entitlement", requestId);
+  }
+
+  // Record audit event
   await supabase.from("entitlement_events").insert({
     user_id: auth.userId,
-    event_type: "restored",
-    product_id: productId,
-    metadata: { originalTransactionId, resolved_status: newStatus },
+    event_type: "restore",
+    product_id: productId ?? null,
+    metadata: {
+      original_transaction_id: originalTransactionId,
+      entitlement_status: entitlementStatus,
+      is_sandbox: isSandbox,
+      expires_at: expiresAt ?? null,
+    },
   });
 
   const responseBody = {
-    data: {
-      status: newStatus,
-      product_id: productId,
-      expires_at: expiresAt,
-    },
-    request_id: requestId,
+    entitlement_status: entitlementStatus,
+    product_id: productId ?? null,
   };
 
   await storeIdempotencyKey(supabase, idempotencyKey, auth.userId, 200, responseBody);
 
-  return new Response(JSON.stringify(responseBody), {
-    status: 200,
-    headers: { "Content-Type": "application/json", ...corsHeaders },
-  });
+  return successResponse(responseBody, requestId);
 });
 
-function decodeJwsPayload(jws: string): Record<string, unknown> {
-  const parts = jws.split(".");
-  if (parts.length !== 3) return {};
-  let b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-  b64 += "=".repeat((4 - (b64.length % 4)) % 4);
-  try {
-    return JSON.parse(atob(b64));
-  } catch {
-    return {};
-  }
-}
+// ---------------------------------------------------------------------------
+// Apple JWT builder (App Store Server API — ES256)
+// ---------------------------------------------------------------------------
 
-async function generateAppleJwt(): Promise<string> {
-  const keyId = Deno.env.get("APPLE_KEY_ID");
-  const issuerId = Deno.env.get("APPLE_ISSUER_ID");
-  const bundleId = Deno.env.get("APPLE_BUNDLE_ID");
-  const privateKeyPem = Deno.env.get("APPLE_PRIVATE_KEY");
+async function buildAppleJwt(
+  privateKeyPem: string,
+  keyId: string,
+  issuerId: string,
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
 
-  if (!keyId || !issuerId || !bundleId || !privateKeyPem) {
-    throw new Error("Missing Apple API env vars");
-  }
+  const header = { alg: "ES256", kid: keyId, typ: "JWT" };
+  const payload = {
+    iss: issuerId,
+    iat: now,
+    exp: now + 3600,
+    aud: "appstoreconnect-v1",
+    bid: BUNDLE_ID,
+  };
 
-  const pemBody = privateKeyPem
-    .replace(/-----BEGIN PRIVATE KEY-----/, "")
-    .replace(/-----END PRIVATE KEY-----/, "")
-    .replace(/\\n/g, "")
-    .replace(/\s/g, "");
+  const encode = (obj: unknown) =>
+    btoa(JSON.stringify(obj)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
-  const keyBytes = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+  const headerB64 = encode(header);
+  const payloadB64 = encode(payload);
+  const signingInput = `${headerB64}.${payloadB64}`;
 
-  const key = await crypto.subtle.importKey(
+  const keyDer = pemToDer(privateKeyPem);
+  const cryptoKey = await crypto.subtle.importKey(
     "pkcs8",
-    keyBytes,
+    keyDer,
     { name: "ECDSA", namedCurve: "P-256" },
     false,
     ["sign"],
   );
 
-  const b64url = (obj: unknown): string => {
-    const raw = btoa(JSON.stringify(obj));
-    return raw.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  };
-
-  const now = Math.floor(Date.now() / 1000);
-  const headerB64 = b64url({ alg: "ES256", kid: keyId, typ: "JWT" });
-  const payloadB64 = b64url({
-    iss: issuerId,
-    iat: now,
-    exp: now + 3600,
-    aud: "appstoreconnect-v1",
-    bid: bundleId,
-  });
-
-  const input = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-  const sig = new Uint8Array(
-    await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, input),
+  const signatureBuffer = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    cryptoKey,
+    new TextEncoder().encode(signingInput),
   );
 
-  const sigB64 = btoa(String.fromCharCode(...sig))
+  const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+    .replace(/=+$/, "");
 
-  return `${headerB64}.${payloadB64}.${sigB64}`;
+  return `${signingInput}.${signatureB64}`;
+}
+
+function pemToDer(pem: string): ArrayBuffer {
+  const b64 = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, "")
+    .replace(/-----END PRIVATE KEY-----/, "")
+    .replace(/\s/g, "");
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+// ---------------------------------------------------------------------------
+// Apple API fetch
+// ---------------------------------------------------------------------------
+
+type AppleSubscriptionResponse = {
+  data?: Array<{
+    lastTransactions?: Array<{
+      status: number;
+      productId?: string;
+      expiresDate?: number;
+    }>;
+  }>;
+};
+
+type FetchResult =
+  | { ok: true; data: AppleSubscriptionResponse }
+  | { ok: false; environmentMismatch: boolean };
+
+async function fetchAppleSubscription(
+  baseUrl: string,
+  originalTransactionId: string,
+  token: string,
+): Promise<FetchResult> {
+  const res = await fetch(`${baseUrl}/${originalTransactionId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (res.status === 200) {
+    const data = await res.json() as AppleSubscriptionResponse;
+    return { ok: true, data };
+  }
+
+  // 4040010 = not found in this environment (try other environment)
+  if (res.status === 404) {
+    let errCode: number | undefined;
+    try {
+      const body = await res.json() as { errorCode?: number };
+      errCode = body.errorCode;
+    } catch { /* noop */ }
+    if (errCode === 4040010) {
+      return { ok: false, environmentMismatch: true };
+    }
+  }
+
+  return { ok: false, environmentMismatch: false };
+}
+
+// ---------------------------------------------------------------------------
+// Entitlement resolution from Apple response
+// ---------------------------------------------------------------------------
+
+function resolveEntitlement(data: AppleSubscriptionResponse): {
+  entitlementStatus: string;
+  productId: string | null;
+  expiresAt: string | null;
+} {
+  const transactions = data.data?.[0]?.lastTransactions ?? [];
+
+  // Find most recent transaction — prefer active/grace states
+  const sorted = [...transactions].sort((a, b) => {
+    const priority = (s: number) =>
+      s === APPLE_STATUS.ACTIVE || s === APPLE_STATUS.BILLING_GRACE || s === APPLE_STATUS.BILLING_RETRY
+        ? 0
+        : 1;
+    return priority(a.status) - priority(b.status);
+  });
+
+  const tx = sorted[0];
+  if (!tx) {
+    return { entitlementStatus: "none", productId: null, expiresAt: null };
+  }
+
+  const isActive =
+    tx.status === APPLE_STATUS.ACTIVE ||
+    tx.status === APPLE_STATUS.BILLING_GRACE ||
+    tx.status === APPLE_STATUS.BILLING_RETRY;
+
+  const expiresAt = tx.expiresDate
+    ? new Date(tx.expiresDate).toISOString()
+    : null;
+
+  return {
+    entitlementStatus: isActive ? "active" : "expired",
+    productId: tx.productId ?? null,
+    expiresAt,
+  };
 }
