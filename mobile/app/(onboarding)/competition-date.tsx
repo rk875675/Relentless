@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase';
 import { colors, spacing } from '@/lib/theme';
 
 function formatDate(d: Date): string {
@@ -22,7 +21,7 @@ function toISODate(d: Date): string {
 
 export default function CompetitionDateScreen() {
   const router = useRouter();
-  const { session } = useAuth();
+  const { updateCompetitionDate } = useAuth();
   const [date, setDate] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState(Platform.OS === 'ios');
   const [saving, setSaving] = useState(false);
@@ -35,12 +34,9 @@ export default function CompetitionDateScreen() {
   };
 
   const saveAndContinue = async () => {
-    if (date && session?.user) {
+    if (date) {
       setSaving(true);
-      await supabase
-        .from('profiles')
-        .update({ competition_date: toISODate(date) })
-        .eq('id', session.user.id);
+      await updateCompetitionDate(toISODate(date));
       setSaving(false);
     }
     router.push('/(onboarding)/paywall');
