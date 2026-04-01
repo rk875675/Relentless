@@ -1,5 +1,10 @@
 import { Platform } from 'react-native';
 
+/** Set to `1` or `true` to disable Superwall entirely (debug crashes / Expo Go). */
+const SUPERWALL_DISABLE =
+  process.env.EXPO_PUBLIC_SUPERWALL_DISABLE === '1' ||
+  process.env.EXPO_PUBLIC_SUPERWALL_DISABLE === 'true';
+
 /** Superwall public API key (iOS). Set EXPO_PUBLIC_SUPERWALL_IOS_API_KEY in `.env`. */
 export const SUPERWALL_IOS_API_KEY =
   process.env.EXPO_PUBLIC_SUPERWALL_IOS_API_KEY ?? '';
@@ -22,9 +27,10 @@ export const STOREKIT_PRODUCT_IDS = {
 
 const isNativeMobile = Platform.OS === 'ios' || Platform.OS === 'android';
 
-function isSuperwallModuleAvailable(): boolean {
+function isSuperwallNativeAvailable(): boolean {
   try {
-    require('expo-superwall');
+    const { requireNativeModule } = require('expo-modules-core');
+    requireNativeModule('SuperwallExpo');
     return true;
   } catch {
     return false;
@@ -32,4 +38,7 @@ function isSuperwallModuleAvailable(): boolean {
 }
 
 export const SUPERWALL_ENABLED =
-  isNativeMobile && SUPERWALL_IOS_API_KEY.length > 0 && isSuperwallModuleAvailable();
+  !SUPERWALL_DISABLE &&
+  isNativeMobile &&
+  SUPERWALL_IOS_API_KEY.length > 0 &&
+  isSuperwallNativeAvailable();

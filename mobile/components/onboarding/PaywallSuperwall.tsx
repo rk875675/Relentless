@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { usePlacement } from 'expo-superwall';
 import { useAuth } from '@/lib/auth-context';
 import { colors, spacing } from '@/lib/theme';
 import { SUPERWALL_ONBOARDING_PLACEMENT } from '@/lib/superwall-config';
@@ -8,8 +9,6 @@ import { SUPERWALL_ONBOARDING_PLACEMENT } from '@/lib/superwall-config';
 export function PaywallSuperwall() {
   const { completeOnboarding, completeOnboardingDevBypass, refreshUserState } = useAuth();
   const [busy, setBusy] = useState(false);
-
-  const { usePlacement } = require('expo-superwall');
 
   const finishAfterAccess = useCallback(async () => {
     await refreshUserState();
