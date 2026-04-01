@@ -22,8 +22,7 @@
     "plugins": [
       "expo-router",
       "@react-native-community/datetimepicker",
-      "expo-audio",
-      "expo-superwall"
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true
