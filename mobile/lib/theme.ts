@@ -16,6 +16,10 @@ export const colors = {
   tabBarBorder: '#1e1e1e',
   tabBarActive: 'rgba(139, 92, 246, 0.15)',
   ringTrack: '#252525',
+
+  ringMindfulness: '#60a5fa',
+  ringAcceptance: '#22d3ee',
+  ringCommitment: '#f59e0b',
 };
 
 export const spacing = {

@@ -1,12 +1,17 @@
 import { useCallback, useState } from 'react';
 import {
+  Modal,
+  Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
@@ -18,6 +23,10 @@ type Streak = {
   last_activity_date: string | null;
 };
 
+type ProgressSummary = {
+  total_completions: number;
+};
+
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—';
   const [y, m, d] = dateStr.split('-');
@@ -25,14 +34,21 @@ function formatDate(dateStr: string | null): string {
 }
 
 export default function ProfileScreen() {
-  const { session, signOut, competitionDate } = useAuth();
+  const { session, signOut, competitionDate, updateCompetitionDate } = useAuth();
+  const router = useRouter();
   const [streak, setStreak] = useState<Streak | null>(null);
+  const [totalCompletions, setTotalCompletions] = useState<number | null>(null);
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [pendingDate, setPendingDate] = useState<Date>(new Date());
+  const [dateSaving, setDateSaving] = useState(false);
 
   const fetchData = async () => {
-    const [sRes] = await Promise.all([
+    const [sRes, pRes] = await Promise.all([
       apiFetch<Streak>('/streak'),
+      apiFetch<ProgressSummary>('/progress'),
     ]);
     if (sRes.data) setStreak(sRes.data);
+    if (pRes.data) setTotalCompletions(pRes.data.total_completions ?? 0);
   };
 
   useFocusEffect(
@@ -72,10 +88,85 @@ export default function ProfileScreen() {
 
       {/* Profile Rows */}
       <View style={styles.rowsContainer}>
-        <ProfileRow label="Lessons Done" value="—" />
-        <ProfileRow label="Update Competition Date" value={formatDate(competitionDate)} />
-        <ProfileRow label="See Prev. Journal Entries" chevron />
+        <ProfileRow label="Lessons Done" value={totalCompletions != null ? String(totalCompletions) : '—'} />
+        <ProfileRow
+          label="Update Competition Date"
+          value={dateSaving ? 'Saving...' : formatDate(competitionDate)}
+          onPress={() => {
+            setPendingDate(
+              competitionDate ? new Date(competitionDate + 'T00:00:00') : new Date(),
+            );
+            setDatePickerVisible(true);
+          }}
+        />
+        <ProfileRow
+          label="See Prev. Journal Entries"
+          chevron
+          onPress={() => router.push('/journal' as any)}
+        />
       </View>
+
+      {/* Date Picker Modal */}
+      {datePickerVisible && (
+        Platform.OS === 'ios' ? (
+          <Modal visible transparent animationType="fade" onRequestClose={() => setDatePickerVisible(false)}>
+            <Pressable style={styles.dateOverlay} onPress={() => setDatePickerVisible(false)}>
+              <View style={styles.dateSheet}>
+                <DateTimePicker
+                  value={pendingDate}
+                  mode="date"
+                  display="spinner"
+                  minimumDate={new Date()}
+                  textColor={colors.textPrimary}
+                  onChange={(_, selected) => {
+                    if (selected) setPendingDate(selected);
+                  }}
+                />
+                <View style={styles.dateActions}>
+                  <TouchableOpacity
+                    style={styles.dateClearBtn}
+                    onPress={async () => {
+                      setDatePickerVisible(false);
+                      setDateSaving(true);
+                      await updateCompetitionDate(null);
+                      setDateSaving(false);
+                    }}
+                  >
+                    <Text style={styles.dateClearText}>Clear</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.dateSaveBtn}
+                    onPress={async () => {
+                      setDatePickerVisible(false);
+                      setDateSaving(true);
+                      const ymd = pendingDate.toISOString().slice(0, 10);
+                      await updateCompetitionDate(ymd);
+                      setDateSaving(false);
+                    }}
+                  >
+                    <Text style={styles.dateSaveText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Pressable>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={pendingDate}
+            mode="date"
+            minimumDate={new Date()}
+            onChange={async (_, selected) => {
+              setDatePickerVisible(false);
+              if (selected) {
+                setDateSaving(true);
+                const ymd = selected.toISOString().slice(0, 10);
+                await updateCompetitionDate(ymd);
+                setDateSaving(false);
+              }
+            }}
+          />
+        )
+      )}
 
       {/* Sign Out */}
       <TouchableOpacity style={styles.signOutBtn} onPress={signOut}>
@@ -89,15 +180,19 @@ function ProfileRow({
   label,
   value,
   chevron,
+  onPress,
 }: {
   label: string;
   value?: string;
   chevron?: boolean;
+  onPress?: () => void;
 }) {
   return (
     <TouchableOpacity
       style={styles.profileRow}
-      activeOpacity={chevron ? 0.7 : 1}
+      activeOpacity={onPress ? 0.7 : 1}
+      onPress={onPress}
+      disabled={!onPress}
     >
       <Text style={styles.rowLabel}>{label}</Text>
       {chevron ? (
@@ -201,6 +296,44 @@ const styles = StyleSheet.create({
   rowValue: {
     fontSize: 15,
     color: colors.textMuted,
+  },
+  dateOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  dateSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  dateActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  dateClearBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  dateClearText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.error,
+  },
+  dateSaveBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+  },
+  dateSaveText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.white,
   },
   signOutBtn: {
     marginTop: 40,

@@ -1,7 +1,7 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { SuperwallRoot } from '@/components/SuperwallRoot';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 
@@ -13,6 +13,7 @@ function RouteGuard() {
   const { session, loading, onboardingComplete, hasPremiumAccess } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const hasNavigated = useRef(false);
 
   useEffect(() => {
     if (loading) return;
@@ -21,8 +22,11 @@ function RouteGuard() {
     const inOnboarding = segments[0] === '(onboarding)';
     const onPaywall = inOnboarding && segments[1] === 'paywall';
 
+    let didNavigate = false;
+
     if (!session && !inAuth) {
       router.replace('/(auth)/login');
+      didNavigate = true;
     } else if (session && inAuth) {
       if (onboardingComplete && hasPremiumAccess) {
         router.replace('/(tabs)');
@@ -31,20 +35,26 @@ function RouteGuard() {
       } else {
         router.replace('/(onboarding)/credibility');
       }
+      didNavigate = true;
     } else if (session && !onboardingComplete && !inOnboarding) {
       router.replace('/(onboarding)/credibility');
+      didNavigate = true;
     } else if (session && onboardingComplete && !hasPremiumAccess && !onPaywall && !inAuth) {
       router.replace('/(onboarding)/paywall');
+      didNavigate = true;
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
       router.replace('/(tabs)');
+      didNavigate = true;
+    }
+
+    if (!hasNavigated.current && (didNavigate || (session && onboardingComplete && hasPremiumAccess))) {
+      hasNavigated.current = true;
+      setTimeout(() => SplashScreen.hideAsync(), 50);
+    } else if (!hasNavigated.current) {
+      hasNavigated.current = true;
+      setTimeout(() => SplashScreen.hideAsync(), 50);
     }
   }, [session, loading, onboardingComplete, hasPremiumAccess, segments]);
-
-  useEffect(() => {
-    if (!loading) {
-      SplashScreen.hideAsync();
-    }
-  }, [loading]);
 
   if (loading) return null;
 
@@ -54,6 +64,7 @@ function RouteGuard() {
       <Stack.Screen name="(onboarding)" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="lesson/[id]" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="journal/index" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen
         name="category/[id]"
         options={{
@@ -76,11 +87,11 @@ function RouteGuard() {
 export default function RootLayout() {
   return (
     <ThemeProvider value={DarkTheme}>
-      <SuperwallRoot>
-        <AuthProvider>
+      <AuthProvider>
+        <SuperwallRoot>
           <RouteGuard />
-        </AuthProvider>
-      </SuperwallRoot>
+        </SuperwallRoot>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

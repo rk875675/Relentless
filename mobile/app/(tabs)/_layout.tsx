@@ -24,6 +24,7 @@ function TabIcon({
 export default function TabLayout() {
   return (
     <Tabs
+      initialRouteName="index"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.accentLight,
@@ -57,20 +58,20 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ focused, color, size }) => (
-            <TabIcon name="home-outline" focused={focused} color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="library"
         options={{
           title: 'Library',
           tabBarIcon: ({ focused, color, size }) => (
             <TabIcon name="book-outline" focused={focused} color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ focused, color, size }) => (
+            <TabIcon name="home-outline" focused={focused} color={color} size={size} />
           ),
         }}
       />

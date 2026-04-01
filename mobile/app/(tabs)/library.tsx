@@ -1,23 +1,41 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   ScrollView,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { apiFetch } from '@/lib/api';
-import { ProgressRing } from '@/components/ProgressRing';
+import { getDeviceLocalCalendarYmd } from '@/lib/device-calendar';
+import { ProgressRing, type ScoreDelta } from '@/components/ProgressRing';
+import { getPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 
 type Progress = {
   mindfulness_score: number;
   acceptance_score: number;
   commitment_score: number;
+  library_unlocked?: boolean;
+  library_lock_reason?: string | null;
+  library_lock_remaining?: number;
+  deltas?: MacDeltas | null;
 };
+
+function safePct(n: number | undefined): number {
+  if (n == null || Number.isNaN(n)) return 0;
+  return Math.min(100, Math.max(0, n));
+}
+
+function ringBasePct(score: number | undefined, delta: ScoreDelta | undefined | null): number {
+  const s = score ?? 0;
+  if (delta && delta.amount > 0) return safePct(s - delta.amount);
+  return safePct(s);
+}
 
 type Streak = {
   current_streak: number;
@@ -36,9 +54,14 @@ export default function LibraryScreen() {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [streak, setStreak] = useState<Streak | null>(null);
   const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [activeDeltas, setActiveDeltas] = useState<MacDeltas | null>(null);
+  const deltaDateRef = useRef<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = async (isPull = false) => {
     setError('');
+    if (isPull) setRefreshing(true);
     const [progressRes, streakRes] = await Promise.all([
       apiFetch<Progress>('/progress'),
       apiFetch<Streak>('/streak'),
@@ -46,8 +69,25 @@ export default function LibraryScreen() {
     if (progressRes.error) {
       setError(progressRes.error);
     }
-    if (progressRes.data) setProgress(progressRes.data);
+    const prog = progressRes.data ?? null;
+    if (prog) setProgress(prog);
     if (streakRes.data) setStreak(streakRes.data);
+
+    const today = getDeviceLocalCalendarYmd();
+    const gainDeltas = getPendingGainDeltas();
+    if (gainDeltas) {
+      setActiveDeltas(gainDeltas);
+      deltaDateRef.current = today;
+    } else if (prog?.deltas && Object.keys(prog.deltas).length > 0) {
+      setActiveDeltas(prog.deltas);
+      deltaDateRef.current = today;
+    } else if (deltaDateRef.current && deltaDateRef.current !== today) {
+      setActiveDeltas(null);
+      deltaDateRef.current = null;
+    }
+
+    setRefreshing(false);
+    setInitialLoadDone(true);
   };
 
   useFocusEffect(
@@ -56,11 +96,20 @@ export default function LibraryScreen() {
     }, []),
   );
 
+  const libraryUnlocked = initialLoadDone && progress?.library_unlocked === true;
+
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => void fetchData(true)}
+          tintColor={colors.accent}
+        />
+      }
     >
       {/* Header */}
       <View style={styles.header}>
@@ -74,23 +123,40 @@ export default function LibraryScreen() {
       {/* MAC Progress Rings */}
       <View style={styles.ringsRow}>
         <ProgressRing
-          percentage={progress?.mindfulness_score ?? 0}
+          percentage={ringBasePct(progress?.mindfulness_score, activeDeltas?.mindfulness)}
           label="Mindfulness"
+          delta={activeDeltas?.mindfulness}
+          ringColor={colors.ringMindfulness}
         />
         <ProgressRing
-          percentage={progress?.acceptance_score ?? 0}
+          percentage={ringBasePct(progress?.acceptance_score, activeDeltas?.acceptance)}
           label="Acceptance"
+          delta={activeDeltas?.acceptance}
+          ringColor={colors.ringAcceptance}
         />
         <ProgressRing
-          percentage={progress?.commitment_score ?? 0}
+          percentage={ringBasePct(progress?.commitment_score, activeDeltas?.commitment)}
           label="Commitment"
+          delta={activeDeltas?.commitment}
+          ringColor={colors.ringCommitment}
         />
       </View>
+
+      {initialLoadDone && !libraryUnlocked && !error && (
+        <View style={styles.lockedBanner}>
+          <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} />
+          <Text style={styles.lockedText}>
+            {progress?.library_lock_reason === 'BEHIND'
+              ? `Complete ${(progress?.library_lock_remaining ?? 2) - 1} missed workout${(progress?.library_lock_remaining ?? 2) - 1 > 1 ? 's' : ''} and today's on the Home tab to unlock.`
+              : "Complete today's Daily Workout on the Home tab to unlock."}
+          </Text>
+        </View>
+      )}
 
       {error ? (
         <View style={styles.inlineError}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={fetchData}>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => void fetchData(false)}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -100,9 +166,12 @@ export default function LibraryScreen() {
       {MAC_CATEGORIES.map((cat) => (
         <TouchableOpacity
           key={cat.id}
-          style={styles.categoryBtn}
+          style={[styles.categoryBtn, !libraryUnlocked && styles.categoryBtnDisabled]}
           activeOpacity={0.7}
-          onPress={() => router.push(`/category/${cat.id}`)}
+          disabled={!libraryUnlocked}
+          onPress={() => {
+            if (libraryUnlocked) router.push(`/category/${cat.id}`);
+          }}
         >
           <View style={styles.categoryAccent} />
           <Text style={styles.categoryLabel}>{cat.label}</Text>
@@ -110,7 +179,11 @@ export default function LibraryScreen() {
       ))}
 
       {/* Coach CTA — PRD: subtle outbound path to coach for 1:1 help */}
-      <TouchableOpacity style={styles.ctaCard} activeOpacity={0.8}>
+      <TouchableOpacity
+        style={[styles.ctaCard, !libraryUnlocked && styles.categoryBtnDisabled]}
+        activeOpacity={0.8}
+        disabled={!libraryUnlocked}
+      >
         <Text style={styles.ctaLabel}>1 ON 1</Text>
         <Text style={styles.ctaTitle}>
           Sessions with Grant
@@ -166,6 +239,23 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     marginBottom: 28,
   },
+  lockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  lockedText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 19,
+  },
   categoryBtn: {
     backgroundColor: colors.surface,
     borderRadius: 16,
@@ -176,6 +266,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  categoryBtnDisabled: {
+    opacity: 0.45,
   },
   categoryAccent: {
     width: 4,

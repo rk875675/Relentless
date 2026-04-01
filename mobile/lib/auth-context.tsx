@@ -16,6 +16,7 @@ type AuthState = {
   /** __DEV__ only: marks premium for UX and completes onboarding without StoreKit. */
   completeOnboardingDevBypass: () => Promise<void>;
   refreshUserState: () => Promise<void>;
+  updateCompetitionDate: (date: string | null) => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthState>({
@@ -31,6 +32,7 @@ const AuthContext = createContext<AuthState>({
   completeOnboarding: async () => {},
   completeOnboardingDevBypass: async () => {},
   refreshUserState: async () => {},
+  updateCompetitionDate: async () => null,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -125,6 +127,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await completeOnboarding();
   }, [completeOnboarding]);
 
+  const updateCompetitionDate = useCallback(async (date: string | null): Promise<string | null> => {
+    if (!session?.user) return 'Not authenticated';
+    const { error } = await supabase
+      .from('profiles')
+      .update({ competition_date: date })
+      .eq('id', session.user.id);
+    if (error) return error.message;
+    setCompetitionDate(date);
+    return null;
+  }, [session]);
+
   return (
     <AuthContext.Provider value={{
       session,
@@ -139,6 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       completeOnboarding,
       completeOnboardingDevBypass,
       refreshUserState,
+      updateCompetitionDate,
     }}>
       {children}
     </AuthContext.Provider>

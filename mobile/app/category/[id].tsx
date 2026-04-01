@@ -39,10 +39,28 @@ export default function CategoryScreen() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [libraryLocked, setLibraryLocked] = useState(false);
 
   const fetchLessons = async () => {
     setLoading(true);
     setError('');
+    setLibraryLocked(false);
+    const progRes = await apiFetch<{
+      library_unlocked?: boolean;
+      library_lock_reason?: string | null;
+      library_lock_remaining?: number;
+    }>('/progress');
+    if (progRes.error) {
+      setError(progRes.error);
+      setLoading(false);
+      return;
+    }
+    if (progRes.data?.library_unlocked !== true) {
+      setLibraryLocked(true);
+      setLessons([]);
+      setLoading(false);
+      return;
+    }
     const { data, error: err } = await apiFetch<LessonsResponse>(
       '/lessons?limit=50',
     );
@@ -71,12 +89,21 @@ export default function CategoryScreen() {
         style={styles.list}
         contentContainerStyle={[
           styles.listContent,
-          !loading && (error || lessons.length === 0) && styles.listCentered,
+          !loading && (error || libraryLocked || lessons.length === 0) && styles.listCentered,
         ]}
         data={lessons}
         keyExtractor={(item) => item.id}
         ListEmptyComponent={
-          loading ? null : error ? (
+          loading ? null : libraryLocked ? (
+            <View style={styles.errorWrap}>
+              <Text style={styles.emptyText}>
+                Complete your Daily Workout(s) on the Home tab to catch up and unlock the library.
+              </Text>
+              <TouchableOpacity style={styles.retryBtn} onPress={() => router.back()}>
+                <Text style={styles.retryText}>Go back</Text>
+              </TouchableOpacity>
+            </View>
+          ) : error ? (
             <View style={styles.errorWrap}>
               <Text style={styles.errorText}>{error}</Text>
               <TouchableOpacity style={styles.retryBtn} onPress={fetchLessons}>
