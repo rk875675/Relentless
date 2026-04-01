@@ -19,3 +19,4 @@ Hard rules:
 - Do not silently choose subscription details, trial length, pricing, paywall copy, exact formulas, or exact UX details.
 - Treat the app as subscription-based, iOS-first, Apple IAP/StoreKit + Superwall, as defined in the PRD.
 - Assume the same base stack as the current app unless the task explicitly says otherwise.
+- After changing code under `supabase/functions/`, run `supabase functions deploy <function-name>` from the repo root for each modified function (and any function that bundles changed `_shared` imports) before finishing the task, unless the user explicitly says not to deploy. If the CLI is unavailable or login fails, say so and give the exact deploy commands.

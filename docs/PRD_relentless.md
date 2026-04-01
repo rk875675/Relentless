@@ -82,14 +82,16 @@ Daily Workout
 Each program day has one assigned Daily Workout.
 The Daily Workout is the primary guided experience each day.
 The assigned Daily Workout can be replayed unlimited times.
-Repeat completions may use diminishing returns / reduced repeat credit. The exact repeat-credit formula is TBD. `Human Input Needed` before implementation.
+Repeat completions use steep diminishing returns (see §7 MAC scoring).
 Library
 The library tab contains 6 lessons total:
 2 lessons per MAC category (Mindfulness, Acceptance, Commitment)
 1 short lesson and 1 long lesson for each category
-The library unlocks only after the user has completed the required Daily Workout(s) needed to be caught up.
+The library unlocks only after the user has completed all required Daily Workout(s) needed to be caught up, including today's.
 If the user is behind, they may complete multiple missed Daily Workouts in one day until caught up.
-Once caught up for that day, the library opens.
+Once caught up (all missed workouts + today's WOD completed), the library opens.
+At the user's local midnight, the library locks again until they complete that day's WOD.
+After completing program day 30, the library remains unlocked permanently.
 Lesson structure rule
 The PRD should assume lessons are structured content objects, not hardcoded one-offs.
 At a minimum, lesson content architecture should support fields such as:
@@ -136,13 +138,32 @@ a visible mindset progress system split across the 3 MAC categories (Mindfulness
 a daily streak mechanic tied to Daily Workout completion
 a competition countdown tied to the user’s next competition
 Progress rules
-Progress is based on completed lessons and Daily Workouts, framed across the 3 MAC categories.
-Exact growth / progress formulas remain TBD. `Human Input Needed` before implementation.
-Keep the scoring logic abstract in the PRD.
-Do not over-specify the formula yet.
-Decay
-Progress may decay with inactivity.
-The exact decay formula, schedule, and reset behavior remain TBD. `Human Input Needed` before implementation.
+The 3 MAC rings represent current sharpness / current state, not long-term mastery.
+The 3 categories are independent. There is no combined overall score.
+Each ring is scored 0–100.
+
+MAC scoring — growth
+First completion of a lesson gives a meaningful base gain (+12 points) to the lesson's MAC category/categories.
+Replays contribute with steep diminishing returns: gain = 12 / completionCount^1.8, floored at 0.5.
+This prevents farming/spam while still rewarding repeat practice.
+
+MAC scoring — decay
+Two decay mechanisms, both applied to all 3 rings uniformly:
+1. Time-based decay: −2.0 per calendar day of inactivity (covers complete days only, through yesterday).
+2. Missed-WOD penalty: −3.0 per day the scheduled Daily Workout was not completed.
+Decay is evaluated lazily on each progress read or lesson completion.
+
+MAC scoring — feel / tuning target
+The system should feel like a strong but fair habit-enforcement loop.
+Missing a few days causes noticeable loss (~5 points per ring per missed day).
+Recovery is possible within a few good days of catch-up.
+Rebuilding is not brutally slow, but losses cannot be fully erased instantly.
+Tunables are centralized in `supabase/functions/_shared/scoring.ts`.
+
+MAC scoring — visual feedback
+After a lesson completion, the relevant ring(s) show a temporary green delta segment.
+After app open/refresh following inactivity, the rings show a temporary red delta segment representing decay.
+On tap, a short explanation shows the exact percentage gained/lost and why.
 Streak rules
 Streak is tied to Daily Workout completion.
 Each 30-day program includes one freebie miss.

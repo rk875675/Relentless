@@ -28,6 +28,7 @@ It does not define final product behavior, scoring formulas, pricing, or UX.
 |---|---|---|
 | `coaches` | Content partner metadata | Service-role only (premium content) |
 | `lessons` | Structured lesson content objects | Service-role only (premium content) |
+| `program_schedule` | Maps program day (1–30) to lesson per program version | Service-role only |
 | `lesson_categories` | Many-to-many: lessons to MAC categories | Service-role only (premium content) |
 | `user_lesson_completions` | Per-user lesson completion records | Own-row select (defense-in-depth); service-role write; entitlement-enforced |
 | `user_progress` | Per-user progress across the 3 MAC categories | Own-row select (defense-in-depth); service-role write; entitlement-enforced |
@@ -54,6 +55,7 @@ Rate-limiting state lives in Upstash Redis, not PostgreSQL.
 | `id` | `uuid` | PK, references `auth.users(id)` on delete cascade | Supabase Auth provides the user ID |
 | `competition_date` | `date` | nullable | Optional, captured in onboarding |
 | `onboarding_completed` | `boolean` | not null, default `false` | |
+| `current_program_day` | `integer` | not null, default `1`, check 1–30 | Active Daily Workout day; advances via `complete_lesson` when completion matches `program_schedule` for that day |
 | `created_at` | `timestamptz` | not null, default `now()` | |
 | `updated_at` | `timestamptz` | not null, default `now()` | |
 
@@ -146,6 +148,18 @@ Rate-limiting state lives in Upstash Redis, not PostgreSQL.
 | `published` | `boolean` | not null, default `false` | Content gating |
 | `created_at` | `timestamptz` | not null, default `now()` | |
 | `updated_at` | `timestamptz` | not null, default `now()` | |
+
+### `program_schedule`
+
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | `uuid` | PK, default `gen_random_uuid()` | |
+| `program_version` | `text` | not null, default `'v1'` | Future programs can use a new version |
+| `day_number` | `integer` | not null, 1–30 | Program day |
+| `lesson_id` | `uuid` | not null, references `lessons(id)` | Daily Workout for that day |
+| `created_at` | `timestamptz` | not null, default `now()` | |
+| `updated_at` | `timestamptz` | not null, default `now()` | |
+| | | Unique (`program_version`, `day_number`) | One lesson per day per program |
 
 ### `lesson_categories`
 
