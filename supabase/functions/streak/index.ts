@@ -8,6 +8,8 @@ import {
 import { getUser } from "../_shared/auth.ts";
 import { requireEntitlement } from "../_shared/entitlement.ts";
 import { checkRateLimit } from "../_shared/ratelimit.ts";
+import { parseProgramAnchor, resolveLocalTodayYmd } from "../_shared/client_day.ts";
+import { ensureProgramStartIfHome } from "../_shared/program_start.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -30,24 +32,37 @@ Deno.serve(async (req) => {
   const entitlement = await requireEntitlement(supabase, auth.userId, requestId);
   if (!entitlement.ok) return entitlement.response;
 
-  const { data, error } = await supabase
-    .from("user_streaks")
-    .select("current_streak, longest_streak, last_activity_date, updated_at")
-    .eq("user_id", auth.userId)
-    .single();
+  const localYmd = resolveLocalTodayYmd(req);
+  const anchor = parseProgramAnchor(req);
+  await ensureProgramStartIfHome(supabase, auth.userId, localYmd, anchor);
 
-  if (error || !data) {
-    // No streak row yet — return schema column defaults
+  const [streakRes, profileRes] = await Promise.all([
+    supabase
+      .from("user_streaks")
+      .select("current_streak, longest_streak, last_activity_date, updated_at")
+      .eq("user_id", auth.userId)
+      .single(),
+    supabase
+      .from("profiles")
+      .select("freebie_used")
+      .eq("id", auth.userId)
+      .single(),
+  ]);
+
+  const freebie_used = profileRes.data?.freebie_used ?? false;
+
+  if (streakRes.error || !streakRes.data) {
     return successResponse(
       {
         current_streak: 0,
         longest_streak: 0,
         last_activity_date: null,
         updated_at: null,
+        freebie_used,
       },
       requestId,
     );
   }
 
-  return successResponse(data, requestId);
+  return successResponse({ ...streakRes.data, freebie_used }, requestId);
 });

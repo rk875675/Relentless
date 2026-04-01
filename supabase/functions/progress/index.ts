@@ -8,6 +8,16 @@ import {
 import { getUser } from "../_shared/auth.ts";
 import { requireEntitlement } from "../_shared/entitlement.ts";
 import { checkRateLimit } from "../_shared/ratelimit.ts";
+import { computeLibraryUnlocked } from "../_shared/library.ts";
+import { parseProgramAnchor, resolveLocalTodayYmd } from "../_shared/client_day.ts";
+import { ensureProgramStartIfHome } from "../_shared/program_start.ts";
+import {
+  type MacScores,
+  applyDecay,
+  decayGapDays,
+  missedWodDaysInGap,
+  yesterdayYmd,
+} from "../_shared/scoring.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -30,23 +40,73 @@ Deno.serve(async (req) => {
   const entitlement = await requireEntitlement(supabase, auth.userId, requestId);
   if (!entitlement.ok) return entitlement.response;
 
-  const { data, error } = await supabase
-    .from("user_progress")
-    .select("mindfulness_score, acceptance_score, commitment_score, updated_at")
-    .eq("user_id", auth.userId)
+  const localYmd = resolveLocalTodayYmd(req);
+  const anchor = parseProgramAnchor(req);
+  await ensureProgramStartIfHome(supabase, auth.userId, localYmd, anchor);
+
+  // Library lock status with reason
+  const lock = await computeLibraryUnlocked(supabase, auth.userId, localYmd);
+
+  // Profile for decay inputs
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("last_wod_completion_local_date")
+    .eq("id", auth.userId)
     .single();
 
-  if (error || !data) {
-    return successResponse(
+  // Current progress (lazy-create default row)
+  const { data: progressRow } = await supabase
+    .from("user_progress")
+    .select("mindfulness_score, acceptance_score, commitment_score, last_decay_applied_local_date, updated_at")
+    .eq("user_id", auth.userId)
+    .maybeSingle();
+
+  let scores: MacScores = {
+    mindfulness_score: progressRow?.mindfulness_score ?? 0,
+    acceptance_score: progressRow?.acceptance_score ?? 0,
+    commitment_score: progressRow?.commitment_score ?? 0,
+  };
+
+  const lastDecay = (progressRow?.last_decay_applied_local_date as string | null) ?? null;
+  const lastWod = (profile?.last_wod_completion_local_date as string | null) ?? null;
+
+  // Apply pending decay (covers completed days through yesterday)
+  const gap = decayGapDays(lastDecay, localYmd);
+  let deltas = null;
+  if (gap > 0) {
+    const missed = missedWodDaysInGap(lastWod, lastDecay, localYmd);
+    const result = applyDecay(scores, gap, missed);
+    scores = result.scores;
+    deltas = Object.keys(result.deltas).length > 0 ? result.deltas : null;
+
+    const yest = yesterdayYmd(localYmd);
+    await supabase.from("user_progress").upsert(
       {
-        mindfulness_score: 0,
-        acceptance_score: 0,
-        commitment_score: 0,
-        updated_at: null,
+        user_id: auth.userId,
+        mindfulness_score: scores.mindfulness_score,
+        acceptance_score: scores.acceptance_score,
+        commitment_score: scores.commitment_score,
+        last_decay_applied_local_date: yest,
       },
-      requestId,
+      { onConflict: "user_id" },
     );
   }
 
-  return successResponse(data, requestId);
+  const { count: totalCompletions } = await supabase
+    .from("user_lesson_completions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", auth.userId);
+
+  return successResponse(
+    {
+      ...scores,
+      updated_at: progressRow?.updated_at ?? null,
+      library_unlocked: lock.unlocked,
+      library_lock_reason: lock.unlocked ? null : lock.reason,
+      library_lock_remaining: lock.remaining,
+      total_completions: totalCompletions ?? 0,
+      deltas,
+    },
+    requestId,
+  );
 });

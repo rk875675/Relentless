@@ -9,6 +9,8 @@ import {
 import { getUser } from "../_shared/auth.ts";
 import { requireEntitlement } from "../_shared/entitlement.ts";
 import { checkRateLimit } from "../_shared/ratelimit.ts";
+import { parseProgramAnchor, resolveLocalTodayYmd } from "../_shared/client_day.ts";
+import { ensureProgramStartIfHome } from "../_shared/program_start.ts";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
@@ -33,6 +35,7 @@ const CreateSchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
+    entry_type: z.enum(["session", "miss_reflection"]).default("session"),
   })
   .strict();
 
@@ -113,7 +116,7 @@ async function handleList(
 
   const { data: entries, error, count } = await supabase
     .from("journal_entries")
-    .select("id, lesson_id, competition_date, body, created_at, updated_at", {
+    .select("id, lesson_id, competition_date, body, entry_type, created_at, updated_at", {
       count: "exact",
     })
     .eq("user_id", userId)
@@ -134,6 +137,14 @@ async function handleCreate(
   userId: string,
   requestId: string,
 ): Promise<Response> {
+  const localYmd = resolveLocalTodayYmd(req);
+  await ensureProgramStartIfHome(
+    supabase,
+    userId,
+    localYmd,
+    parseProgramAnchor(req),
+  );
+
   let rawBody: unknown;
   try {
     rawBody = await req.json();
@@ -151,7 +162,7 @@ async function handleCreate(
     );
   }
 
-  const { body, lesson_id, competition_date } = parsed.data;
+  const { body, lesson_id, competition_date, entry_type } = parsed.data;
 
   if (lesson_id) {
     const { data: lesson } = await supabase
@@ -172,8 +183,9 @@ async function handleCreate(
       body,
       lesson_id: lesson_id ?? null,
       competition_date: competition_date ?? null,
+      entry_type,
     })
-    .select("id, lesson_id, competition_date, body, created_at, updated_at")
+    .select("id, lesson_id, competition_date, body, entry_type, created_at, updated_at")
     .single();
 
   if (error) {
@@ -233,7 +245,7 @@ async function handleUpdate(
     .from("journal_entries")
     .update({ body: parsed.data.body })
     .eq("id", idParsed.data)
-    .select("id, lesson_id, competition_date, body, created_at, updated_at")
+    .select("id, lesson_id, competition_date, body, entry_type, created_at, updated_at")
     .single();
 
   if (error) {
