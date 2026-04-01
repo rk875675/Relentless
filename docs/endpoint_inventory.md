@@ -109,18 +109,20 @@ entitlement.
 
 | # | Endpoint | Method | Class | Entitlement | Idempotent | Bounds | Description |
 |---|---|---|---|---|---|---|---|
-| C1 | `/lessons` | GET | Entitlement-protected read | Required | N/A | Paginated; default/max page size TBD | List published lessons in sequence order |
+| C1 | `/lessons` | GET | Entitlement-protected read | Required | N/A | Paginated; default/max page size TBD | List published lessons in sequence order; **403 `LIBRARY_LOCKED`** until the user has completed at least one scheduled program lesson (see `computeLibraryUnlocked`) |
 | C2 | `/lessons/:id` | GET | Entitlement-protected read | Required | N/A | — | Get single lesson detail |
-| C3 | `/lessons/next` | GET | Entitlement-protected read | Required | N/A | — | Get recommended next lesson based on user's completion state |
+| C3 | `/lessons/next` | GET | Entitlement-protected read | Required | N/A | — | Get the Daily Workout lesson for `profiles.current_program_day` via `program_schedule` (v1); response includes `program_day`, `program_version`; when the user has completed today's WOD, `repeat_lesson` (metadata object) is included alongside `data` so the client can offer a durable repeat without local state |
 | C4 | `/coaches/:id` | GET | Entitlement-protected read | Required | N/A | — | Get coach metadata (name, bio, external_url) |
 
 **Notes:**
 - C1 returns lesson metadata only. Voiceover/audio assets live in
   backend-managed storage. Exact delivery mechanics (signed URLs, CDN, or
   other controlled access pattern) remain TBD.
-- C3 derives the next lesson from `user_lesson_completions` and
-  `lessons.sort_order`. The exact sequencing algorithm is not specified in
-  the PRD beyond "guided and sequential."
+- C3 uses the explicit 30-day `program_schedule` (per `program_version`, default
+  `v1`) and `profiles.current_program_day` (1–30). Completing the scheduled
+  lesson for that day advances `current_program_day` (capped at 30) inside
+  `complete_lesson`. Final per-day lesson mapping is content-owned; replace
+  schedule rows when the real 30-day doc is available.
 - V1 has one coach. C4 is included for architecture completeness; the
   client could also embed coach info in lesson responses.
 
@@ -145,7 +147,7 @@ entitlement.
 | # | Endpoint | Method | Class | Entitlement | Idempotent | Bounds | Description |
 |---|---|---|---|---|---|---|---|
 | P1 | `/lessons/:id/complete` | POST | Entitlement-protected write | Required | Idempotency key | — | Record lesson completion; triggers progress and streak updates |
-| P2 | `/progress` | GET | Entitlement-protected read | Required | N/A | — | Get own progress scores across the 3 MAC categories |
+| P2 | `/progress` | GET | Entitlement-protected read | Required | N/A | — | Get own MAC scores; includes **`library_unlocked`** (scheduled program lesson completed at least once) |
 | P3 | `/streak` | GET | Entitlement-protected read | Required | N/A | — | Get own streak state (current, longest, last activity) |
 
 **Notes:**

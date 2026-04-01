@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,13 +9,16 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
-import { ProgressRing } from '@/components/ProgressRing';
+import { getDeviceLocalCalendarYmd, HOME_PROGRAM_ANCHOR_HEADERS } from '@/lib/device-calendar';
+import { ProgressRing, type ScoreDelta } from '@/components/ProgressRing';
+import { getPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 
 type Lesson = {
@@ -24,18 +27,28 @@ type Lesson = {
   duration_seconds: number;
   lesson_type: string;
   categories: string[];
+  /** Active program day (1–30) when returned from `/lessons/next` */
+  program_day?: number;
+  program_version?: string;
 };
 
 type Progress = {
   mindfulness_score: number;
   acceptance_score: number;
   commitment_score: number;
+  updated_at?: string | null;
+  library_unlocked?: boolean;
+  library_lock_reason?: string | null;
+  library_lock_remaining?: number;
+  deltas?: MacDeltas | null;
 };
 
 type Streak = {
   current_streak: number;
   longest_streak: number;
   last_activity_date: string | null;
+  updated_at?: string | null;
+  freebie_used?: boolean;
 };
 
 function getDaysUntil(dateStr: string | null): number | null {
@@ -47,45 +60,166 @@ function getDaysUntil(dateStr: string | null): number | null {
   return diff >= 0 ? diff : null;
 }
 
+const emptyProgress: Progress = {
+  mindfulness_score: 0,
+  acceptance_score: 0,
+  commitment_score: 0,
+};
+
+const emptyStreak: Streak = {
+  current_streak: 0,
+  longest_streak: 0,
+  last_activity_date: null,
+};
+
+function safePct(n: number | undefined): number {
+  if (n == null || Number.isNaN(n)) return 0;
+  return Math.min(100, Math.max(0, n));
+}
+
+/** For gains, return the base (pre-gain) so purple stops before the green overlay. */
+function ringBasePct(score: number | undefined, delta: ScoreDelta | undefined | null): number {
+  const s = score ?? 0;
+  if (delta && delta.amount > 0) return safePct(s - delta.amount);
+  return safePct(s);
+}
+
 export default function HomeScreen() {
   const { competitionDate } = useAuth();
   const router = useRouter();
   const [lesson, setLesson] = useState<Lesson | null>(null);
+  const [lastWod, setLastWod] = useState<Lesson | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [streak, setStreak] = useState<Streak | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [progressLoadError, setProgressLoadError] = useState(false);
+  const [streakLoadError, setStreakLoadError] = useState(false);
   const [journalText, setJournalText] = useState('');
+  const [journalSaving, setJournalSaving] = useState(false);
+  const [journalSaveError, setJournalSaveError] = useState('');
+  const [journalSavedHint, setJournalSavedHint] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [activeDeltas, setActiveDeltas] = useState<MacDeltas | null>(null);
+  const [showMissReflection, setShowMissReflection] = useState(false);
+  const [missJournalText, setMissJournalText] = useState('');
+  const [missJournalSaving, setMissJournalSaving] = useState(false);
+  const [missJournalDismissed, setMissJournalDismissed] = useState(false);
+  const deltaDateRef = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const journalCardY = useRef(0);
+  const lastSavedJournalRef = useRef('');
 
   const journalPrompt = "What's one thing you want to focus on during today's workout?";
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async (isPullRefresh = false) => {
     setError('');
-    const [lessonRes, progressRes, streakRes] = await Promise.all([
-      apiFetch<Lesson>('/lessons/next'),
-      apiFetch<Progress>('/progress'),
-      apiFetch<Streak>('/streak'),
-    ]);
-    if (lessonRes.error && progressRes.error) {
-      setError(lessonRes.error ?? 'Failed to load');
+    setProgressLoadError(false);
+    setStreakLoadError(false);
+    if (isPullRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
     }
-    setLesson(lessonRes.data);
-    setProgress(progressRes.data);
-    setStreak(streakRes.data);
+    const homeHeaders = { ...HOME_PROGRAM_ANCHOR_HEADERS };
+    const [lessonRes, progressRes, streakRes] = await Promise.all([
+      apiFetch<Lesson>('/lessons/next', { headers: homeHeaders }),
+      apiFetch<Progress>('/progress', { headers: homeHeaders }),
+      apiFetch<Streak>('/streak', { headers: homeHeaders }),
+    ]);
+
+    if (lessonRes.error) {
+      setError(lessonRes.error);
+    }
+    if (progressRes.error) {
+      setProgressLoadError(true);
+    }
+    if (streakRes.error) {
+      setStreakLoadError(true);
+    }
+
+    const nextLesson = lessonRes.data ?? null;
+    setLesson(nextLesson);
+    const rpt = lessonRes.rawBody?.repeat_lesson;
+    setLastWod(rpt ? (rpt as Lesson) : null);
+    const prog = progressRes.error ? emptyProgress : (progressRes.data ?? emptyProgress);
+    setProgress(prog);
+    const streakData = streakRes.error ? emptyStreak : (streakRes.data ?? emptyStreak);
+    setStreak(streakData);
+
+    if (!missJournalDismissed && streakData.last_activity_date) {
+      const lastDate = new Date(streakData.last_activity_date + 'T00:00:00');
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const daysSince = Math.floor((today.getTime() - lastDate.getTime()) / 86400000);
+      // gap=2 (1 missed day): only show if freebie already used (PRD: first miss is free)
+      // gap>=3 (2+ missed days): always show (at least 1 non-freebie miss)
+      if (daysSince >= 3 || (daysSince === 2 && streakData.freebie_used)) {
+        setShowMissReflection(true);
+      }
+    }
+
+    const today = getDeviceLocalCalendarYmd();
+    const gainDeltas = getPendingGainDeltas();
+    if (gainDeltas) {
+      setActiveDeltas(gainDeltas);
+      deltaDateRef.current = today;
+    } else if (prog.deltas && Object.keys(prog.deltas).length > 0) {
+      setActiveDeltas(prog.deltas);
+      deltaDateRef.current = today;
+    } else if (deltaDateRef.current && deltaDateRef.current !== today) {
+      setActiveDeltas(null);
+      deltaDateRef.current = null;
+    }
+
     setLoading(false);
-  };
+    setRefreshing(false);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      fetchData();
-    }, []),
+      void fetchData(false);
+    }, [fetchData]),
   );
 
-  const handleStartWorkout = () => {
-    if (!lesson) return;
-    router.push(`/lesson/${lesson.id}` as any);
+  useEffect(() => {
+    setJournalText('');
+    lastSavedJournalRef.current = '';
+    setJournalSaveError('');
+    setJournalSavedHint(false);
+  }, [lesson?.id]);
+
+  const flushPreWorkoutJournal = useCallback(async () => {
+    const trimmed = journalText.trim();
+    if (!trimmed || trimmed === lastSavedJournalRef.current) {
+      return true;
+    }
+    setJournalSaving(true);
+    setJournalSaveError('');
+    const { error: saveErr } = await apiFetch('/journal', {
+      method: 'POST',
+      headers: { ...HOME_PROGRAM_ANCHOR_HEADERS },
+      body: {
+        body: trimmed,
+        ...(lesson?.id ? { lesson_id: lesson.id } : {}),
+      },
+    });
+    setJournalSaving(false);
+    if (saveErr) {
+      setJournalSaveError(saveErr);
+      return false;
+    }
+    lastSavedJournalRef.current = trimmed;
+    setJournalSavedHint(true);
+    setTimeout(() => setJournalSavedHint(false), 2500);
+    return true;
+  }, [journalText, lesson?.id]);
+
+  const handleStartWorkout = async (overrideId?: string) => {
+    const targetId = overrideId ?? lesson?.id;
+    if (!targetId) return;
+    await flushPreWorkoutJournal();
+    router.push(`/lesson/${targetId}` as any);
   };
 
   const mins = lesson ? Math.ceil(lesson.duration_seconds / 60) : 0;
@@ -102,6 +236,13 @@ export default function HomeScreen() {
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => void fetchData(true)}
+          tintColor={colors.accent}
+        />
+      }
     >
       {/* Header */}
       <View style={styles.header}>
@@ -118,9 +259,15 @@ export default function HomeScreen() {
               </View>
             );
           })()}
-          <View style={styles.streakPill}>
-            <Text style={styles.streakNum}>{streak?.current_streak ?? 0}</Text>
-            <Ionicons name="flame" size={16} color="#f59e0b" />
+          <View style={[styles.streakPill, streakLoadError && styles.streakPillMuted]}>
+            <Text style={styles.streakNum}>
+              {streakLoadError ? '—' : streak?.current_streak ?? 0}
+            </Text>
+            <Ionicons
+              name="flame"
+              size={16}
+              color={streakLoadError ? colors.textMuted : '#f59e0b'}
+            />
           </View>
         </View>
       </View>
@@ -128,23 +275,82 @@ export default function HomeScreen() {
       {/* MAC Progress Rings */}
       <View style={styles.ringsRow}>
         <ProgressRing
-          percentage={progress?.mindfulness_score ?? 0}
+          percentage={ringBasePct(progress?.mindfulness_score, activeDeltas?.mindfulness)}
           label="Mindfulness"
+          delta={activeDeltas?.mindfulness}
+          ringColor={colors.ringMindfulness}
         />
         <ProgressRing
-          percentage={progress?.acceptance_score ?? 0}
+          percentage={ringBasePct(progress?.acceptance_score, activeDeltas?.acceptance)}
           label="Acceptance"
+          delta={activeDeltas?.acceptance}
+          ringColor={colors.ringAcceptance}
         />
         <ProgressRing
-          percentage={progress?.commitment_score ?? 0}
+          percentage={ringBasePct(progress?.commitment_score, activeDeltas?.commitment)}
           label="Commitment"
+          delta={activeDeltas?.commitment}
+          ringColor={colors.ringCommitment}
         />
       </View>
+      {progressLoadError && (
+        <Text style={styles.dataWarning}>Progress unavailable. Pull to refresh or retry.</Text>
+      )}
+
+      {/* Miss-reflection card (PRD §7) — shown when freebie used & still inactive */}
+      {showMissReflection && !missJournalDismissed && (
+        <View style={styles.missCard}>
+          <Text style={styles.missLabel}>MISSED DAY REFLECTION</Text>
+          <Text style={styles.missPrompt}>What got in the way of your workout yesterday?</Text>
+          <TextInput
+            style={styles.missInput}
+            placeholder="Reflect on what happened..."
+            placeholderTextColor={colors.textMuted}
+            value={missJournalText}
+            onChangeText={setMissJournalText}
+            multiline
+            editable={!missJournalSaving}
+          />
+          <View style={styles.missBtnRow}>
+            <TouchableOpacity
+              style={styles.missSkipBtn}
+              onPress={() => {
+                setShowMissReflection(false);
+                setMissJournalDismissed(true);
+              }}
+            >
+              <Text style={styles.missSkipText}>Skip</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.missSubmitBtn, !missJournalText.trim() && { opacity: 0.5 }]}
+              disabled={!missJournalText.trim() || missJournalSaving}
+              onPress={async () => {
+                setMissJournalSaving(true);
+                await apiFetch('/journal', {
+                  method: 'POST',
+                  headers: { ...HOME_PROGRAM_ANCHOR_HEADERS },
+                  body: {
+                    body: missJournalText.trim(),
+                    entry_type: 'miss_reflection',
+                  },
+                });
+                setMissJournalSaving(false);
+                setShowMissReflection(false);
+                setMissJournalDismissed(true);
+              }}
+            >
+              <Text style={styles.missSubmitText}>
+                {missJournalSaving ? 'Saving...' : 'Submit'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {error ? (
         <View style={styles.inlineError}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={fetchData}>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => void fetchData(false)}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -152,14 +358,19 @@ export default function HomeScreen() {
         <TouchableOpacity
           style={styles.workoutCard}
           activeOpacity={0.8}
-          onPress={handleStartWorkout}
-          disabled={loading || !lesson}
+          onPress={lesson ? () => void handleStartWorkout() : lastWod ? () => void handleStartWorkout(lastWod.id) : undefined}
+          disabled={loading || (!lesson && !lastWod)}
         >
           <Text style={styles.workoutLabel}>WORKOUT OF THE DAY</Text>
           {loading ? (
             <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.lg }} />
           ) : lesson ? (
             <>
+              {typeof lesson.program_day === 'number' && (
+                <Text style={styles.workoutDayBadge}>
+                  Day {lesson.program_day} of 30
+                </Text>
+              )}
               <Text style={styles.workoutTitle}>{lesson.title}</Text>
               <Text style={styles.workoutDesc}>
                 focuses on the 'why' and teaching{'\n'}through the 'what'
@@ -170,10 +381,27 @@ export default function HomeScreen() {
             </>
           ) : (
             <>
+              <Ionicons name="checkmark-circle" size={36} color={colors.success} style={{ marginBottom: 12 }} />
               <Text style={styles.workoutTitle}>All caught up!</Text>
-              <Text style={styles.workoutDesc}>Check back tomorrow</Text>
+              <Text style={styles.workoutDesc}>Come back tomorrow for the next workout</Text>
+              {lastWod && (
+                <View style={styles.repeatBtn}>
+                  <Ionicons name="refresh" size={14} color={colors.accent} style={{ marginRight: 6 }} />
+                  <Text style={styles.repeatBtnText}>Repeat Today's Workout</Text>
+                </View>
+              )}
             </>
           )}
+        </TouchableOpacity>
+      )}
+
+      {!error && lesson && lastWod && lastWod.id !== lesson.id && (
+        <TouchableOpacity
+          style={styles.repeatStandalone}
+          onPress={() => void handleStartWorkout(lastWod.id)}
+        >
+          <Ionicons name="refresh" size={14} color={colors.accent} style={{ marginRight: 6 }} />
+          <Text style={styles.repeatBtnText}>Repeat Today's Workout</Text>
         </TouchableOpacity>
       )}
 
@@ -188,15 +416,38 @@ export default function HomeScreen() {
           placeholder={journalPrompt}
           placeholderTextColor={colors.textMuted}
           value={journalText}
-          onChangeText={setJournalText}
+          onChangeText={(t) => {
+            setJournalText(t);
+            setJournalSaveError('');
+            setJournalSavedHint(false);
+          }}
           multiline
+          editable={!journalSaving}
           onFocus={() => {
-            scrollRef.current?.scrollTo({
-              y: journalCardY.current - 24,
-              animated: true,
-            });
+            setTimeout(() => {
+              scrollRef.current?.scrollToEnd({ animated: true });
+            }, 300);
           }}
         />
+        <View style={styles.journalFooter}>
+          {journalSaving ? (
+            <Text style={styles.journalHint}>Saving…</Text>
+          ) : journalSaveError ? (
+            <Text style={styles.journalError}>{journalSaveError}</Text>
+          ) : journalSavedHint ? (
+            <Text style={styles.journalHint}>Saved</Text>
+          ) : (
+            <View />
+          )}
+          {journalText.trim().length > 0 && journalText.trim() !== lastSavedJournalRef.current && !journalSaving && (
+            <TouchableOpacity
+              style={styles.journalSaveBtn}
+              onPress={() => void flushPreWorkoutJournal()}
+            >
+              <Text style={styles.journalSaveBtnText}>Save</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </ScrollView>
     </KeyboardAvoidingView>
@@ -258,6 +509,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  streakPillMuted: {
+    opacity: 0.85,
+  },
+  dataWarning: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: -18,
+    marginBottom: 20,
+    paddingHorizontal: 8,
+  },
   streakNum: {
     fontSize: 18,
     fontWeight: '700',
@@ -284,6 +546,12 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     letterSpacing: 2,
     marginBottom: 14,
+  },
+  workoutDayBadge: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accentLight,
+    marginBottom: 8,
   },
   workoutTitle: {
     fontSize: 17,
@@ -312,6 +580,88 @@ const styles = StyleSheet.create({
     color: colors.accent,
     letterSpacing: 0.3,
   },
+  repeatBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSubtle,
+  },
+  repeatBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
+    letterSpacing: 0.2,
+  },
+  repeatStandalone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginBottom: spacing.md,
+  },
+  missCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.3)',
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  missLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(239,68,68,0.7)',
+    letterSpacing: 2,
+    marginBottom: 10,
+  },
+  missPrompt: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  missInput: {
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    color: colors.textPrimary,
+    fontSize: 14,
+    minHeight: 56,
+    textAlignVertical: 'top',
+    marginBottom: 12,
+  },
+  missBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  missSkipBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  missSkipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textMuted,
+  },
+  missSubmitBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+  },
+  missSubmitText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.white,
+  },
   journalCard: {
     backgroundColor: colors.surface,
     borderRadius: 20,
@@ -336,6 +686,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     minHeight: 64,
     textAlignVertical: 'top',
+  },
+  journalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  journalSaveBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 18,
+  },
+  journalSaveBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.white,
+  },
+  journalHint: {
+    fontSize: 12,
+    color: colors.success,
+  },
+  journalError: {
+    fontSize: 12,
+    color: colors.error,
   },
   inlineError: {
     alignItems: 'center',

@@ -15,7 +15,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { apiFetch } from '@/lib/api';
+import { setPendingGainDeltas } from '@/lib/pending-deltas';
 import { colors, spacing } from '@/lib/theme';
 
 type LessonDetail = {
@@ -32,10 +34,10 @@ type LessonDetail = {
 type Phase = 'loading' | 'ready' | 'playing' | 'reflection' | 'completing' | 'done' | 'error' | 'terminated';
 
 const MAC_COLORS: Record<string, string> = {
-  mindfulness: '#60a5fa',
-  acceptance: '#34d399',
-  commitment: '#f59e0b',
-};
+  mindfulness: colors.ringMindfulness,
+  acceptance: colors.ringAcceptance,
+  commitment: colors.ringCommitment,
+} as const;
 
 export default function LessonPlayerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -50,6 +52,14 @@ export default function LessonPlayerScreen() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionActive = useRef(false);
+  const voiceoverStartPending = useRef(false);
+
+  const voiceoverSource = lesson?.voiceover_url ?? null;
+  const player = useAudioPlayer(voiceoverSource, {
+    updateInterval: 250,
+    downloadFirst: true,
+  });
+  const audioStatus = useAudioPlayerStatus(player);
 
   useEffect(() => {
     if (!id) return;
@@ -63,20 +73,26 @@ export default function LessonPlayerScreen() {
       setLesson(data);
       setPhase('ready');
     })();
-  }, [id]);
+  }, [id, router]);
 
   // Lock-in mode (PRD 8.5): background kills session
   useEffect(() => {
     const handleAppState = (next: AppStateStatus) => {
       if (next !== 'active' && sessionActive.current) {
         sessionActive.current = false;
+        voiceoverStartPending.current = false;
+        try {
+          player.pause();
+        } catch {
+          /* noop */
+        }
         stopTimer();
         setPhase('terminated');
       }
     };
     const sub = AppState.addEventListener('change', handleAppState);
     return () => sub.remove();
-  }, []);
+  }, [player]);
 
   useEffect(() => {
     return () => stopTimer();
@@ -91,13 +107,35 @@ export default function LessonPlayerScreen() {
 
   const finishPlayback = useCallback(() => {
     sessionActive.current = false;
+    voiceoverStartPending.current = false;
     stopTimer();
+    try {
+      player.pause();
+    } catch {
+      /* noop */
+    }
     if (lesson?.reflection_prompt) {
       setPhase('reflection');
     } else {
       completeLesson();
     }
-  }, [lesson, stopTimer]);
+  }, [lesson, player, stopTimer]);
+
+  useEffect(() => {
+    if (phase !== 'playing' || !lesson?.voiceover_url) return;
+    if (audioStatus.didJustFinish) {
+      finishPlayback();
+    }
+  }, [phase, lesson?.voiceover_url, audioStatus.didJustFinish, finishPlayback]);
+
+  useEffect(() => {
+    if (phase !== 'playing' || !lesson?.voiceover_url || !voiceoverStartPending.current) return;
+    if (!audioStatus.isLoaded) return;
+    voiceoverStartPending.current = false;
+    void player.seekTo(0).then(() => {
+      player.play();
+    });
+  }, [phase, lesson?.voiceover_url, audioStatus.isLoaded, player]);
 
   const startLesson = () => {
     if (!lesson) return;
@@ -105,8 +143,17 @@ export default function LessonPlayerScreen() {
     setElapsed(0);
     setPhase('playing');
 
-    // TODO: when voiceover_url content exists, integrate expo-audio useAudioPlayer here.
-    // For now all seed content is timer-based (voiceover_url is null).
+    if (lesson.voiceover_url) {
+      voiceoverStartPending.current = true;
+      void setAudioModeAsync({
+        playsInSilentMode: true,
+        interruptionMode: 'doNotMix',
+        allowsRecording: false,
+        shouldPlayInBackground: false,
+      });
+      return;
+    }
+
     const start = Date.now();
     timerRef.current = setInterval(() => {
       const secs = Math.floor((Date.now() - start) / 1000);
@@ -128,7 +175,9 @@ export default function LessonPlayerScreen() {
       });
     }
 
-    const { error } = await apiFetch(`/lessons/${lesson.id}/complete`, {
+    const { data: completeData, error } = await apiFetch<{
+      progress?: { deltas?: Record<string, { amount: number; reason: string }> };
+    }>(`/lessons/${lesson.id}/complete`, {
       method: 'POST',
       headers: { 'Idempotency-Key': `${lesson.id}-${Date.now()}` },
     });
@@ -137,6 +186,9 @@ export default function LessonPlayerScreen() {
       setErrorMsg(error);
       setPhase('error');
     } else {
+      if (completeData?.progress?.deltas) {
+        setPendingGainDeltas(completeData.progress.deltas as any);
+      }
       setPhase('done');
     }
   };
@@ -147,8 +199,13 @@ export default function LessonPlayerScreen() {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const total = lesson?.duration_seconds ?? 0;
-  const progress = total > 0 ? Math.min(elapsed / total, 1) : 0;
+  const hasVoiceover = Boolean(lesson?.voiceover_url);
+  const audioElapsed = Math.floor(audioStatus.currentTime);
+  const audioTotal =
+    hasVoiceover && audioStatus.duration > 0 ? audioStatus.duration : (lesson?.duration_seconds ?? 0);
+  const displayElapsed = hasVoiceover && phase === 'playing' ? audioElapsed : elapsed;
+  const total = audioTotal;
+  const progress = total > 0 ? Math.min(displayElapsed / total, 1) : 0;
   const primaryCat = lesson?.categories?.[0] ?? '';
   const catColor = MAC_COLORS[primaryCat] ?? colors.accentLight;
 
@@ -197,7 +254,20 @@ export default function LessonPlayerScreen() {
             <Text style={styles.terminatedSub}>
               Leaving the app during a session gives 0 credit. Stay locked in next time.
             </Text>
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => { setPhase('ready'); setElapsed(0); }}>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={() => {
+                voiceoverStartPending.current = false;
+                try {
+                  player.pause();
+                  void player.seekTo(0);
+                } catch {
+                  /* noop */
+                }
+                setPhase('ready');
+                setElapsed(0);
+              }}
+            >
               <Text style={styles.primaryBtnText}>Restart</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.back()}>
@@ -222,9 +292,12 @@ export default function LessonPlayerScreen() {
         {phase === 'playing' && lesson && (
           <View style={styles.centered}>
             <View style={styles.timerContainer}>
-              <Text style={styles.timerText}>{formatTime(elapsed)}</Text>
+              <Text style={styles.timerText}>{formatTime(displayElapsed)}</Text>
               <Text style={styles.timerTotal}>/ {formatTime(total)}</Text>
             </View>
+            {hasVoiceover && phase === 'playing' && !audioStatus.isLoaded && (
+              <Text style={styles.bufferingHint}>Loading audio…</Text>
+            )}
             <View style={styles.progressBarTrack}>
               <View style={[styles.progressBarFill, { width: `${progress * 100}%`, backgroundColor: catColor }]} />
             </View>
@@ -357,6 +430,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textMuted,
     marginTop: 4,
+  },
+  bufferingHint: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
   },
   progressBarTrack: {
     width: '80%',
