@@ -20,6 +20,7 @@ import { getDeviceLocalCalendarYmd, HOME_PROGRAM_ANCHOR_HEADERS } from '@/lib/de
 import { ProgressRing, type ScoreDelta } from '@/components/ProgressRing';
 import { getPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
+import { getCached, setCached, bustCache } from '@/lib/api-cache';
 
 type Lesson = {
   id: string;
@@ -109,6 +110,7 @@ export default function HomeScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const journalCardY = useRef(0);
   const lastSavedJournalRef = useRef('');
+  const initialLoadDone = useRef(false);
 
   const journalPrompt = "What's one thing you want to focus on during today's workout?";
 
@@ -118,8 +120,23 @@ export default function HomeScreen() {
     setStreakLoadError(false);
     if (isPullRefresh) {
       setRefreshing(true);
+      bustCache('/lessons/next', '/progress', '/streak');
     } else {
-      setLoading(true);
+      // Serve from cache when available — skip loading state so tab switches feel instant
+      const cachedLesson = getCached<{ data: Lesson | null; rawBody?: Record<string, unknown> }>('/lessons/next');
+      const cachedProgress = getCached<Progress>('/progress');
+      const cachedStreak = getCached<Streak>('/streak');
+      if (cachedLesson && cachedProgress && cachedStreak) {
+        setLesson(cachedLesson.data);
+        const rpt = cachedLesson.rawBody?.repeat_lesson;
+        setLastWod(rpt ? (rpt as Lesson) : null);
+        setProgress(cachedProgress);
+        setStreak(cachedStreak);
+        setLoading(false);
+        initialLoadDone.current = true;
+        return;
+      }
+      if (!initialLoadDone.current) setLoading(true);
     }
     const homeHeaders = { ...HOME_PROGRAM_ANCHOR_HEADERS };
     const [lessonRes, progressRes, streakRes] = await Promise.all([
@@ -172,6 +189,13 @@ export default function HomeScreen() {
       deltaDateRef.current = null;
     }
 
+    if (!lessonRes.error && !progressRes.error && !streakRes.error) {
+      setCached('/lessons/next', { data: nextLesson, rawBody: lessonRes.rawBody });
+      setCached('/progress', prog);
+      setCached('/streak', streakData);
+    }
+
+    initialLoadDone.current = true;
     setLoading(false);
     setRefreshing(false);
   }, []);
@@ -219,10 +243,11 @@ export default function HomeScreen() {
     const targetId = overrideId ?? lesson?.id;
     if (!targetId) return;
     await flushPreWorkoutJournal();
+    bustCache('/lessons/next', '/progress', '/streak');
     router.push(`/lesson/${targetId}` as any);
   };
 
-  const mins = lesson ? Math.ceil(lesson.duration_seconds / 60) : 0;
+  const mins = lesson ? Math.round(lesson.duration_seconds / 60) : 0;
 
   return (
     <KeyboardAvoidingView
@@ -376,7 +401,7 @@ export default function HomeScreen() {
                 focuses on the 'why' and teaching{'\n'}through the 'what'
               </Text>
               <View style={styles.workoutMetaPill}>
-                <Text style={styles.workoutMeta}>{mins}-min lesson</Text>
+                <Text style={styles.workoutMeta}>~{mins} min</Text>
               </View>
             </>
           ) : (

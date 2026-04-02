@@ -82,9 +82,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, s) => {
+        if (_event === 'INITIAL_SESSION') return; // already handled by getSession() above
         setSession(s);
         if (s?.user) {
-          await fetchUserState(s.user.id);
+          try { await fetchUserState(s.user.id); } catch { /* prevent unhandled rejection on auth change */ }
         } else {
           setOnboardingComplete(false);
           setCompetitionDate(null);

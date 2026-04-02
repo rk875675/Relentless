@@ -112,6 +112,7 @@ export default function LessonPlayerScreen() {
   const [onScreenText, setOnScreenText] = useState('');
   const [exerciseElapsed, setExerciseElapsed] = useState(0);
   const textFade = useRef(new Animated.Value(1)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
 
   // Text cue tracking — guards against conflicting animations and backward regression
   const lastCueRef = useRef('');
@@ -142,7 +143,7 @@ export default function LessonPlayerScreen() {
   const activeSource = hasBlocks ? currentAudioUrl : legacySource;
 
   const player = useAudioPlayer(activeSource, {
-    updateInterval: 250,
+    updateInterval: 100,
     downloadFirst: false,
   });
   const audioStatus = useAudioPlayerStatus(player);
@@ -546,10 +547,21 @@ export default function LessonPlayerScreen() {
     }
   }
 
-  // Ready screen duration — computed from blocks when available, rounded to ~X min
-  const readyDurationLabel = hasBlocks && blocks.length > 0
-    ? `~${Math.round(computeBlockDuration(blocks) / 60)} min`
-    : formatTime(lesson?.duration_seconds ?? 0);
+  // Animate progress bar smoothly whenever blockProgress or legacyProgress changes
+  useEffect(() => {
+    const target = hasBlocks ? blockProgress : legacyProgress;
+    Animated.timing(progressAnim, {
+      toValue: target,
+      duration: 90,
+      useNativeDriver: false,
+    }).start();
+  }, [blockProgress, legacyProgress, hasBlocks]);
+
+  const progressBarWidth = progressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+    extrapolate: 'clamp',
+  });
 
   const barBaseHeights = [10, 20, 28, 16, 22];
   const audioBars = phase === 'playing' ? (
@@ -630,7 +642,6 @@ export default function LessonPlayerScreen() {
         {phase === 'ready' && lesson && (
           <View style={styles.centered}>
             <Text style={styles.readyTitle}>{lesson.title}</Text>
-            <Text style={styles.readyDuration}>{readyDurationLabel}</Text>
             {!hasBlocks && lesson.on_screen_text && (
               <Text style={styles.readyDesc}>{lesson.on_screen_text}</Text>
             )}
@@ -651,8 +662,8 @@ export default function LessonPlayerScreen() {
             </Animated.Text>
             {audioBars}
             <View style={styles.progressBarTrack}>
-              <View
-                style={[styles.progressBarFill, { width: `${blockProgress * 100}%`, backgroundColor: catColor }]}
+              <Animated.View
+                style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
               />
             </View>
           </View>
@@ -668,8 +679,8 @@ export default function LessonPlayerScreen() {
             </View>
             {audioBars}
             <View style={styles.progressBarTrack}>
-              <View
-                style={[styles.progressBarFill, { width: `${blockProgress * 100}%`, backgroundColor: catColor }]}
+              <Animated.View
+                style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
               />
             </View>
           </View>
@@ -686,8 +697,8 @@ export default function LessonPlayerScreen() {
               <Text style={styles.bufferingHint}>Loading audio…</Text>
             )}
             <View style={styles.progressBarTrack}>
-              <View
-                style={[styles.progressBarFill, { width: `${legacyProgress * 100}%`, backgroundColor: catColor }]}
+              <Animated.View
+                style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
               />
             </View>
             {lesson.on_screen_text && (
@@ -840,12 +851,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: spacing.md,
-  },
-  readyDuration: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textMuted,
-    marginBottom: spacing.lg,
   },
   readyDesc: {
     fontSize: 15,

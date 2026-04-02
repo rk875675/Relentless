@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
+import { getCached, setCached } from '@/lib/api-cache';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 
 type Streak = {
@@ -43,12 +44,19 @@ export default function ProfileScreen() {
   const [dateSaving, setDateSaving] = useState(false);
 
   const fetchData = async () => {
+    const cachedStreak = getCached<Streak>('/streak');
+    const cachedProgress = getCached<ProgressSummary>('/progress');
+    if (cachedStreak && cachedProgress) {
+      setStreak(cachedStreak);
+      setTotalCompletions(cachedProgress.total_completions ?? 0);
+      return;
+    }
     const [sRes, pRes] = await Promise.all([
       apiFetch<Streak>('/streak'),
       apiFetch<ProgressSummary>('/progress'),
     ]);
-    if (sRes.data) setStreak(sRes.data);
-    if (pRes.data) setTotalCompletions(pRes.data.total_completions ?? 0);
+    if (sRes.data) { setStreak(sRes.data); setCached('/streak', sRes.data); }
+    if (pRes.data) { setTotalCompletions(pRes.data.total_completions ?? 0); setCached('/progress', pRes.data); }
   };
 
   useFocusEffect(
@@ -75,22 +83,45 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* User Info */}
-      <View style={styles.userRow}>
+      {/* Identity Hero */}
+      <View style={styles.heroSection}>
         <View style={styles.avatar}>
-          <Ionicons name="person" size={28} color={colors.accent} />
+          <Ionicons name="person" size={34} color={colors.accent} />
         </View>
-        <View style={styles.userInfo}>
-          <Text style={styles.userName}>{displayName}</Text>
-          <Text style={styles.userSport}>Track and Field Athlete</Text>
-        </View>
+        <Text style={styles.userName}>{displayName}</Text>
+        <Text style={styles.userSport}>Track and Field Athlete</Text>
       </View>
 
-      {/* Profile Rows */}
+      {/* Stats Card */}
+      <View style={styles.statsCard}>
+        <StatColumn
+          label="Streak"
+          value={streak?.current_streak ?? 0}
+          icon="flame"
+          iconColor="#f59e0b"
+        />
+        <View style={styles.statDivider} />
+        <StatColumn
+          label="Best Streak"
+          value={streak?.longest_streak ?? 0}
+          icon="trophy-outline"
+          iconColor={colors.accentLight}
+        />
+        <View style={styles.statDivider} />
+        <StatColumn
+          label="Lessons"
+          value={totalCompletions ?? 0}
+          icon="checkmark-circle-outline"
+          iconColor={colors.success}
+        />
+      </View>
+
+      {/* Settings Section */}
+      <Text style={styles.sectionLabel}>SETTINGS</Text>
       <View style={styles.rowsContainer}>
-        <ProfileRow label="Lessons Done" value={totalCompletions != null ? String(totalCompletions) : '—'} />
         <ProfileRow
-          label="Update Competition Date"
+          icon="calendar-outline"
+          label="Competition Date"
           value={dateSaving ? 'Saving...' : formatDate(competitionDate)}
           onPress={() => {
             setPendingDate(
@@ -100,9 +131,11 @@ export default function ProfileScreen() {
           }}
         />
         <ProfileRow
-          label="See Prev. Journal Entries"
+          icon="journal-outline"
+          label="Journal Entries"
           chevron
           onPress={() => router.push('/journal' as any)}
+          last
         />
       </View>
 
@@ -170,31 +203,61 @@ export default function ProfileScreen() {
 
       {/* Sign Out */}
       <TouchableOpacity style={styles.signOutBtn} onPress={signOut}>
+        <Ionicons name="log-out-outline" size={16} color={colors.error} style={{ marginRight: 8 }} />
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>
     </ScrollView>
   );
 }
 
+function StatColumn({
+  label,
+  value,
+  icon,
+  iconColor,
+}: {
+  label: string;
+  value: number;
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
+}) {
+  return (
+    <View style={styles.statCol}>
+      <Ionicons name={icon} size={18} color={iconColor} style={{ marginBottom: 6 }} />
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
 function ProfileRow({
+  icon,
   label,
   value,
   chevron,
   onPress,
+  last,
 }: {
+  icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value?: string;
   chevron?: boolean;
   onPress?: () => void;
+  last?: boolean;
 }) {
   return (
     <TouchableOpacity
-      style={styles.profileRow}
+      style={[styles.profileRow, last && styles.profileRowLast]}
       activeOpacity={onPress ? 0.7 : 1}
       onPress={onPress}
       disabled={!onPress}
     >
-      <Text style={styles.rowLabel}>{label}</Text>
+      <View style={styles.rowLeft}>
+        <View style={styles.rowIconWrap}>
+          <Ionicons name={icon} size={17} color={colors.accentLight} />
+        </View>
+        <Text style={styles.rowLabel}>{label}</Text>
+      </View>
       {chevron ? (
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       ) : (
@@ -214,11 +277,13 @@ const styles = StyleSheet.create({
     paddingTop: 64,
     paddingBottom: TAB_BAR_CLEARANCE,
   },
+
+  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 32,
   },
   brand: {
     fontSize: 24,
@@ -242,35 +307,77 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textPrimary,
   },
-  userRow: {
-    flexDirection: 'row',
+
+  // Identity Hero
+  heroSection: {
     alignItems: 'center',
     marginBottom: 28,
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     backgroundColor: colors.accentSubtle,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  userInfo: {
-    flex: 1,
+    marginBottom: 14,
   },
   userName: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: colors.textPrimary,
+    letterSpacing: 0.2,
+    marginBottom: 4,
   },
   userSport: {
     fontSize: 13,
     color: colors.textSecondary,
-    marginTop: 3,
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
+  },
+
+  // Stats Card
+  statsCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 20,
+    marginBottom: 28,
+  },
+  statCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginVertical: 4,
+  },
+  statValue: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    lineHeight: 32,
+  },
+  statLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+
+  // Settings section
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    letterSpacing: 1.5,
+    marginBottom: 10,
+    marginLeft: 4,
   },
   rowsContainer: {
     backgroundColor: colors.surface,
@@ -278,15 +385,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
+    marginBottom: 8,
   },
   profileRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+  },
+  profileRowLast: {
+    borderBottomWidth: 0,
+  },
+  rowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  rowIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: colors.accentSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   rowLabel: {
     fontSize: 15,
@@ -294,9 +419,11 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   rowValue: {
-    fontSize: 15,
+    fontSize: 14,
     color: colors.textMuted,
   },
+
+  // Date picker
   dateOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -335,13 +462,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.white,
   },
+
+  // Sign out
   signOutBtn: {
-    marginTop: 40,
+    marginTop: 32,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingVertical: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
+    borderColor: 'rgba(239,68,68,0.25)',
   },
   signOutText: {
     color: colors.error,

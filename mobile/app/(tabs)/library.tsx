@@ -11,6 +11,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { apiFetch } from '@/lib/api';
+import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { getDeviceLocalCalendarYmd } from '@/lib/device-calendar';
 import { ProgressRing, type ScoreDelta } from '@/components/ProgressRing';
 import { getPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
@@ -61,7 +62,27 @@ export default function LibraryScreen() {
 
   const fetchData = async (isPull = false) => {
     setError('');
-    if (isPull) setRefreshing(true);
+    if (isPull) {
+      setRefreshing(true);
+      bustCache('/progress', '/streak');
+    } else {
+      const cachedProgress = getCached<Progress>('/progress');
+      const cachedStreak = getCached<Streak>('/streak');
+      if (cachedProgress && cachedStreak) {
+        setProgress(cachedProgress);
+        setStreak(cachedStreak);
+        const today = getDeviceLocalCalendarYmd();
+        const gainDeltas = getPendingGainDeltas();
+        if (gainDeltas) { setActiveDeltas(gainDeltas); deltaDateRef.current = today; }
+        else if (cachedProgress.deltas && Object.keys(cachedProgress.deltas).length > 0) {
+          setActiveDeltas(cachedProgress.deltas); deltaDateRef.current = today;
+        } else if (deltaDateRef.current && deltaDateRef.current !== today) {
+          setActiveDeltas(null); deltaDateRef.current = null;
+        }
+        setInitialLoadDone(true);
+        return;
+      }
+    }
     const [progressRes, streakRes] = await Promise.all([
       apiFetch<Progress>('/progress'),
       apiFetch<Streak>('/streak'),
@@ -84,6 +105,11 @@ export default function LibraryScreen() {
     } else if (deltaDateRef.current && deltaDateRef.current !== today) {
       setActiveDeltas(null);
       deltaDateRef.current = null;
+    }
+
+    if (prog && streakRes.data) {
+      setCached('/progress', prog);
+      setCached('/streak', streakRes.data);
     }
 
     setRefreshing(false);

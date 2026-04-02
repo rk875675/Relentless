@@ -18,7 +18,7 @@ export const colors = {
   ringTrack: '#252525',
 
   ringMindfulness: '#60a5fa',
-  ringAcceptance: '#C9965A',
+  ringAcceptance: '#F0E8D0',
   ringCommitment: '#D4AF37',
 };
 
