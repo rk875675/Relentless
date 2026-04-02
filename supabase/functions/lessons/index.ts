@@ -45,9 +45,57 @@ const UuidSchema = z.string().uuid();
 const METADATA_COLUMNS =
   "id, coach_id, title, duration_seconds, lesson_type, sort_order";
 const DETAIL_COLUMNS =
-  "id, coach_id, title, duration_seconds, lesson_type, voiceover_url, on_screen_text, reflection_prompt, sort_order";
+  "id, coach_id, title, duration_seconds, lesson_type, voiceover_url, on_screen_text, reflection_prompt, content_blocks, sort_order";
 
 const PROGRAM_VERSION = "v1";
+const AUDIO_BUCKET = "lesson-audio";
+const SIGNED_URL_TTL = 3600; // 1 hour
+
+// ---------------------------------------------------------------------------
+// Resolve storage paths inside content_blocks to signed URLs
+// ---------------------------------------------------------------------------
+async function resolveContentBlockUrls(
+  supabase: ReturnType<typeof createServiceClient>,
+  lesson: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const cb = lesson.content_blocks as { blocks: Record<string, unknown>[] } | null;
+  if (!cb?.blocks) return lesson;
+
+  const pathsToSign: string[] = [];
+  for (const block of cb.blocks) {
+    if (block.type === "voiceover") {
+      for (const p of (block.audio_files as string[]) ?? []) pathsToSign.push(p);
+    } else if (block.type === "timed_exercise") {
+      if (block.ambient_audio) pathsToSign.push(block.ambient_audio as string);
+    }
+  }
+
+  if (pathsToSign.length === 0) return lesson;
+
+  const urlMap = new Map<string, string>();
+  const results = await Promise.all(
+    pathsToSign.map((p) =>
+      supabase.storage.from(AUDIO_BUCKET).createSignedUrl(p, SIGNED_URL_TTL),
+    ),
+  );
+  for (let i = 0; i < pathsToSign.length; i++) {
+    const r = results[i];
+    if (r.data?.signedUrl) urlMap.set(pathsToSign[i], r.data.signedUrl);
+  }
+
+  const resolved = structuredClone(cb);
+  for (const block of resolved.blocks) {
+    if (block.type === "voiceover") {
+      block.audio_files = ((block.audio_files as string[]) ?? []).map(
+        (p: string) => urlMap.get(p) ?? p,
+      );
+    } else if (block.type === "timed_exercise" && block.ambient_audio) {
+      block.ambient_audio = urlMap.get(block.ambient_audio as string) ?? block.ambient_audio;
+    }
+  }
+
+  return { ...lesson, content_blocks: resolved };
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -152,12 +200,60 @@ async function handleList(
     categoryMap.set(c.lesson_id, arr);
   }
 
-  const items = (lessons ?? []).map((l: Record<string, unknown>) => ({
-    ...l,
-    categories: categoryMap.get(l.id as string) ?? [],
-  }));
+  // Completed WODs get a "Day X" label when shown in the library.
+  // Look up which lessons the user completed that are also in program_schedule.
+  const { data: completions } = lessonIds.length > 0
+    ? await supabase
+        .from("user_lesson_completions")
+        .select("lesson_id")
+        .eq("user_id", userId)
+        .in("lesson_id", lessonIds)
+    : { data: [] };
+  const completedSet = new Set(
+    (completions ?? []).map((c: { lesson_id: string }) => c.lesson_id),
+  );
 
-  return successResponse({ items, page, limit, total: count ?? 0 }, requestId);
+  const { data: schedule } = await supabase
+    .from("program_schedule")
+    .select("day_number, lesson_id")
+    .eq("program_version", PROGRAM_VERSION);
+
+  // Build lesson_id → earliest day_number map, but only for unique WOD
+  // lessons (not placeholder IDs shared across many days).
+  const dayCountById = new Map<string, number>();
+  const dayNumberById = new Map<string, number>();
+  for (const row of schedule ?? []) {
+    const lid = row.lesson_id as string;
+    dayCountById.set(lid, (dayCountById.get(lid) ?? 0) + 1);
+    const existing = dayNumberById.get(lid);
+    if (existing === undefined || (row.day_number as number) < existing) {
+      dayNumberById.set(lid, row.day_number as number);
+    }
+  }
+
+  const items = (lessons ?? []).map((l: Record<string, unknown>) => {
+    const lid = l.id as string;
+    const isCompletedUniqueWod =
+      completedSet.has(lid) &&
+      dayCountById.has(lid) &&
+      (dayCountById.get(lid) ?? 0) === 1;
+
+    return {
+      ...l,
+      categories: categoryMap.get(lid) ?? [],
+      program_day: isCompletedUniqueWod ? (dayNumberById.get(lid) ?? null) : null,
+    };
+  });
+
+  // Regular lessons first (sort_order preserved), completed WODs at the bottom.
+  const regular = items.filter((l) => l.program_day === null);
+  const wods = items
+    .filter((l) => l.program_day !== null)
+    .sort((a, b) => (a.program_day as number) - (b.program_day as number));
+
+  const sorted = [...regular, ...wods];
+
+  return successResponse({ items: sorted, page, limit, total: count ?? 0 }, requestId);
 }
 
 // ---------------------------------------------------------------------------
@@ -224,8 +320,10 @@ async function handleDetail(
     .select("category")
     .eq("lesson_id", parsed.data);
 
+  const enriched = await resolveContentBlockUrls(supabase, lesson as Record<string, unknown>);
+
   return successResponse(
-    { ...lesson, categories: (categories ?? []).map((c: { category: string }) => c.category) },
+    { ...enriched, categories: (categories ?? []).map((c: { category: string }) => c.category) },
     requestId,
   );
 }
@@ -377,8 +475,10 @@ async function handleNext(
     .select("category")
     .eq("lesson_id", lesson.id);
 
+  const enriched = await resolveContentBlockUrls(supabase, lesson as Record<string, unknown>);
+
   const lessonData = {
-    ...lesson,
+    ...enriched,
     program_day: day,
     program_version: PROGRAM_VERSION,
     categories: (categories ?? []).map((c: { category: string }) => c.category),

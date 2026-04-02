@@ -18,8 +18,8 @@ export const colors = {
   ringTrack: '#252525',
 
   ringMindfulness: '#60a5fa',
-  ringAcceptance: '#22d3ee',
-  ringCommitment: '#f59e0b',
+  ringAcceptance: '#C9965A',
+  ringCommitment: '#D4AF37',
 };
 
 export const spacing = {

@@ -13,6 +13,7 @@ import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 type JournalEntry = {
   id: string;
   lesson_id: string | null;
+  lesson_title: string | null;
   competition_date: string | null;
   body: string;
   entry_type: string;
@@ -101,7 +102,7 @@ export default function JournalListScreen() {
                   <Text style={styles.cardTitle}>
                     {item.entry_type === 'miss_reflection'
                       ? 'Missed Day Reflection'
-                      : 'Pre-Workout Check-In'}
+                      : (item.lesson_title ?? 'Check-In')}
                   </Text>
                   {item.entry_type === 'miss_reflection' && (
                     <View style={styles.typeBadge}>

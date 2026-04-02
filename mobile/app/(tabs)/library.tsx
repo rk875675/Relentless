@@ -44,9 +44,9 @@ type Streak = {
 };
 
 const MAC_CATEGORIES = [
-  { id: 'mindfulness', label: 'Mindfulness' },
-  { id: 'acceptance', label: 'Acceptance' },
-  { id: 'commitment', label: 'Commitment' },
+  { id: 'mindfulness', label: 'Mindfulness', color: colors.ringMindfulness },
+  { id: 'acceptance', label: 'Acceptance', color: colors.ringAcceptance },
+  { id: 'commitment', label: 'Commitment', color: colors.ringCommitment },
 ] as const;
 
 export default function LibraryScreen() {
@@ -162,7 +162,7 @@ export default function LibraryScreen() {
         </View>
       ) : null}
 
-      {/* MAC Category Buttons */}
+      {/* MAC Category Bubbles */}
       {MAC_CATEGORIES.map((cat) => (
         <TouchableOpacity
           key={cat.id}
@@ -173,8 +173,9 @@ export default function LibraryScreen() {
             if (libraryUnlocked) router.push(`/category/${cat.id}`);
           }}
         >
-          <View style={styles.categoryAccent} />
+          <View style={[styles.categoryAccent, { backgroundColor: cat.color }]} />
           <Text style={styles.categoryLabel}>{cat.label}</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </TouchableOpacity>
       ))}
 
@@ -274,10 +275,10 @@ const styles = StyleSheet.create({
     width: 4,
     height: 24,
     borderRadius: 2,
-    backgroundColor: colors.accent,
     marginRight: 16,
   },
   categoryLabel: {
+    flex: 1,
     fontSize: 18,
     fontWeight: '700',
     color: colors.textPrimary,

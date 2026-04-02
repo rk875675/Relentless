@@ -16,6 +16,7 @@ type Lesson = {
   duration_seconds: number;
   lesson_type: string;
   categories: string[];
+  program_day?: number | null;
 };
 
 type LessonsResponse = {
@@ -30,6 +31,10 @@ const MAC_LABELS: Record<string, string> = {
   acceptance: 'Acceptance',
   commitment: 'Commitment',
 };
+
+type ListItem =
+  | { kind: 'lesson'; lesson: Lesson }
+  | { kind: 'divider' };
 
 export default function CategoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -82,6 +87,42 @@ export default function CategoryScreen() {
     fetchLessons();
   }, [id]);
 
+  // Split into regular library lessons and past WODs; server already sorts them
+  // but we insert a visual divider between the two groups.
+  const regularLessons = lessons.filter((l) => !l.program_day);
+  const wodLessons = lessons.filter((l) => !!l.program_day);
+
+  const listData: ListItem[] = [
+    ...regularLessons.map((l): ListItem => ({ kind: 'lesson', lesson: l })),
+    ...(wodLessons.length > 0
+      ? [
+          { kind: 'divider' } as ListItem,
+          ...wodLessons.map((l): ListItem => ({ kind: 'lesson', lesson: l })),
+        ]
+      : []),
+  ];
+
+  const renderLesson = (lesson: Lesson) => {
+    const mins = Math.floor(lesson.duration_seconds / 60);
+    const secs = lesson.duration_seconds % 60;
+    const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+    const dayLabel = lesson.program_day ? `DAY ${lesson.program_day}` : null;
+
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.8}
+        onPress={() => router.push(`/lesson/${lesson.id}` as any)}
+      >
+        {dayLabel && (
+          <Text style={styles.cardDayLabel}>{dayLabel}</Text>
+        )}
+        <Text style={styles.cardTitle}>{lesson.title}</Text>
+        <Text style={styles.cardMeta}>{timeStr}</Text>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <>
       <Stack.Screen options={{ title: label }} />
@@ -91,8 +132,10 @@ export default function CategoryScreen() {
           styles.listContent,
           !loading && (error || libraryLocked || lessons.length === 0) && styles.listCentered,
         ]}
-        data={lessons}
-        keyExtractor={(item) => item.id}
+        data={listData}
+        keyExtractor={(item, index) =>
+          item.kind === 'divider' ? `divider-${index}` : item.lesson.id
+        }
         ListEmptyComponent={
           loading ? null : libraryLocked ? (
             <View style={styles.errorWrap}>
@@ -116,20 +159,17 @@ export default function CategoryScreen() {
             </Text>
           )
         }
-        renderItem={({ item: lesson }) => {
-          const mins = Math.floor(lesson.duration_seconds / 60);
-          const secs = lesson.duration_seconds % 60;
-          const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
-          return (
-            <TouchableOpacity
-              style={styles.card}
-              activeOpacity={0.8}
-              onPress={() => router.push(`/lesson/${lesson.id}` as any)}
-            >
-              <Text style={styles.cardTitle}>{lesson.title}</Text>
-              <Text style={styles.cardMeta}>{timeStr}</Text>
-            </TouchableOpacity>
-          );
+        renderItem={({ item }) => {
+          if (item.kind === 'divider') {
+            return (
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerLabel}>Past WODs</Text>
+                <View style={styles.dividerLine} />
+              </View>
+            );
+          }
+          return renderLesson(item.lesson);
         }}
       />
     </>
@@ -161,6 +201,13 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginBottom: 12,
   },
+  cardDayLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
   cardTitle: {
     fontSize: 16,
     fontWeight: '600',
@@ -171,6 +218,23 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 6,
     letterSpacing: 0.3,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
+    letterSpacing: 0.5,
   },
   emptyText: {
     color: colors.textMuted,

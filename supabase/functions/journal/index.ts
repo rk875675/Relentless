@@ -116,7 +116,7 @@ async function handleList(
 
   const { data: entries, error, count } = await supabase
     .from("journal_entries")
-    .select("id, lesson_id, competition_date, body, entry_type, created_at, updated_at", {
+    .select("id, lesson_id, competition_date, body, entry_type, created_at, updated_at, lessons(title)", {
       count: "exact",
     })
     .eq("user_id", userId)
@@ -127,7 +127,12 @@ async function handleList(
     return errorResponse(500, "INTERNAL_ERROR", "Failed to fetch journal entries", requestId);
   }
 
-  return successResponse({ items: entries ?? [], page, limit, total: count ?? 0 }, requestId);
+  const items = (entries ?? []).map(({ lessons, ...e }) => ({
+    ...e,
+    lesson_title: (lessons as { title?: string } | null)?.title ?? null,
+  }));
+
+  return successResponse({ items, page, limit, total: count ?? 0 }, requestId);
 }
 
 // J1 — create journal entry

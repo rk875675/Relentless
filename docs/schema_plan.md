@@ -138,16 +138,95 @@ Rate-limiting state lives in Upstash Redis, not PostgreSQL.
 | `id` | `uuid` | PK, default `gen_random_uuid()` | |
 | `coach_id` | `uuid` | not null, references `coaches(id)` | |
 | `title` | `text` | not null | |
-| `duration_seconds` | `integer` | not null | |
+| `duration_seconds` | `integer` | not null | Total lesson duration including exercises |
 | `lesson_type` | `text` | not null, default `'standard'` | Flexible; subtypes TBD |
-| `voiceover_url` | `text` | nullable | Asset URL or storage path |
-| `on_screen_text` | `text` | nullable | Summary/coaching text; may evolve to structured format |
-| `reflection_prompt` | `text` | nullable | Optional reflection question |
-| `progress_metadata` | `jsonb` | nullable | MAC contribution weights; formula TBD |
+| `content_blocks` | `jsonb` | not null | Ordered array of lesson blocks; see content_blocks structure below |
 | `sort_order` | `integer` | not null, default `0` | Drives sequential recommended flow |
 | `published` | `boolean` | not null, default `false` | Content gating |
 | `created_at` | `timestamptz` | not null, default `now()` | |
 | `updated_at` | `timestamptz` | not null, default `now()` | |
+
+#### `content_blocks` JSONB structure
+
+The `content_blocks` column holds an ordered array of typed blocks that define
+the full lesson experience. The client plays blocks sequentially. Each block
+has a `type` field that determines its schema.
+
+**Design rationale:** Lessons are always fetched and consumed as a whole unit.
+Blocks are intrinsic to the lesson, not a relational concern. JSONB keeps
+seeding simple and avoids a join for every lesson fetch. Server-side Zod
+validation enforces the structure on insert and on API response.
+
+**Audio segment note:** Audio files within a voiceover block are recording
+splits for production convenience — the coach can re-record a section without
+redoing the entire lesson. The client plays them back-to-back seamlessly.
+Segment boundaries are invisible to the user.
+
+**Timed text note:** On-screen text cues are owned by the product team, not
+the coach. The `start_s` values in `timed_text` are calibrated against the
+combined audio timeline of all `audio_files` in that voiceover block. Each
+cue stays on screen until the next cue's `start_s`.
+
+```jsonc
+{
+  "blocks": [
+    // --- Block type: voiceover ---
+    // Coach audio with synchronized on-screen text.
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson-audio/lesson_01/lesson_01_seg_01.wav",
+        "lesson-audio/lesson_01/lesson_01_seg_02.wav"
+      ],
+      "total_audio_seconds": 108.0,
+      "timed_text": [
+        { "start_s": 0.0,  "text": "Key phrase shown on screen" },
+        { "start_s": 22.7, "text": "Next phrase appears here" }
+      ]
+    },
+
+    // --- Block type: timed_exercise ---
+    // Coach stops speaking. Ambient music plays. Text cards rotate.
+    {
+      "type": "timed_exercise",
+      "duration_seconds": 60,
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "steps": [
+        { "text": "Card 1 text", "duration_seconds": 20 },
+        { "text": "Card 2 text", "duration_seconds": 20 }
+      ]
+    },
+
+    // --- Block type: journal_prompt ---
+    // Displays a reflection question. User writes a journal entry.
+    {
+      "type": "journal_prompt",
+      "prompt": "Exact question text shown to the user."
+    }
+  ]
+}
+```
+
+**Known block types:**
+
+| Type | Description |
+|---|---|
+| `voiceover` | Coach audio with timed on-screen text |
+| `timed_exercise` | Ambient audio with rotating text cards on a timer |
+| `journal_prompt` | Reflection question; creates a `journal_entries` row |
+
+Additional block types (e.g. `breathing`, `visualization`) may be added as
+coach content requires them. The JSONB approach makes this extensible without
+schema migrations.
+
+**Columns removed** (replaced by `content_blocks`):
+
+| Former column | Now lives in |
+|---|---|
+| `voiceover_url` | `voiceover` block → `audio_files` array |
+| `on_screen_text` | `voiceover` block → `timed_text` array |
+| `reflection_prompt` | `journal_prompt` block → `prompt` |
+| `progress_metadata` | Removed; MAC categories handled by `lesson_categories` table |
 
 ### `program_schedule`
 
@@ -263,7 +342,7 @@ Because backend entitlement enforcement is required for all premium content and 
 | `audit_log` | (`actor_id`, `created_at`) | Actor history |
 | `audit_log` | (`entity_type`, `entity_id`) | Entity history |
 | `lessons` | (`coach_id`, `sort_order`) | Ordered lesson listing |
-| `lessons` | (`published`, `sort_order`) | Published lesson feed |
+| `lessons` | (`published`, `sort_order`) | Published lesson listing |
 | `user_lesson_completions` | (`user_id`, `lesson_id`) | Completion lookups |
 | `user_lesson_completions` | (`user_id`, `completed_at`) | Streak / history queries |
 | `journal_entries` | (`user_id`, `created_at`) | Chronological listing |
@@ -275,7 +354,7 @@ Because backend entitlement enforcement is required for all premium content and 
 
 1. **Re-completion semantics.** Should completing a lesson again contribute to progress? Current schema allows multiple completion rows per (`user_id`, `lesson_id`). Depends on scoring formula (TBD).
 
-2. **Synchronized on-screen text.** The schema uses `text` for `on_screen_text`. If timed text segments synced to voiceover are needed, this may evolve to `jsonb` with a structured array. Deferred.
+2. ~~**Synchronized on-screen text.**~~ **Resolved.** The `content_blocks` JSONB column holds `voiceover` blocks with a `timed_text` array. Each cue has a `start_s` timestamp relative to the combined audio timeline. On-screen text is owned by the product team, not the coach.
 
 3. **Profile auto-creation.** Supabase can auto-create a `profiles` row via a database trigger on `auth.users` insert. Implementation detail for the migration pass.
 
@@ -283,7 +362,7 @@ Because backend entitlement enforcement is required for all premium content and 
 
 5. **Audit log growth.** If `audit_log` grows large, time-based partitioning may be needed. Deferred to operational maturity.
 
-6. **Lesson content delivery.** How voiceover assets are stored/served (Supabase Storage, CDN, bundled) is not specified in the PRD. Does not affect the schema but affects `voiceover_url` semantics.
+6. ~~**Lesson content delivery.**~~ **Resolved.** Audio files are stored in Supabase Storage. `content_blocks` references storage paths (e.g. `lesson-audio/lesson_01/lesson_01_seg_01.wav`). Coach delivers WAV files split by recording segments; a build/upload script pushes them to Supabase Storage. File naming convention and delivery process documented in `content/CONTENT_DELIVERY_GUIDE.md`.
 
 ---
 
@@ -334,7 +413,7 @@ After Migration 1 is stable and approved, a separate implementation step covers:
 - `journal_entries`
 - All RLS policies for these tables
 - Key indexes
-- Seed data: one coach record for V1 partner (name TBD)
+- Seed data: one coach record (`Coach Grant`, sport `track`)
 
 Migration 2 requires a separate approval step before implementation.
 

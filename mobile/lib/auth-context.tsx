@@ -74,6 +74,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session: s } }) => {
       setSession(s);
       if (s?.user) await fetchUserState(s.user.id);
+    }).catch(() => {
+      // Auth/network failure — proceed unauthenticated rather than hang forever.
+    }).finally(() => {
       setLoading(false);
     });
 
