@@ -1,6 +1,10 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { AppState } from 'react-native';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { bustCache } from './api-cache';
+
+const FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000;
 
 type AuthState = {
   session: Session | null;
@@ -15,6 +19,8 @@ type AuthState = {
   completeOnboarding: () => Promise<void>;
   /** __DEV__ only: marks premium for UX and completes onboarding without StoreKit. */
   completeOnboardingDevBypass: () => Promise<void>;
+  /** __DEV__ only: resets onboarding so the route guard redirects back to credibility. */
+  resetOnboarding: () => Promise<void>;
   refreshUserState: () => Promise<void>;
   updateCompetitionDate: (date: string | null) => Promise<string | null>;
 };
@@ -31,6 +37,7 @@ const AuthContext = createContext<AuthState>({
   signOut: async () => {},
   completeOnboarding: async () => {},
   completeOnboardingDevBypass: async () => {},
+  resetOnboarding: async () => {},
   refreshUserState: async () => {},
   updateCompetitionDate: async () => null,
 });
@@ -70,10 +77,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await fetchUserState(session.user.id);
   }, [session?.user?.id, fetchUserState]);
 
+  const lastForegroundRefresh = useRef(0);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active' && session?.user?.id) {
+        const now = Date.now();
+        if (now - lastForegroundRefresh.current >= FOREGROUND_REFRESH_DEBOUNCE_MS) {
+          lastForegroundRefresh.current = now;
+          fetchUserState(session.user.id).catch(() => {});
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [session?.user?.id, fetchUserState]);
+
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session: s } }) => {
       setSession(s);
-      if (s?.user) await fetchUserState(s.user.id);
+      if (s?.user) {
+        try {
+          await fetchUserState(s.user.id);
+        } catch {
+          try { await fetchUserState(s.user.id); } catch { /* give up */ }
+        }
+      }
     }).catch(() => {
       // Auth/network failure — proceed unauthenticated rather than hang forever.
     }).finally(() => {
@@ -85,7 +113,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (_event === 'INITIAL_SESSION') return; // already handled by getSession() above
         setSession(s);
         if (s?.user) {
-          try { await fetchUserState(s.user.id); } catch { /* prevent unhandled rejection on auth change */ }
+          try {
+            await fetchUserState(s.user.id);
+          } catch {
+            try { await fetchUserState(s.user.id); } catch { /* give up */ }
+          }
         } else {
           setOnboardingComplete(false);
           setCompetitionDate(null);
@@ -113,6 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     setDevPremiumBypass(false);
+    bustCache();
     await supabase.auth.signOut();
   };
 
@@ -130,6 +163,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setDevPremiumBypass(true);
     await completeOnboarding();
   }, [completeOnboarding]);
+
+  const resetOnboarding = useCallback(async () => {
+    if (!session?.user) return;
+    await supabase.from('profiles').update({ onboarding_completed: false }).eq('id', session.user.id);
+    setOnboardingComplete(false);
+  }, [session]);
 
   const updateCompetitionDate = useCallback(async (date: string | null): Promise<string | null> => {
     if (!session?.user) return 'Not authenticated';
@@ -155,6 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut,
       completeOnboarding,
       completeOnboardingDevBypass,
+      resetOnboarding,
       refreshUserState,
       updateCompetitionDate,
     }}>

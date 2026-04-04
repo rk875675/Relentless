@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import {
+  Linking,
   StyleSheet,
   Text,
   View,
@@ -210,6 +211,7 @@ export default function LibraryScreen() {
         style={[styles.ctaCard, !libraryUnlocked && styles.categoryBtnDisabled]}
         activeOpacity={0.8}
         disabled={!libraryUnlocked}
+        onPress={() => Linking.openURL('https://example.com')}
       >
         <Text style={styles.ctaLabel}>1 ON 1</Text>
         <Text style={styles.ctaTitle}>

@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -17,6 +18,7 @@ import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
 import { getCached, setCached } from '@/lib/api-cache';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
+import { SUPERWALL_ENABLED, SUPERWALL_ONBOARDING_PLACEMENT } from '@/lib/superwall-config';
 
 type Streak = {
   current_streak: number;
@@ -35,13 +37,28 @@ function formatDate(dateStr: string | null): string {
 }
 
 export default function ProfileScreen() {
-  const { session, signOut, competitionDate, updateCompetitionDate } = useAuth();
+  const { session, signOut, competitionDate, updateCompetitionDate, refreshUserState, resetOnboarding } = useAuth();
   const router = useRouter();
   const [streak, setStreak] = useState<Streak | null>(null);
   const [totalCompletions, setTotalCompletions] = useState<number | null>(null);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [pendingDate, setPendingDate] = useState<Date>(new Date());
   const [dateSaving, setDateSaving] = useState(false);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [devToolsVisible, setDevToolsVisible] = useState(true);
+  const brandTapCount = useRef(0);
+  const brandTapTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const handleBrandTap = () => {
+    brandTapCount.current += 1;
+    clearTimeout(brandTapTimer.current);
+    if (brandTapCount.current >= 5) {
+      brandTapCount.current = 0;
+      setDevToolsVisible((v) => !v);
+    } else {
+      brandTapTimer.current = setTimeout(() => { brandTapCount.current = 0; }, 800);
+    }
+  };
 
   const fetchData = async () => {
     const cachedStreak = getCached<Streak>('/streak');
@@ -65,6 +82,24 @@ export default function ProfileScreen() {
     }, []),
   );
 
+  const handleRestore = async () => {
+    if (!SUPERWALL_ENABLED) return;
+    setRestoreBusy(true);
+    try {
+      const sw = require('expo-superwall');
+      await sw.useSuperwallStore.getState().registerPlacement(SUPERWALL_ONBOARDING_PLACEMENT);
+      await refreshUserState();
+    } catch (err) {
+      console.warn('[Profile] Restore purchases failed', err);
+    } finally {
+      setRestoreBusy(false);
+    }
+  };
+
+  const handleManageSubscription = () => {
+    Linking.openURL('https://apps.apple.com/account/subscriptions');
+  };
+
   const email = session?.user?.email ?? '';
   const displayName = email ? email.split('@')[0] : 'Athlete';
 
@@ -76,7 +111,9 @@ export default function ProfileScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.brand}>RELENTLESS</Text>
+        <Pressable onPress={handleBrandTap}>
+          <Text style={styles.brand}>RELENTLESS</Text>
+        </Pressable>
         <View style={styles.streakPill}>
           <Text style={styles.streakNum}>{streak?.current_streak ?? 0}</Text>
           <Ionicons name="flame" size={16} color="#f59e0b" />
@@ -199,6 +236,51 @@ export default function ProfileScreen() {
             }}
           />
         )
+      )}
+
+      {/* Subscription Section */}
+      <Text style={styles.sectionLabel}>SUBSCRIPTION</Text>
+      <View style={styles.rowsContainer}>
+        {SUPERWALL_ENABLED && (
+          <ProfileRow
+            icon="arrow-down-circle-outline"
+            label="Restore Purchases"
+            value={restoreBusy ? 'Restoring...' : undefined}
+            onPress={restoreBusy ? undefined : handleRestore}
+          />
+        )}
+        <ProfileRow
+          icon="card-outline"
+          label="Manage Subscription"
+          chevron
+          onPress={handleManageSubscription}
+          last
+        />
+      </View>
+
+      {/* Dev Tools — visible in __DEV__ by default; tap "RELENTLESS" 5× in release */}
+      {devToolsVisible && (
+        <>
+          <Text style={styles.sectionLabel}>DEV TOOLS</Text>
+          <View style={styles.rowsContainer}>
+            <ProfileRow
+              icon="card-outline"
+              label="Jump to Paywall"
+              chevron
+              onPress={async () => {
+                await resetOnboarding();
+                router.replace('/(onboarding)/paywall' as any);
+              }}
+            />
+            <ProfileRow
+              icon="refresh-outline"
+              label="Reset to Onboarding"
+              chevron
+              onPress={resetOnboarding}
+              last
+            />
+          </View>
+        </>
       )}
 
       {/* Sign Out */}

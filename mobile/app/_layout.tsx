@@ -9,11 +9,24 @@ export { ErrorBoundary } from 'expo-router';
 
 SplashScreen.preventAutoHideAsync();
 
+const SPLASH_SAFETY_MS = 4000;
+
 function RouteGuard() {
   const { session, loading, onboardingComplete, hasPremiumAccess } = useAuth();
   const segments = useSegments();
   const router = useRouter();
-  const hasNavigated = useRef(false);
+  const splashHidden = useRef(false);
+
+  const hideSplash = () => {
+    if (splashHidden.current) return;
+    splashHidden.current = true;
+    SplashScreen.hideAsync().catch(() => {});
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(hideSplash, SPLASH_SAFETY_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -22,11 +35,8 @@ function RouteGuard() {
     const inOnboarding = segments[0] === '(onboarding)';
     const onPaywall = inOnboarding && segments[1] === 'paywall';
 
-    let didNavigate = false;
-
     if (!session && !inAuth) {
       router.replace('/(auth)/login');
-      didNavigate = true;
     } else if (session && inAuth) {
       if (onboardingComplete && hasPremiumAccess) {
         router.replace('/(tabs)');
@@ -35,25 +45,15 @@ function RouteGuard() {
       } else {
         router.replace('/(onboarding)/credibility');
       }
-      didNavigate = true;
     } else if (session && !onboardingComplete && !inOnboarding) {
       router.replace('/(onboarding)/credibility');
-      didNavigate = true;
     } else if (session && onboardingComplete && !hasPremiumAccess && !onPaywall && !inAuth) {
       router.replace('/(onboarding)/paywall');
-      didNavigate = true;
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
       router.replace('/(tabs)');
-      didNavigate = true;
     }
 
-    if (!hasNavigated.current && (didNavigate || (session && onboardingComplete && hasPremiumAccess))) {
-      hasNavigated.current = true;
-      setTimeout(() => SplashScreen.hideAsync(), 50);
-    } else if (!hasNavigated.current) {
-      hasNavigated.current = true;
-      setTimeout(() => SplashScreen.hideAsync(), 50);
-    }
+    setTimeout(hideSplash, 50);
   }, [session, loading, onboardingComplete, hasPremiumAccess, segments]);
 
   if (loading) return null;
