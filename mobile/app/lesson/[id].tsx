@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -18,6 +18,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { apiFetch } from '@/lib/api';
+import { bustCache } from '@/lib/api-cache';
 import { setPendingGainDeltas } from '@/lib/pending-deltas';
 import { colors, spacing } from '@/lib/theme';
 
@@ -148,6 +149,21 @@ export default function LessonPlayerScreen() {
   });
   const audioStatus = useAudioPlayerStatus(player);
 
+  // Dedicated ambient player — preloads the ambient URL as soon as lesson data
+  // arrives so the music is already buffered when the timed exercise starts.
+  const ambientSource = useMemo(() => {
+    if (!lesson?.content_blocks?.blocks) return null;
+    const ex = lesson.content_blocks.blocks.find(
+      (b): b is TimedExerciseBlock => b.type === 'timed_exercise',
+    );
+    return ex?.ambient_audio ?? null;
+  }, [lesson]);
+
+  const ambientPlayer = useAudioPlayer(ambientSource, {
+    updateInterval: 1000,
+    downloadFirst: false,
+  });
+
   // -----------------------------------------------------------------------
   // Load lesson
   // -----------------------------------------------------------------------
@@ -174,6 +190,7 @@ export default function LessonPlayerScreen() {
         sessionActive.current = false;
         voiceoverStartPending.current = false;
         try { player.pause(); } catch { /* noop */ }
+        try { ambientPlayer.pause(); } catch { /* noop */ }
         stopAllTimers();
         setPhase('terminated');
       }
@@ -259,6 +276,7 @@ export default function LessonPlayerScreen() {
       if (completeData?.progress?.deltas) {
         setPendingGainDeltas(completeData.progress.deltas as any);
       }
+      bustCache('/lessons/next', '/progress', '/streak');
       setPhase('done');
     }
   }, []);
@@ -301,12 +319,11 @@ export default function LessonPlayerScreen() {
       setOnScreenText('');
     } else if (block.type === 'timed_exercise') {
       setExerciseElapsed(0);
-      // Reset text — interval handles fade-in on first step
       lastCueRef.current = '';
       textFade.setValue(0);
       setOnScreenText('');
-      setCurrentAudioUrl(block.ambient_audio ?? null);
-      voiceoverStartPending.current = true;
+      // Ambient audio uses dedicated pre-loaded player — no source swap needed
+      try { ambientPlayer.seekTo(0).then(() => ambientPlayer.play()).catch(() => {}); } catch { /* noop */ }
       const start = Date.now();
       exerciseTimerRef.current = setInterval(() => {
         const secs = Math.floor((Date.now() - start) / 1000);
@@ -332,8 +349,7 @@ export default function LessonPlayerScreen() {
 
         if (secs >= block.duration_seconds) {
           if (exerciseTimerRef.current) { clearInterval(exerciseTimerRef.current); exerciseTimerRef.current = null; }
-          try { player.pause(); } catch { /* noop */ }
-          setCurrentAudioUrl(null);
+          try { ambientPlayer.pause(); } catch { /* noop */ }
           advanceBlock();
         }
       }, 250);
@@ -342,7 +358,7 @@ export default function LessonPlayerScreen() {
       setOnScreenText(block.prompt);
       setPhase('block_journal');
     }
-  }, [player, advanceBlock, textFade, pulseBars]);
+  }, [player, ambientPlayer, advanceBlock, textFade, pulseBars]);
 
   // -----------------------------------------------------------------------
   // Audio: auto-play when loaded
@@ -493,6 +509,7 @@ export default function LessonPlayerScreen() {
   const handleRestart = () => {
     voiceoverStartPending.current = false;
     try { player.pause(); void player.seekTo(0); } catch { /* noop */ }
+    try { ambientPlayer.pause(); void ambientPlayer.seekTo(0); } catch { /* noop */ }
     setPhase('ready');
     setElapsed(0);
     setBlockIndex(0);
