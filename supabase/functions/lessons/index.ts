@@ -217,13 +217,12 @@ async function handleList(
     .select("day_number, lesson_id")
     .eq("program_version", PROGRAM_VERSION);
 
-  // Build lesson_id → earliest day_number map, but only for unique WOD
-  // lessons (not placeholder IDs shared across many days).
-  const dayCountById = new Map<string, number>();
+  // Build lesson_id → earliest day_number map for schedule entries.
   const dayNumberById = new Map<string, number>();
+  const scheduledIds = new Set<string>();
   for (const row of schedule ?? []) {
     const lid = row.lesson_id as string;
-    dayCountById.set(lid, (dayCountById.get(lid) ?? 0) + 1);
+    scheduledIds.add(lid);
     const existing = dayNumberById.get(lid);
     if (existing === undefined || (row.day_number as number) < existing) {
       dayNumberById.set(lid, row.day_number as number);
@@ -232,15 +231,12 @@ async function handleList(
 
   const items = (lessons ?? []).map((l: Record<string, unknown>) => {
     const lid = l.id as string;
-    const isCompletedUniqueWod =
-      completedSet.has(lid) &&
-      dayCountById.has(lid) &&
-      (dayCountById.get(lid) ?? 0) === 1;
+    const isCompletedWod = completedSet.has(lid) && scheduledIds.has(lid);
 
     return {
       ...l,
       categories: categoryMap.get(lid) ?? [],
-      program_day: isCompletedUniqueWod ? (dayNumberById.get(lid) ?? null) : null,
+      program_day: isCompletedWod ? (dayNumberById.get(lid) ?? null) : null,
     };
   });
 

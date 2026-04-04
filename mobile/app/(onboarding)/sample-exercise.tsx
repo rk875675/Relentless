@@ -9,7 +9,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
+
+const TOTAL_STEPS = 8;
 
 const RATINGS = [1, 2, 3, 4, 5];
 const FEELINGS = ['Nerves', 'Doubt', 'Pressure', 'Overthinking'];
@@ -275,7 +278,7 @@ export default function SampleExerciseScreen() {
     const order: Step[] = ['intro', 'rate-before', 'breathe', 'feelings', 'cue', 'rate-after', 'done'];
     const idx = order.indexOf(step);
     if (step === 'done') {
-      router.push('/(onboarding)/competition-date');
+      router.push('/(onboarding)/what-you-get');
     } else if (idx < order.length - 1) {
       setStep(order[idx + 1]);
     }
@@ -289,19 +292,12 @@ export default function SampleExerciseScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <ProgressBar step={5} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         {getContent()}
 
         {step !== 'breathe' && (
           <View style={styles.bottomSection}>
-            <View style={styles.dots}>
-              <View style={styles.dot} />
-              <View style={styles.dot} />
-              <View style={styles.dot} />
-              <View style={[styles.dot, styles.dotActive]} />
-              <View style={styles.dot} />
-              <View style={styles.dot} />
-            </View>
             <TouchableOpacity
               style={[styles.button, !canAdvance() && styles.buttonDisabled]}
               onPress={advance}
@@ -468,14 +464,6 @@ const styles = StyleSheet.create({
   cueTextActive: { color: colors.accentLight },
 
   bottomSection: { paddingBottom: spacing.xl },
-  dots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: spacing.lg,
-  },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.border },
-  dotActive: { backgroundColor: colors.accentLight, width: 24 },
   button: {
     backgroundColor: colors.accent,
     borderRadius: 12,

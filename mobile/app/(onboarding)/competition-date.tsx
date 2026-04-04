@@ -4,7 +4,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
+import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
+
+const TOTAL_STEPS = 8;
 
 function formatDate(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -46,6 +49,7 @@ export default function CompetitionDateScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <ProgressBar step={9} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         <View style={styles.topSection}>
           <Text style={styles.title}>{"When's your next competition?"}</Text>
@@ -82,14 +86,6 @@ export default function CompetitionDateScreen() {
         </View>
 
         <View style={styles.bottomSection}>
-          <View style={styles.dots}>
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-            <View style={[styles.dot, styles.dotActive]} />
-            <View style={styles.dot} />
-          </View>
           <TouchableOpacity
             style={styles.button}
             onPress={date ? saveAndContinue : skip}
@@ -147,14 +143,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   bottomSection: { paddingBottom: spacing.xl },
-  dots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: spacing.lg,
-  },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.border },
-  dotActive: { backgroundColor: colors.accentLight, width: 24 },
   button: {
     backgroundColor: colors.accent,
     borderRadius: 12,

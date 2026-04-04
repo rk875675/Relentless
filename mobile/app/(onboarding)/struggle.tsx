@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
+
+const TOTAL_STEPS = 8;
 
 const STRUGGLES = [
   'Pre-race anxiety',
@@ -25,6 +28,7 @@ export default function StruggleScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <ProgressBar step={7} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         <View style={styles.topSection}>
           <Text style={styles.title}>What gets in your way most?</Text>
@@ -55,17 +59,9 @@ export default function StruggleScreen() {
         </View>
 
         <View style={styles.bottomSection}>
-          <View style={styles.dots}>
-            <View style={styles.dot} />
-            <View style={[styles.dot, styles.dotActive]} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-          </View>
           <TouchableOpacity
             style={[styles.button, selected.length === 0 && styles.buttonDisabled]}
-            onPress={() => router.push('/(onboarding)/mac-intro')}
+            onPress={() => router.push('/(onboarding)/competition-date')}
             disabled={selected.length === 0}
           >
             <Text style={styles.buttonText}>Continue</Text>
@@ -130,14 +126,6 @@ const styles = StyleSheet.create({
   },
   checkMark: { fontSize: 12, color: colors.white, fontWeight: '700' },
   bottomSection: { paddingBottom: spacing.xl },
-  dots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: spacing.lg,
-  },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.border },
-  dotActive: { backgroundColor: colors.accentLight, width: 24 },
   button: {
     backgroundColor: colors.accent,
     borderRadius: 12,

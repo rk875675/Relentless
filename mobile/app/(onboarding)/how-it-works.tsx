@@ -1,37 +1,41 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
+
+const TOTAL_STEPS = 8;
 
 const PILLARS = [
   {
     letter: 'M',
     name: 'Mindfulness',
-    description: 'Stay present and aware during competition.',
+    desc: 'Stay present and aware during competition.',
   },
   {
     letter: 'A',
     name: 'Acceptance',
-    description: 'Handle discomfort without letting it control you.',
+    desc: 'Handle discomfort without letting it control you.',
   },
   {
     letter: 'C',
     name: 'Commitment',
-    description: "Act on your values even when it's hard.",
+    desc: "Act on your values even when it's hard.",
   },
 ];
 
-export default function MacIntroScreen() {
+export default function HowItWorksScreen() {
   const router = useRouter();
 
   return (
     <SafeAreaView style={styles.container}>
+      <ProgressBar step={4} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         <View style={styles.topSection}>
-          <Text style={styles.title}>The MAC framework</Text>
+          <Text style={styles.badge}>THE METHOD</Text>
+          <Text style={styles.title}>Built on the MAC framework</Text>
           <Text style={styles.body}>
-            Your training is built on three pillars used by elite sport
-            psychologists.
+            Used by elite sport psychologists to help athletes perform under pressure.
           </Text>
 
           <View style={styles.pillars}>
@@ -42,27 +46,23 @@ export default function MacIntroScreen() {
                 </View>
                 <View style={styles.pillarText}>
                   <Text style={styles.pillarName}>{p.name}</Text>
-                  <Text style={styles.pillarDesc}>{p.description}</Text>
+                  <Text style={styles.pillarDesc}>{p.desc}</Text>
                 </View>
               </View>
             ))}
           </View>
+
+          <Text style={styles.footer}>
+            Daily sessions, 3-5 minutes, guided by sport psychologists
+          </Text>
         </View>
 
-        <View style={styles.bottomSection}>
-          <View style={styles.dots}>
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-            <View style={[styles.dot, styles.dotActive]} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-          </View>
+        <View style={styles.bottom}>
           <TouchableOpacity
             style={styles.button}
             onPress={() => router.push('/(onboarding)/sample-exercise')}
           >
-            <Text style={styles.buttonText}>Continue</Text>
+            <Text style={styles.buttonText}>Try a Quick Exercise</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -74,6 +74,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   inner: { flex: 1, justifyContent: 'space-between', paddingHorizontal: spacing.xl },
   topSection: { flex: 1, justifyContent: 'center' },
+  badge: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.accentLight,
+    letterSpacing: 2,
+    marginBottom: spacing.md,
+  },
   title: {
     fontSize: 28,
     fontWeight: '800',
@@ -103,15 +110,14 @@ const styles = StyleSheet.create({
   pillarText: { flex: 1 },
   pillarName: { fontSize: 16, fontWeight: '700', color: colors.white, marginBottom: 2 },
   pillarDesc: { fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
-  bottomSection: { paddingBottom: spacing.xl },
-  dots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: spacing.lg,
+  footer: {
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.xl,
+    letterSpacing: 0.3,
   },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.border },
-  dotActive: { backgroundColor: colors.accentLight, width: 24 },
+  bottom: { paddingBottom: spacing.xl },
   button: {
     backgroundColor: colors.accent,
     borderRadius: 12,

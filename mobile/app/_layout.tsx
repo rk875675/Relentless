@@ -43,10 +43,10 @@ function RouteGuard() {
       } else if (onboardingComplete && !hasPremiumAccess) {
         router.replace('/(onboarding)/paywall');
       } else {
-        router.replace('/(onboarding)/credibility');
+        router.replace('/(onboarding)/welcome');
       }
     } else if (session && !onboardingComplete && !inOnboarding) {
-      router.replace('/(onboarding)/credibility');
+      router.replace('/(onboarding)/welcome');
     } else if (session && onboardingComplete && !hasPremiumAccess && !onPaywall && !inAuth) {
       router.replace('/(onboarding)/paywall');
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
