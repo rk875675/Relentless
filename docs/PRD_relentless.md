@@ -143,9 +143,12 @@ The 3 categories are independent. There is no combined overall score.
 Each ring is scored 0–100.
 
 MAC scoring — growth
-First completion of a lesson gives a meaningful base gain (+12 points) to the lesson's MAC category/categories.
-Replays contribute with steep diminishing returns: gain = 12 / completionCount^1.8, floored at 0.5.
-This prevents farming/spam while still rewarding repeat practice.
+Gains are tracked per MAC category per day, not per individual lesson.
+Each category has an independent daily completion count across all lessons (WOD and library) that carry that tag.
+Stepped gains per category per day: 1st = +8, 2nd = +3.5, 3rd = +2.0, 4th = +1.0, 5th+ = +0.5.
+Daily counts reset at midnight (UTC).
+Multi-tag lessons apply gains independently to each of their categories using that category's own daily count.
+This prevents farming/spam while still rewarding multiple sessions per day with diminishing returns.
 
 MAC scoring — decay
 Two decay mechanisms, both applied to all 3 rings uniformly:

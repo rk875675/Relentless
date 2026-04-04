@@ -101,6 +101,13 @@ export default function LessonPlayerScreen() {
   const [errorMsg, setErrorMsg] = useState('');
   const [journalText, setJournalText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [doneDeltas, setDoneDeltas] = useState<Record<string, { amount: number; reason: string }> | null>(null);
+
+  const doneAnim1 = useRef(new Animated.Value(0)).current;
+  const doneAnim2 = useRef(new Animated.Value(0)).current;
+  const doneAnim3 = useRef(new Animated.Value(0)).current;
+  const doneAnim4 = useRef(new Animated.Value(0)).current;
+  const doneScale = useRef(new Animated.Value(0.3)).current;
 
   // Legacy flat-mode state
   const [elapsed, setElapsed] = useState(0);
@@ -275,6 +282,7 @@ export default function LessonPlayerScreen() {
     } else {
       if (completeData?.progress?.deltas) {
         setPendingGainDeltas(completeData.progress.deltas as any);
+        setDoneDeltas(completeData.progress.deltas);
       }
       bustCache('/lessons/next', '/progress', '/streak');
       setPhase('done');
@@ -574,6 +582,24 @@ export default function LessonPlayerScreen() {
     }).start();
   }, [blockProgress, legacyProgress, hasBlocks]);
 
+  useEffect(() => {
+    if (phase !== 'done') return;
+    doneAnim1.setValue(0);
+    doneAnim2.setValue(0);
+    doneAnim3.setValue(0);
+    doneAnim4.setValue(0);
+    doneScale.setValue(0.3);
+    Animated.stagger(120, [
+      Animated.parallel([
+        Animated.timing(doneAnim1, { toValue: 1, duration: 150, useNativeDriver: true }),
+        Animated.spring(doneScale, { toValue: 1, friction: 5, tension: 80, useNativeDriver: true }),
+      ]),
+      Animated.timing(doneAnim2, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.timing(doneAnim3, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.timing(doneAnim4, { toValue: 1, duration: 300, useNativeDriver: true }),
+    ]).start();
+  }, [phase, doneAnim1, doneAnim2, doneAnim3, doneAnim4, doneScale]);
+
   const progressBarWidth = progressAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
@@ -819,12 +845,36 @@ export default function LessonPlayerScreen() {
 
         {phase === 'done' && lesson && (
           <View style={styles.centered}>
-            <Ionicons name="trophy-outline" size={56} color={colors.accentLight} />
-            <Text style={styles.doneTitle}>Workout Complete</Text>
-            <Text style={styles.doneSub}>{lesson.title}</Text>
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => router.back()}>
-              <Text style={styles.primaryBtnText}>Done</Text>
-            </TouchableOpacity>
+            <Animated.View style={{ opacity: doneAnim1, transform: [{ scale: doneScale }] }}>
+              <View style={styles.trophyGlow}>
+                <Ionicons name="trophy" size={72} color={colors.accentLight} />
+              </View>
+            </Animated.View>
+
+            <Animated.View style={{ opacity: doneAnim2, alignItems: 'center' as const }}>
+              <Text style={styles.doneTitle}>Workout Complete</Text>
+              <Text style={styles.doneSub}>{lesson.title}</Text>
+            </Animated.View>
+
+            {doneDeltas && Object.keys(doneDeltas).length > 0 && (
+              <Animated.View style={[styles.doneDeltaRow, { opacity: doneAnim3 }]}>
+                {Object.entries(doneDeltas).map(([cat, d]) => (
+                  <View key={cat} style={styles.doneDeltaBadge}>
+                    <View style={[styles.doneDeltaDot, { backgroundColor: MAC_COLORS[cat] ?? colors.accentLight }]} />
+                    <Text style={styles.doneDeltaCat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</Text>
+                    <Text style={[styles.doneDeltaValue, { color: d.amount >= 0 ? colors.success : colors.error }]}>
+                      {d.amount >= 0 ? '+' : ''}{(Math.round(d.amount * 10) / 10).toFixed(1)}
+                    </Text>
+                  </View>
+                ))}
+              </Animated.View>
+            )}
+
+            <Animated.View style={{ opacity: doneAnim4, marginTop: spacing.sm }}>
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => router.back()}>
+                <Text style={styles.primaryBtnText}>Done</Text>
+              </TouchableOpacity>
+            </Animated.View>
           </View>
         )}
       </SafeAreaView>
@@ -996,7 +1046,49 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginTop: spacing.sm,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  trophyGlow: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(139, 92, 246, 0.08)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.15)',
+  },
+  doneDeltaRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    justifyContent: 'center' as const,
+    gap: 10,
+    marginBottom: spacing.lg,
+  },
+  doneDeltaBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  doneDeltaDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  doneDeltaCat: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    color: colors.textSecondary,
+  },
+  doneDeltaValue: {
+    fontSize: 14,
+    fontWeight: '700' as const,
   },
   terminatedTitle: {
     fontSize: 22,

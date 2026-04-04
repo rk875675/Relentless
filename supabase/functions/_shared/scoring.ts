@@ -11,16 +11,12 @@ import { calendarDaysInclusiveYmd } from "./library.ts";
 // Tunables
 // ---------------------------------------------------------------------------
 export const S = {
-  /** Points for the first completion of a lesson in a category. */
-  BASE_FIRST_GAIN: 8.0,
-  /** Exponent for replay diminishing returns: gain = BASE / count^EXP. */
-  REPLAY_EXPONENT: 1.8,
-  /** Floor so replays are never worth exactly 0. */
-  MIN_REPLAY_GAIN: 0.5,
-  /** Points lost per calendar day of inactivity (applies to all 3 rings). */
-  DAILY_TIME_DECAY: 1.0,
-  /** Extra points lost per missed-WOD day (applies to all 3 rings). */
-  MISSED_WOD_PENALTY: 2.0,
+  /** Stepped gains per tag per day: 1st completion = 8, 2nd = 3.5, etc. (PRD §7). */
+  GAIN_STEPS: [8.0, 3.5, 2.0, 1.0, 0.5] as readonly number[],
+  /** Points lost per calendar day of inactivity (PRD §7: -2.0). */
+  DAILY_TIME_DECAY: 2.0,
+  /** Extra points lost per missed-WOD day (PRD §7: -3.0). */
+  MISSED_WOD_PENALTY: 3.0,
   MAX_SCORE: 100.0,
   MIN_SCORE: 0.0,
 } as const;
@@ -67,36 +63,37 @@ export function yesterdayYmd(todayYmd: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Gain
+// Gain — per-tag daily stepped model
 // ---------------------------------------------------------------------------
-/** Points earned for this completion (count includes the current one). */
-export function computeGain(completionCount: number): number {
-  if (completionCount <= 1) return S.BASE_FIRST_GAIN;
-  return Math.max(
-    S.MIN_REPLAY_GAIN,
-    S.BASE_FIRST_GAIN / Math.pow(completionCount, S.REPLAY_EXPONENT),
-  );
+/** Gain for the Nth tag completion today (1-indexed). */
+export function computeGain(tagDailyCount: number): number {
+  const steps = S.GAIN_STEPS;
+  const idx = Math.min(Math.max(tagDailyCount - 1, 0), steps.length - 1);
+  return steps[idx];
 }
 
-/** Apply gain to scores for the lesson's categories. */
+/**
+ * Apply per-tag gains to scores.
+ * Each category uses its own daily count to look up the stepped gain.
+ */
 export function applyGain(
   scores: MacScores,
-  gain: number,
   categories: string[],
+  tagDailyCounts: Record<string, number>,
   lessonTitle: string,
-  completionCount: number,
 ): { scores: MacScores; deltas: MacDeltas } {
   const out = { ...scores };
   const deltas: MacDeltas = {};
-  const reason =
-    completionCount > 1
-      ? `Replay #${completionCount} of "${lessonTitle}" (+${fmt(gain)})`
-      : `Completed "${lessonTitle}" (+${fmt(gain)})`;
 
   for (const cat of categories) {
     const key = `${cat}_score` as keyof MacScores;
     if (key in out) {
+      const dailyCount = tagDailyCounts[cat] ?? 1;
+      const gain = computeGain(dailyCount);
       out[key] = clamp(out[key] + gain);
+      const reason = dailyCount > 1
+        ? `${cat} session #${dailyCount} today (+${fmt(gain)})`
+        : `Completed "${lessonTitle}" (+${fmt(gain)})`;
       (deltas as Record<string, ScoreDelta>)[cat] = { amount: gain, reason };
     }
   }

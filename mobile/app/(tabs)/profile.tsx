@@ -45,7 +45,7 @@ export default function ProfileScreen() {
   const [pendingDate, setPendingDate] = useState<Date>(new Date());
   const [dateSaving, setDateSaving] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
-  const [devToolsVisible, setDevToolsVisible] = useState(true);
+  const [devToolsVisible, setDevToolsVisible] = useState(__DEV__);
   const brandTapCount = useRef(0);
   const brandTapTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -103,6 +103,22 @@ export default function ProfileScreen() {
   const email = session?.user?.email ?? '';
   const displayName = email ? email.split('@')[0] : 'Athlete';
 
+  const daysUntilCompetition = competitionDate
+    ? Math.ceil((new Date(competitionDate + 'T00:00:00').getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
+  const showCountdown = daysUntilCompetition != null && daysUntilCompetition > 0;
+
+  const lastActiveText = streak?.last_activity_date
+    ? (() => {
+        const diffDays = Math.max(0, Math.floor(
+          (Date.now() - new Date(streak.last_activity_date + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24),
+        ));
+        if (diffDays === 0) return 'Active today';
+        if (diffDays === 1) return 'Active yesterday';
+        return `Active ${diffDays} days ago`;
+      })()
+    : null;
+
   return (
     <ScrollView
       style={styles.screen}
@@ -122,8 +138,10 @@ export default function ProfileScreen() {
 
       {/* Identity Hero */}
       <View style={styles.heroSection}>
-        <View style={styles.avatar}>
-          <Ionicons name="person" size={34} color={colors.accent} />
+        <View style={styles.avatarOuter}>
+          <View style={styles.avatar}>
+            <Ionicons name="person" size={38} color={colors.accent} />
+          </View>
         </View>
         <Text style={styles.userName}>{displayName}</Text>
         <Text style={styles.userSport}>Track and Field Athlete</Text>
@@ -131,27 +149,51 @@ export default function ProfileScreen() {
 
       {/* Stats Card */}
       <View style={styles.statsCard}>
-        <StatColumn
-          label="Streak"
-          value={streak?.current_streak ?? 0}
-          icon="flame"
-          iconColor="#f59e0b"
-        />
-        <View style={styles.statDivider} />
-        <StatColumn
-          label="Best Streak"
-          value={streak?.longest_streak ?? 0}
-          icon="trophy-outline"
-          iconColor={colors.accentLight}
-        />
-        <View style={styles.statDivider} />
-        <StatColumn
-          label="Lessons"
-          value={totalCompletions ?? 0}
-          icon="checkmark-circle-outline"
-          iconColor={colors.success}
-        />
+        <View style={styles.statsColumns}>
+          <StatColumn
+            label="Streak"
+            value={streak?.current_streak ?? 0}
+            icon="flame"
+            iconColor="#f59e0b"
+            iconBg="rgba(245, 158, 11, 0.10)"
+          />
+          <View style={styles.statDivider} />
+          <StatColumn
+            label="Best Streak"
+            value={streak?.longest_streak ?? 0}
+            icon="trophy-outline"
+            iconColor={colors.accentLight}
+            iconBg={colors.accentSubtle}
+          />
+          <View style={styles.statDivider} />
+          <StatColumn
+            label="Lessons"
+            value={totalCompletions ?? 0}
+            icon="checkmark-circle-outline"
+            iconColor={colors.success}
+            iconBg="rgba(74, 222, 128, 0.10)"
+          />
+        </View>
+        {lastActiveText && (
+          <View style={styles.lastActiveRow}>
+            <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+            <Text style={styles.lastActiveText}>{lastActiveText}</Text>
+          </View>
+        )}
       </View>
+
+      {/* Competition Countdown */}
+      {showCountdown && (
+        <View style={styles.countdownCard}>
+          <View style={styles.countdownIconWrap}>
+            <Ionicons name="calendar" size={18} color={colors.accent} />
+          </View>
+          <View style={styles.countdownTextCol}>
+            <Text style={styles.countdownDays}>{daysUntilCompetition} days</Text>
+            <Text style={styles.countdownLabel}>until competition</Text>
+          </View>
+        </View>
+      )}
 
       {/* Settings Section */}
       <Text style={styles.sectionLabel}>SETTINGS</Text>
@@ -297,15 +339,19 @@ function StatColumn({
   value,
   icon,
   iconColor,
+  iconBg,
 }: {
   label: string;
   value: number;
   icon: keyof typeof Ionicons.glyphMap;
   iconColor: string;
+  iconBg?: string;
 }) {
   return (
     <View style={styles.statCol}>
-      <Ionicons name={icon} size={18} color={iconColor} style={{ marginBottom: 6 }} />
+      <View style={[styles.statIconWrap, iconBg ? { backgroundColor: iconBg } : undefined]}>
+        <Ionicons name={icon} size={18} color={iconColor} />
+      </View>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
@@ -393,45 +439,68 @@ const styles = StyleSheet.create({
   // Identity Hero
   heroSection: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 32,
+  },
+  avatarOuter: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: 'rgba(139, 92, 246, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   avatar: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: colors.accentSubtle,
     borderWidth: 1.5,
     borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
   },
   userName: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
     color: colors.textPrimary,
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
     marginBottom: 4,
   },
   userSport: {
     fontSize: 13,
     color: colors.textSecondary,
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
   },
 
   // Stats Card
   statsCard: {
-    flexDirection: 'row',
     backgroundColor: colors.surface,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 20,
-    marginBottom: 28,
+    borderTopWidth: 2,
+    borderTopColor: 'rgba(139, 92, 246, 0.3)',
+    paddingTop: 22,
+    paddingBottom: 16,
+    marginBottom: 36,
+  },
+  statsColumns: {
+    flexDirection: 'row',
   },
   statCol: {
     flex: 1,
     alignItems: 'center',
+  },
+  statIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
   statDivider: {
     width: StyleSheet.hairlineWidth,
@@ -439,10 +508,10 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   statValue: {
-    fontSize: 26,
+    fontSize: 30,
     fontWeight: '700',
     color: colors.textPrimary,
-    lineHeight: 32,
+    lineHeight: 36,
   },
   statLabel: {
     fontSize: 11,
@@ -451,14 +520,65 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginTop: 2,
   },
+  lastActiveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    marginHorizontal: 20,
+  },
+  lastActiveText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.textMuted,
+    letterSpacing: 0.3,
+  },
+  countdownCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    marginBottom: 36,
+  },
+  countdownIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.accentSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countdownTextCol: {
+    flex: 1,
+  },
+  countdownDays: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  countdownLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
 
   // Settings section
   sectionLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.textMuted,
     letterSpacing: 1.5,
-    marginBottom: 10,
+    marginBottom: 12,
     marginLeft: 4,
   },
   rowsContainer: {
@@ -467,7 +587,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: 16,
   },
   profileRow: {
     flexDirection: 'row',
@@ -547,14 +667,14 @@ const styles = StyleSheet.create({
 
   // Sign out
   signOutBtn: {
-    marginTop: 32,
+    marginTop: 48,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.25)',
+    borderColor: 'rgba(239,68,68,0.15)',
   },
   signOutText: {
     color: colors.error,

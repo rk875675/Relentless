@@ -19,7 +19,6 @@ import { ensureProgramStartIfHome } from "../_shared/program_start.ts";
 import {
   type MacScores,
   type MacDeltas,
-  computeGain,
   applyGain,
   applyDecay,
   decayGapDays,
@@ -577,13 +576,39 @@ async function handleComplete(
     allDeltas = decay.deltas;
   }
 
-  const gain = computeGain(rpcResult.lesson_completion_count as number);
+  // Count today's per-tag completions (including the one just inserted).
+  // Uses UTC date boundaries; close enough for daily reset semantics.
+  const utcToday = new Date().toISOString().slice(0, 10);
+  const { data: todayRows } = await supabase
+    .from("user_lesson_completions")
+    .select("id, lesson_id")
+    .eq("user_id", userId)
+    .gte("completed_at", utcToday + "T00:00:00Z");
+
+  const todayLessonIds = [
+    ...new Set((todayRows ?? []).map((r: { lesson_id: string }) => r.lesson_id)),
+  ];
+  const tagDailyCounts: Record<string, number> = {};
+  if (todayLessonIds.length > 0) {
+    const { data: catRows } = await supabase
+      .from("lesson_categories")
+      .select("lesson_id, category")
+      .in("lesson_id", todayLessonIds);
+    for (const row of todayRows ?? []) {
+      const cats = (catRows ?? []).filter(
+        (c: { lesson_id: string }) => c.lesson_id === row.lesson_id,
+      );
+      for (const cat of cats) {
+        tagDailyCounts[cat.category] = (tagDailyCounts[cat.category] ?? 0) + 1;
+      }
+    }
+  }
+
   const gainResult = applyGain(
     scores,
-    gain,
     lessonCategories,
+    tagDailyCounts,
     lessonRow.title as string,
-    rpcResult.lesson_completion_count as number,
   );
   scores = gainResult.scores;
 

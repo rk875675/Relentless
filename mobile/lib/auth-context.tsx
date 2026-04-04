@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { bustCache } from './api-cache';
+import { clearPendingGainDeltas } from './pending-deltas';
 
 const FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000;
 
@@ -123,6 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setCompetitionDate(null);
           setEntitlementStatus(null);
           setDevPremiumBypass(false);
+          clearPendingGainDeltas();
         }
       },
     );
@@ -146,6 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     setDevPremiumBypass(false);
     bustCache();
+    clearPendingGainDeltas();
     await supabase.auth.signOut();
   };
 
