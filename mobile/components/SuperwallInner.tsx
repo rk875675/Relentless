@@ -7,6 +7,7 @@ import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
 let SuperwallProvider: any = ({ children }: { children: ReactNode }) => <>{children}</>;
 let useSuperwallEvents: any = () => {};
 let useUser: any = () => ({ identify: async () => {}, signOut: async () => {} });
+let useSuperwall: any = () => ({ isConfigured: false });
 
 if (SUPERWALL_ENABLED) {
   try {
@@ -15,6 +16,7 @@ if (SUPERWALL_ENABLED) {
     SuperwallProvider = sw.SuperwallProvider;
     useSuperwallEvents = sw.useSuperwallEvents;
     useUser = sw.useUser;
+    useSuperwall = sw.useSuperwall;
     console.log('[Superwall] Module loaded OK');
   } catch (e: any) {
     console.warn('[Superwall] Failed to load module:', e?.message);
@@ -42,13 +44,16 @@ function extractOriginalTransactionId(params: Record<string, unknown>): string |
 function SuperwallIdentitySync() {
   const { session } = useAuth();
   const { identify, signOut: superwallSignOut } = useUser();
+  const { isConfigured } = useSuperwall((s: any) => ({ isConfigured: s.isConfigured }));
+
   useEffect(() => {
+    if (!isConfigured) return;
     if (session?.user?.id) {
       identify(session.user.id, { restorePaywallAssignments: true }).catch(() => {});
     } else {
       superwallSignOut().catch(() => {});
     }
-  }, [session?.user?.id, identify, superwallSignOut]);
+  }, [session?.user?.id, identify, superwallSignOut, isConfigured]);
   return null;
 }
 
@@ -76,10 +81,6 @@ function SuperwallPurchaseSync() {
   return null;
 }
 
-/*
- * DIAGNOSTIC MODE: sync components disabled to isolate crash.
- * If bare provider works, re-enable SuperwallIdentitySync & SuperwallPurchaseSync.
- */
 export default function SuperwallInner({ children }: { children: ReactNode }) {
   console.log('[Superwall] SuperwallInner rendering...');
   return (
@@ -87,6 +88,8 @@ export default function SuperwallInner({ children }: { children: ReactNode }) {
       apiKeys={{ ios: SUPERWALL_IOS_API_KEY }}
       onConfigurationError={(err: Error) => { console.warn('[Superwall] configuration error', err?.message); }}
     >
+      <SuperwallIdentitySync />
+      <SuperwallPurchaseSync />
       {children}
     </SuperwallProvider>
   );
