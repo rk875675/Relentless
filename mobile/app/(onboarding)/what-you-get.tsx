@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 6;
 
 const DELIVERABLES = [
   {
@@ -35,7 +35,7 @@ export default function WhatYouGetScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={6} total={TOTAL_STEPS} />
+      <ProgressBar step={5} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         <View style={styles.topSection}>
           <Text style={styles.title}>Your daily training</Text>
@@ -61,7 +61,7 @@ export default function WhatYouGetScreen() {
         <View style={styles.bottom}>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => router.push('/(onboarding)/struggle')}
+            onPress={() => router.push('/(onboarding)/competition-date')}
           >
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>

@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 6;
 
 const OUTCOMES = [
   {
@@ -30,7 +30,7 @@ export default function GoalsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={3} total={TOTAL_STEPS} />
+      <ProgressBar step={2} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         <View style={styles.topSection}>
           <Text style={styles.title}>What Relentless helps you achieve</Text>

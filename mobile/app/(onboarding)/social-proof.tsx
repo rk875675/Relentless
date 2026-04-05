@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 6;
 const AUTO_SWIPE_MS = 4000;
 const CARD_WIDTH = Dimensions.get('window').width - spacing.xl * 2;
 
@@ -89,7 +89,7 @@ export default function SocialProofScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={2} total={TOTAL_STEPS} />
+      <ProgressBar step={1} total={TOTAL_STEPS} />
       <Animated.View style={[styles.inner, { opacity: fadeIn }]}>
         <View style={styles.topSection}>
           <View style={styles.statCard}>

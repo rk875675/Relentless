@@ -2,10 +2,7 @@ import { useRef, useEffect } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
-
-const TOTAL_STEPS = 8;
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -23,7 +20,6 @@ export default function WelcomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={1} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         <View style={styles.center}>
           <View style={styles.glow} />

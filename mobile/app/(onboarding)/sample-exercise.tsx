@@ -12,21 +12,19 @@ import { useRouter } from 'expo-router';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 6;
 
 const RATINGS = [1, 2, 3, 4, 5];
-const FEELINGS = ['Nerves', 'Doubt', 'Pressure', 'Overthinking'];
 const CUES = ['Stay loose', 'One step at a time', 'Trust the work', 'Breathe and go'];
 const BREATH_COUNT = 5;
 
-type Step = 'intro' | 'rate-before' | 'breathe' | 'feelings' | 'cue' | 'rate-after' | 'done';
+type Step = 'intro' | 'rate-before' | 'breathe' | 'cue' | 'rate-after' | 'done';
 
 export default function SampleExerciseScreen() {
   const router = useRouter();
   const [step, setStep] = useState<Step>('intro');
   const [ratingBefore, setRatingBefore] = useState<number | null>(null);
   const [ratingAfter, setRatingAfter] = useState<number | null>(null);
-  const [selectedFeelings, setSelectedFeelings] = useState<string[]>([]);
   const [selectedCue, setSelectedCue] = useState<string | null>(null);
   const [breathIndex, setBreathIndex] = useState(0);
 
@@ -85,12 +83,6 @@ export default function SampleExerciseScreen() {
     runBreath();
     return () => { cancelled = true; };
   }, [step, scale, opacity]);
-
-  const toggleFeeling = (f: string) => {
-    setSelectedFeelings((prev) =>
-      prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f],
-    );
-  };
 
   const renderIntro = () => (
     <View style={styles.topSection}>
@@ -169,33 +161,11 @@ export default function SampleExerciseScreen() {
     </View>
   );
 
-  const renderFeelings = () => (
-    <View style={styles.topSection}>
-      <Text style={styles.title}>{"What's here right now?"}</Text>
-      <Text style={styles.body}>
-        {"Don't fight it. Just notice what's present."}
-      </Text>
-      <View style={styles.chipRow}>
-        {FEELINGS.map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.chip, selectedFeelings.includes(f) && styles.chipActive]}
-            onPress={() => toggleFeeling(f)}
-          >
-            <Text style={[styles.chipText, selectedFeelings.includes(f) && styles.chipTextActive]}>
-              {f}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-
   const renderCue = () => (
     <View style={styles.topSection}>
       <Text style={styles.title}>Pick one performance cue</Text>
       <Text style={styles.body}>
-        {"Let the feeling be there. Now choose one simple thought to carry forward."}
+        {"You've just reset. Now choose one thought to carry into competition."}
       </Text>
       <View style={styles.cueList}>
         {CUES.map((c) => (
@@ -235,17 +205,30 @@ export default function SampleExerciseScreen() {
 
   const renderDone = () => {
     const improved = ratingBefore && ratingAfter && ratingAfter < ratingBefore;
+    const same = ratingBefore && ratingAfter && ratingAfter === ratingBefore;
     return (
       <View style={styles.topSection}>
         <Text style={styles.badge}>EXERCISE COMPLETE</Text>
         <Text style={styles.title}>
-          {improved ? 'Nice. You just shifted your state.' : 'That was a reset.'}
+          {improved
+            ? 'You just shifted your mental state.'
+            : same
+            ? 'You stayed locked in.'
+            : 'That was a reset.'}
         </Text>
         <Text style={styles.body}>
           {improved
-            ? `You went from a ${ratingBefore} to a ${ratingAfter}. Imagine what 30 days of this can do.`
-            : 'Every rep builds your mental game. Imagine what 30 days of this can do.'}
+            ? `You went from a ${ratingBefore} to a ${ratingAfter} in under 60 seconds. That's real. That's trainable.`
+            : same
+            ? 'Maintaining your state under pressure is a skill. You just practiced it.'
+            : 'Awareness is the first step. The shift comes with reps.'}
         </Text>
+        <View style={styles.doneCard}>
+          <Text style={styles.doneCardTitle}>This is what mental training feels like</Text>
+          <Text style={styles.doneCardBody}>
+            Short, focused exercises that build Mindfulness, Acceptance, and Commitment — the three pillars elite athletes train daily.
+          </Text>
+        </View>
       </View>
     );
   };
@@ -255,7 +238,6 @@ export default function SampleExerciseScreen() {
       case 'intro': return renderIntro();
       case 'rate-before': return renderRateBefore();
       case 'breathe': return renderBreathe();
-      case 'feelings': return renderFeelings();
       case 'cue': return renderCue();
       case 'rate-after': return renderRateAfter();
       case 'done': return renderDone();
@@ -267,7 +249,6 @@ export default function SampleExerciseScreen() {
       case 'intro': return true;
       case 'rate-before': return ratingBefore !== null;
       case 'breathe': return false;
-      case 'feelings': return selectedFeelings.length > 0;
       case 'cue': return selectedCue !== null;
       case 'rate-after': return ratingAfter !== null;
       case 'done': return true;
@@ -275,7 +256,7 @@ export default function SampleExerciseScreen() {
   };
 
   const advance = () => {
-    const order: Step[] = ['intro', 'rate-before', 'breathe', 'feelings', 'cue', 'rate-after', 'done'];
+    const order: Step[] = ['intro', 'rate-before', 'breathe', 'cue', 'rate-after', 'done'];
     const idx = order.indexOf(step);
     if (step === 'done') {
       router.push('/(onboarding)/what-you-get');
@@ -292,7 +273,7 @@ export default function SampleExerciseScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={5} total={TOTAL_STEPS} />
+      <ProgressBar step={4} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         {getContent()}
 
@@ -432,20 +413,25 @@ const styles = StyleSheet.create({
     marginTop: 40,
   },
 
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  chip: {
+  doneCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    padding: spacing.lg,
+    marginTop: spacing.xl,
   },
-  chipActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentSubtle,
+  doneCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.white,
+    marginBottom: spacing.sm,
   },
-  chipText: { fontSize: 14, color: colors.textSecondary },
-  chipTextActive: { color: colors.accentLight },
+  doneCardBody: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 21,
+  },
 
   cueList: { gap: 10 },
   cueBtn: {
