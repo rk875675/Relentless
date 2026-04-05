@@ -311,7 +311,7 @@ export default function ProfileScreen() {
               chevron
               onPress={async () => {
                 await resetOnboarding();
-                router.replace('/(onboarding)/paywall' as any);
+                router.replace('/(onboarding)/competition-date' as any);
               }}
             />
             <ProfileRow

@@ -1,0 +1,45 @@
+---
+description: Superwall integration crash fix reference — how to diagnose and fix expo-superwall native crashes
+globs:
+  - mobile/components/SuperwallInner.tsx
+  - mobile/components/SuperwallRoot.tsx
+  - mobile/lib/superwall-config.ts
+alwaysApply: false
+---
+
+# Superwall Crash Fix Reference
+
+## Known crash: SuperwallIdentitySync & SuperwallPurchaseSync cause native crash
+
+**Symptom:** App insta-crashes after `SuperwallInner.tsx` appears in Metro bundler output.
+The crash-loop is a native-level crash that JavaScript error boundaries cannot catch.
+
+**Root cause:** The `useSuperwallEvents` hook (used by `SuperwallPurchaseSync` and internally
+by `SuperwallProvider`) registers native event listeners via `SuperwallExpoModule.addListener()`
+for events like `"onBackPressed"` that are **not declared** in the native module's `Events(...)`
+list in `ios/SuperwallExpoModule.swift`. Depending on ExpoModulesCore version, this can cause
+a native crash (SIGABRT / EXC_BAD_ACCESS) rather than a JS error.
+
+**Fix applied (commit `27f7fef`):**
+1. Disabled `SuperwallIdentitySync` and `SuperwallPurchaseSync` in the render tree.
+2. Removed `options={{ paywalls: { shouldPreload: false } }}` (triggers `onBackPressed` listener path).
+3. Kept only `apiKeys={{ ios: ... }}` and `onConfigurationError` callback.
+4. Added `SuperwallErrorBoundary` in `SuperwallRoot.tsx` as a safety net.
+5. Added diagnostic `console.log` statements for future debugging.
+
+**To restore sync components later:**
+- Re-enable `<SuperwallIdentitySync />` and `<SuperwallPurchaseSync />` in `SuperwallInner.tsx`
+  only after confirming `expo-superwall` has registered all JS-side event names in the native
+  module's `Events(...)` declaration (check `node_modules/expo-superwall/ios/SuperwallExpoModule.swift`).
+- Test incrementally: add one component at a time, rebuild, and verify no crash.
+
+**Quick disable switch:** Set `EXPO_PUBLIC_SUPERWALL_DISABLE=1` in `mobile/.env` to bypass
+Superwall entirely without code changes.
+
+## Diagnostic checklist for future Superwall crashes
+
+1. Check Metro terminal: does crash happen after `[Superwall] SuperwallInner rendering...`?
+2. If yes → native crash during SDK init. Strip sync components first.
+3. If crash happens before `[Superwall] Module loaded OK` → module import issue.
+4. If crash happens without any `[Superwall]` logs → `SUPERWALL_ENABLED` is false or issue is elsewhere.
+5. Run `expo doctor` to check for missing peer dependencies (e.g., `expo-asset`).

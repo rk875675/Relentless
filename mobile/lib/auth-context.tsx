@@ -169,8 +169,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resetOnboarding = useCallback(async () => {
     if (!session?.user) return;
-    await supabase.from('profiles').update({ onboarding_completed: false }).eq('id', session.user.id);
     setOnboardingComplete(false);
+    setDevPremiumBypass(false);
+    await supabase.from('profiles').update({ onboarding_completed: false }).eq('id', session.user.id);
   }, [session]);
 
   const updateCompetitionDate = useCallback(async (date: string | null): Promise<string | null> => {
