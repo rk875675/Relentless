@@ -22,7 +22,8 @@
     "plugins": [
       "expo-router",
       "@react-native-community/datetimepicker",
-      "expo-audio"
+      "expo-audio",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
@@ -32,6 +33,13 @@
       "eas": {
         "projectId": "90cd2d06-b2b9-4063-9f3b-75e81696aead"
       }
+    },
+    "android": {
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.rkuma.relentless"
     }
   }
 }

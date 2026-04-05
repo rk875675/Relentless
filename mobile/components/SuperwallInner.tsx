@@ -10,11 +10,15 @@ let useUser: any = () => ({ identify: async () => {}, signOut: async () => {} })
 
 if (SUPERWALL_ENABLED) {
   try {
+    console.log('[Superwall] Loading expo-superwall module...');
     const sw = require('expo-superwall');
     SuperwallProvider = sw.SuperwallProvider;
     useSuperwallEvents = sw.useSuperwallEvents;
     useUser = sw.useUser;
-  } catch {}
+    console.log('[Superwall] Module loaded OK');
+  } catch (e: any) {
+    console.warn('[Superwall] Failed to load module:', e?.message);
+  }
 }
 
 function extractOriginalTransactionId(params: Record<string, unknown>): string | undefined {
@@ -72,15 +76,17 @@ function SuperwallPurchaseSync() {
   return null;
 }
 
+/*
+ * DIAGNOSTIC MODE: sync components disabled to isolate crash.
+ * If bare provider works, re-enable SuperwallIdentitySync & SuperwallPurchaseSync.
+ */
 export default function SuperwallInner({ children }: { children: ReactNode }) {
+  console.log('[Superwall] SuperwallInner rendering...');
   return (
     <SuperwallProvider
-      apiKeys={{ ios: SUPERWALL_IOS_API_KEY, android: SUPERWALL_IOS_API_KEY }}
-      options={{ paywalls: { shouldPreload: false } }}
+      apiKeys={{ ios: SUPERWALL_IOS_API_KEY }}
       onConfigurationError={(err: Error) => { console.warn('[Superwall] configuration error', err?.message); }}
     >
-      <SuperwallIdentitySync />
-      <SuperwallPurchaseSync />
       {children}
     </SuperwallProvider>
   );
