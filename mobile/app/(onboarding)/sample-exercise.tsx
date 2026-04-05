@@ -10,12 +10,29 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
 const TOTAL_STEPS = 6;
 const RATINGS = [1, 2, 3, 4, 5];
 const { width: SCREEN_W } = Dimensions.get('window');
+
+// ---------------------------------------------------------------------------
+// PLACEHOLDER: Replace with Coach Grant's MP3 URLs.
+// Upload to Supabase storage 'lesson-audio/onboarding/', paste URLs below.
+// When non-null, audio plays and bars animate; when null, timer-based.
+// ---------------------------------------------------------------------------
+const SCENE_AUDIO_URL: string | null = null;
+const FOCUS_AUDIO_URL: string | null = null;
+
+const SCENE_LINES = [
+  'Think of a real moment where you need to perform.',
+  'A race. A rep. A tryout.',
+  'Put yourself there.',
+  'Feel the environment around you.',
+];
+const SCENE_LINE_MS = 2500;
 
 const SCATTER_WORDS = [
   { word: 'Doubt', x: 0.12, y: 0.10 },
@@ -26,6 +43,8 @@ const SCATTER_WORDS = [
 ];
 
 const CUES = ['Stay loose', 'One step at a time', 'Trust the work', 'Breathe and go'];
+const NUM_BARS = 5;
+const BAR_HEIGHTS = [10, 20, 28, 16, 22];
 
 type Step = 'intro' | 'rate-before' | 'scene' | 'focus' | 'cue' | 'rate-after' | 'done';
 type FocusPhase = 'scatter' | 'tunnel' | 'release';
@@ -37,7 +56,100 @@ export default function SampleExerciseScreen() {
   const [ratingAfter, setRatingAfter] = useState<number | null>(null);
   const [selectedCue, setSelectedCue] = useState<string | null>(null);
   const [focusPhase, setFocusPhase] = useState<FocusPhase>('scatter');
+  const [sceneLineIdx, setSceneLineIdx] = useState(0);
+  const sceneTextFade = useRef(new Animated.Value(0)).current;
 
+  // --- Audio bars ---
+  const barScales = useRef(
+    Array.from({ length: NUM_BARS }, () => new Animated.Value(0.4)),
+  ).current;
+
+  const animateBar = useCallback((anim: Animated.Value) => {
+    const target = 0.2 + Math.random() * 0.8;
+    const duration = 160 + Math.random() * 440;
+    Animated.timing(anim, { toValue: target, duration, useNativeDriver: true }).start(
+      ({ finished }) => { if (finished) animateBar(anim); },
+    );
+  }, []);
+
+  const barsActive = step === 'scene' || (step === 'focus' && focusPhase !== 'release');
+
+  useEffect(() => {
+    if (!barsActive) {
+      barScales.forEach((s) => { s.stopAnimation(); s.setValue(0.4); });
+      return;
+    }
+    barScales.forEach((s) => animateBar(s));
+    return () => { barScales.forEach((s) => s.stopAnimation()); };
+  }, [barsActive, animateBar, barScales]);
+
+  // --- Audio players (one per narrated section) ---
+  const scenePlayer = useAudioPlayer(step === 'scene' ? SCENE_AUDIO_URL : null, {
+    updateInterval: 200,
+    downloadFirst: false,
+  });
+  const sceneStatus = useAudioPlayerStatus(scenePlayer);
+
+  const focusPlayer = useAudioPlayer(step === 'focus' ? FOCUS_AUDIO_URL : null, {
+    updateInterval: 200,
+    downloadFirst: false,
+  });
+  const focusStatus = useAudioPlayerStatus(focusPlayer);
+
+  useEffect(() => {
+    if (step !== 'scene' && step !== 'focus') return;
+    void setAudioModeAsync({
+      playsInSilentMode: true,
+      interruptionMode: 'doNotMix',
+      allowsRecording: false,
+      shouldPlayInBackground: false,
+    });
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== 'scene' || !SCENE_AUDIO_URL) return;
+    if (sceneStatus.isLoaded && !sceneStatus.playing) {
+      void scenePlayer.seekTo(0).then(() => scenePlayer.play());
+    }
+  }, [step, sceneStatus.isLoaded]);
+
+  useEffect(() => {
+    if (step !== 'focus' || !FOCUS_AUDIO_URL) return;
+    if (focusStatus.isLoaded && !focusStatus.playing) {
+      void focusPlayer.seekTo(0).then(() => focusPlayer.play());
+    }
+  }, [step, focusStatus.isLoaded]);
+
+  // --- Scene timed text ---
+  useEffect(() => {
+    if (step !== 'scene') return;
+    setSceneLineIdx(0);
+    sceneTextFade.setValue(0);
+
+    let lineIdx = 0;
+    const showLine = () => {
+      sceneTextFade.setValue(0);
+      setSceneLineIdx(lineIdx);
+      Animated.timing(sceneTextFade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    };
+
+    showLine();
+    const interval = setInterval(() => {
+      lineIdx++;
+      if (lineIdx >= SCENE_LINES.length) {
+        clearInterval(interval);
+        setTimeout(() => setStep('focus'), 1500);
+        return;
+      }
+      Animated.timing(sceneTextFade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() => {
+        showLine();
+      });
+    }, SCENE_LINE_MS);
+
+    return () => clearInterval(interval);
+  }, [step]);
+
+  // --- Focus animation refs ---
   const wordOpacities = useRef(SCATTER_WORDS.map(() => new Animated.Value(0))).current;
   const wordDrifts = useRef(SCATTER_WORDS.map(() => new Animated.Value(0))).current;
   const circleScale = useRef(new Animated.Value(2.5)).current;
@@ -65,7 +177,6 @@ export default function SampleExerciseScreen() {
 
     const tunnelTimer = setTimeout(() => {
       setFocusPhase('tunnel');
-
       Animated.parallel([
         ...wordOpacities.map((o) =>
           Animated.timing(o, { toValue: 0.08, duration: 1200, useNativeDriver: true }),
@@ -74,7 +185,6 @@ export default function SampleExerciseScreen() {
         Animated.timing(circleScale, { toValue: 1, duration: 2500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         Animated.timing(labelOpacity, { toValue: 1, duration: 800, delay: 600, useNativeDriver: true }),
       ]).start();
-
       const pulseLoop = () => {
         Animated.sequence([
           Animated.timing(pulseScale, { toValue: 1.08, duration: 1500, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
@@ -86,7 +196,6 @@ export default function SampleExerciseScreen() {
 
     const releaseTimer = setTimeout(() => {
       setFocusPhase('release');
-
       Animated.parallel([
         Animated.timing(circleOpacity, { toValue: 0, duration: 800, useNativeDriver: true }),
         Animated.timing(labelOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
@@ -94,9 +203,7 @@ export default function SampleExerciseScreen() {
       ]).start();
     }, 16000);
 
-    const advanceTimer = setTimeout(() => {
-      setStep('cue');
-    }, 20000);
+    const advanceTimer = setTimeout(() => setStep('cue'), 20000);
 
     return () => {
       clearTimeout(tunnelTimer);
@@ -125,6 +232,28 @@ export default function SampleExerciseScreen() {
   }, [step]);
 
   const FOCUS_SIZE = SCREEN_W - spacing.xl * 2;
+
+  const audioBars = (
+    <View style={styles.audioCue}>
+      {barScales.map((scaleAnim, i) => (
+        <Animated.View
+          key={i}
+          style={[
+            styles.audioCueBar,
+            {
+              height: BAR_HEIGHTS[i],
+              backgroundColor: colors.accentLight,
+              transform: [{ scaleY: scaleAnim }],
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+
+  // -----------------------------------------------------------------------
+  // Render helpers
+  // -----------------------------------------------------------------------
 
   const renderIntro = () => (
     <View style={styles.topSection}>
@@ -159,16 +288,17 @@ export default function SampleExerciseScreen() {
   );
 
   const renderScene = () => (
-    <View style={styles.topSection}>
-      <Text style={styles.title}>Think of a real moment where you need to perform.</Text>
-      <Text style={styles.body}>
-        A race, a rep, a tryout — something coming up. Put yourself there. Feel the environment around you.
-      </Text>
+    <View style={styles.sceneSection}>
+      {audioBars}
+      <Animated.Text style={[styles.sceneLine, { opacity: sceneTextFade }]}>
+        {SCENE_LINES[sceneLineIdx]}
+      </Animated.Text>
     </View>
   );
 
   const renderFocus = () => (
     <View style={styles.focusSection}>
+      {barsActive && audioBars}
       <Text style={styles.focusLabel}>
         {focusPhase === 'scatter'
           ? 'This is your mind under pressure.'
@@ -193,7 +323,6 @@ export default function SampleExerciseScreen() {
             {w.word}
           </Animated.Text>
         ))}
-
         <Animated.View
           style={[
             styles.tunnelCircleOuter,
@@ -209,7 +338,6 @@ export default function SampleExerciseScreen() {
         <Animated.View style={[styles.tunnelCenter, { opacity: labelOpacity }]}>
           <Text style={styles.tunnelCenterText}>Focus{'\n'}here</Text>
         </Animated.View>
-
         <Animated.Text style={[styles.releaseText, { opacity: releaseOpacity }]}>
           {"That's the skill.\nNot silence. Not calm.\nJust choosing where\nyour attention goes."}
         </Animated.Text>
@@ -301,13 +429,15 @@ export default function SampleExerciseScreen() {
     switch (step) {
       case 'intro': return true;
       case 'rate-before': return ratingBefore !== null;
-      case 'scene': return true;
+      case 'scene': return false;
       case 'focus': return false;
       case 'cue': return selectedCue !== null;
       case 'rate-after': return ratingAfter !== null;
       case 'done': return true;
     }
   };
+
+  const showButton = step !== 'focus' && step !== 'scene';
 
   const advance = () => {
     const order: Step[] = ['intro', 'rate-before', 'scene', 'focus', 'cue', 'rate-after', 'done'];
@@ -322,7 +452,6 @@ export default function SampleExerciseScreen() {
   const ctaLabel = () => {
     if (step === 'intro') return 'Start exercise';
     if (step === 'done') return 'Continue';
-    if (step === 'scene') return "I'm there";
     return 'Next';
   };
 
@@ -332,7 +461,7 @@ export default function SampleExerciseScreen() {
       <View style={styles.inner}>
         {getContent()}
 
-        {step !== 'focus' && (
+        {showButton && (
           <View style={styles.bottomSection}>
             <TouchableOpacity
               style={[styles.button, !canAdvance() && styles.buttonDisabled]}
@@ -388,6 +517,26 @@ const styles = StyleSheet.create({
   },
   exerciseMeta: { fontSize: 13, color: colors.textMuted },
 
+  audioCue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    height: 34,
+    marginBottom: spacing.lg,
+  },
+  audioCueBar: { width: 3, borderRadius: 1.5 },
+
+  sceneSection: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  sceneLine: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    lineHeight: 32,
+    paddingHorizontal: spacing.md,
+  },
+
   ratingRow: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
   ratingBtn: {
     width: 52,
@@ -406,12 +555,11 @@ const styles = StyleSheet.create({
   focusLabel: {
     fontSize: 15,
     color: colors.textSecondary,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     textAlign: 'center',
     lineHeight: 22,
   },
   focusContainer: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
-
   scatterWord: {
     position: 'absolute',
     fontSize: 18,
