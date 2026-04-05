@@ -1,9 +1,9 @@
-import { Component, lazy, Suspense } from 'react';
+import React, { Component } from 'react';
 import type { ReactNode } from 'react';
 import { SUPERWALL_ENABLED } from '@/lib/superwall-config';
 
 const SuperwallInner = SUPERWALL_ENABLED
-  ? lazy(() => import('./SuperwallInner'))
+  ? (require('./SuperwallInner').default as React.ComponentType<{ children: ReactNode }>)
   : null;
 
 class SuperwallErrorBoundary extends Component<
@@ -32,9 +32,7 @@ export function SuperwallRoot({ children }: { children: ReactNode }) {
   }
   return (
     <SuperwallErrorBoundary fallback={children}>
-      <Suspense fallback={null}>
-        <SuperwallInner>{children}</SuperwallInner>
-      </Suspense>
+      <SuperwallInner>{children}</SuperwallInner>
     </SuperwallErrorBoundary>
   );
 }
