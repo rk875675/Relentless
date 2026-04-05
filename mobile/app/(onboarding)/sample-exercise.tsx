@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -6,6 +6,7 @@ import {
   View,
   Animated,
   Easing,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -13,12 +14,21 @@ import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
 const TOTAL_STEPS = 6;
-
 const RATINGS = [1, 2, 3, 4, 5];
-const CUES = ['Stay loose', 'One step at a time', 'Trust the work', 'Breathe and go'];
-const BREATH_COUNT = 5;
+const { width: SCREEN_W } = Dimensions.get('window');
 
-type Step = 'intro' | 'rate-before' | 'breathe' | 'cue' | 'rate-after' | 'done';
+const SCATTER_WORDS = [
+  { word: 'Doubt', x: 0.12, y: 0.10 },
+  { word: 'Crowd', x: 0.62, y: 0.20 },
+  { word: 'Legs', x: 0.18, y: 0.50 },
+  { word: 'Time', x: 0.68, y: 0.42 },
+  { word: 'Rival', x: 0.40, y: 0.72 },
+];
+
+const CUES = ['Stay loose', 'One step at a time', 'Trust the work', 'Breathe and go'];
+
+type Step = 'intro' | 'rate-before' | 'scene' | 'focus' | 'cue' | 'rate-after' | 'done';
+type FocusPhase = 'scatter' | 'tunnel' | 'release';
 
 export default function SampleExerciseScreen() {
   const router = useRouter();
@@ -26,83 +36,114 @@ export default function SampleExerciseScreen() {
   const [ratingBefore, setRatingBefore] = useState<number | null>(null);
   const [ratingAfter, setRatingAfter] = useState<number | null>(null);
   const [selectedCue, setSelectedCue] = useState<string | null>(null);
-  const [breathIndex, setBreathIndex] = useState(0);
+  const [focusPhase, setFocusPhase] = useState<FocusPhase>('scatter');
 
-  const scale = useRef(new Animated.Value(1)).current;
-  const opacity = useRef(new Animated.Value(0.4)).current;
-  const [breathPhase, setBreathPhase] = useState<'in' | 'out'>('in');
+  const wordOpacities = useRef(SCATTER_WORDS.map(() => new Animated.Value(0))).current;
+  const wordDrifts = useRef(SCATTER_WORDS.map(() => new Animated.Value(0))).current;
+  const circleScale = useRef(new Animated.Value(2.5)).current;
+  const circleOpacity = useRef(new Animated.Value(0)).current;
+  const releaseOpacity = useRef(new Animated.Value(0)).current;
+  const pulseScale = useRef(new Animated.Value(1)).current;
+  const labelOpacity = useRef(new Animated.Value(0)).current;
+
+  const runFocusSequence = useCallback(() => {
+    setFocusPhase('scatter');
+
+    Animated.stagger(300, wordOpacities.map((o) =>
+      Animated.timing(o, { toValue: 1, duration: 500, useNativeDriver: true }),
+    )).start();
+
+    wordDrifts.forEach((d) => {
+      const drift = () => {
+        Animated.sequence([
+          Animated.timing(d, { toValue: Math.random() * 8 - 4, duration: 2000 + Math.random() * 1000, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+          Animated.timing(d, { toValue: Math.random() * 8 - 4, duration: 2000 + Math.random() * 1000, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+        ]).start(({ finished }) => { if (finished) drift(); });
+      };
+      drift();
+    });
+
+    const tunnelTimer = setTimeout(() => {
+      setFocusPhase('tunnel');
+
+      Animated.parallel([
+        ...wordOpacities.map((o) =>
+          Animated.timing(o, { toValue: 0.08, duration: 1200, useNativeDriver: true }),
+        ),
+        Animated.timing(circleOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(circleScale, { toValue: 1, duration: 2500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(labelOpacity, { toValue: 1, duration: 800, delay: 600, useNativeDriver: true }),
+      ]).start();
+
+      const pulseLoop = () => {
+        Animated.sequence([
+          Animated.timing(pulseScale, { toValue: 1.08, duration: 1500, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+          Animated.timing(pulseScale, { toValue: 1, duration: 1500, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+        ]).start(({ finished }) => { if (finished) pulseLoop(); });
+      };
+      setTimeout(pulseLoop, 2500);
+    }, 6000);
+
+    const releaseTimer = setTimeout(() => {
+      setFocusPhase('release');
+
+      Animated.parallel([
+        Animated.timing(circleOpacity, { toValue: 0, duration: 800, useNativeDriver: true }),
+        Animated.timing(labelOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
+        Animated.timing(releaseOpacity, { toValue: 1, duration: 600, delay: 400, useNativeDriver: true }),
+      ]).start();
+    }, 16000);
+
+    const advanceTimer = setTimeout(() => {
+      setStep('cue');
+    }, 20000);
+
+    return () => {
+      clearTimeout(tunnelTimer);
+      clearTimeout(releaseTimer);
+      clearTimeout(advanceTimer);
+      wordOpacities.forEach((o) => o.stopAnimation());
+      wordDrifts.forEach((d) => d.stopAnimation());
+      circleScale.stopAnimation();
+      circleOpacity.stopAnimation();
+      pulseScale.stopAnimation();
+      releaseOpacity.stopAnimation();
+      labelOpacity.stopAnimation();
+    };
+  }, []);
 
   useEffect(() => {
-    if (step !== 'breathe') return;
+    if (step !== 'focus') return;
+    circleScale.setValue(2.5);
+    circleOpacity.setValue(0);
+    releaseOpacity.setValue(0);
+    labelOpacity.setValue(0);
+    pulseScale.setValue(1);
+    wordOpacities.forEach((o) => o.setValue(0));
+    wordDrifts.forEach((d) => d.setValue(0));
+    return runFocusSequence();
+  }, [step]);
 
-    let cancelled = false;
-    let currentBreath = 0;
-
-    const runBreath = () => {
-      if (cancelled || currentBreath >= BREATH_COUNT) {
-        if (!cancelled) setStep('feelings');
-        return;
-      }
-      setBreathIndex(currentBreath + 1);
-      setBreathPhase('in');
-
-      Animated.sequence([
-        Animated.parallel([
-          Animated.timing(scale, {
-            toValue: 1.6,
-            duration: 3200,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(opacity, {
-            toValue: 1,
-            duration: 3200,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.parallel([
-          Animated.timing(scale, {
-            toValue: 1,
-            duration: 3800,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(opacity, {
-            toValue: 0.4,
-            duration: 3800,
-            useNativeDriver: true,
-          }),
-        ]),
-      ]).start(() => {
-        if (!cancelled) setBreathPhase('out');
-        currentBreath++;
-        runBreath();
-      });
-    };
-
-    runBreath();
-    return () => { cancelled = true; };
-  }, [step, scale, opacity]);
+  const FOCUS_SIZE = SCREEN_W - spacing.xl * 2;
 
   const renderIntro = () => (
     <View style={styles.topSection}>
       <Text style={styles.badge}>SAMPLE EXERCISE</Text>
-      <Text style={styles.title}>Try one short exercise</Text>
+      <Text style={styles.title}>The Tunnel</Text>
       <Text style={styles.body}>
-        This is the kind of mental workout you will get inside Relentless.
-        Short, practical, and built for athletes.
+        Under pressure your mind scatters. This exercise teaches you to narrow your focus — not by fighting the noise, but by choosing where your attention goes.
       </Text>
       <View style={styles.exerciseCard}>
-        <Text style={styles.exerciseTitle}>Reset Under Pressure</Text>
-        <Text style={styles.exerciseMeta}>~60 seconds</Text>
+        <Text style={styles.exerciseTitle}>Pressure-to-Focus Reset</Text>
+        <Text style={styles.exerciseMeta}>~45 seconds</Text>
       </View>
     </View>
   );
 
   const renderRateBefore = () => (
     <View style={styles.topSection}>
-      <Text style={styles.title}>How locked up do you feel right now?</Text>
-      <Text style={styles.body}>1 = totally relaxed, 5 = very tense</Text>
+      <Text style={styles.title}>How scattered does your mind feel right now?</Text>
+      <Text style={styles.body}>1 = totally clear, 5 = all over the place</Text>
       <View style={styles.ratingRow}>
         {RATINGS.map((r) => (
           <TouchableOpacity
@@ -110,54 +151,69 @@ export default function SampleExerciseScreen() {
             style={[styles.ratingBtn, ratingBefore === r && styles.ratingBtnActive]}
             onPress={() => setRatingBefore(r)}
           >
-            <Text style={[styles.ratingText, ratingBefore === r && styles.ratingTextActive]}>
-              {r}
-            </Text>
+            <Text style={[styles.ratingText, ratingBefore === r && styles.ratingTextActive]}>{r}</Text>
           </TouchableOpacity>
         ))}
       </View>
     </View>
   );
 
-  const renderBreathe = () => (
-    <View style={styles.breatheSection}>
-      <Text style={styles.breathCount}>{breathIndex} / {BREATH_COUNT}</Text>
-      <View style={styles.breatheCircleWrap}>
-        {/* Outermost glow ring */}
+  const renderScene = () => (
+    <View style={styles.topSection}>
+      <Text style={styles.title}>Think of a real moment where you need to perform.</Text>
+      <Text style={styles.body}>
+        A race, a rep, a tryout — something coming up. Put yourself there. Feel the environment around you.
+      </Text>
+    </View>
+  );
+
+  const renderFocus = () => (
+    <View style={styles.focusSection}>
+      <Text style={styles.focusLabel}>
+        {focusPhase === 'scatter'
+          ? 'This is your mind under pressure.'
+          : focusPhase === 'tunnel'
+          ? 'Now narrow.'
+          : ''}
+      </Text>
+      <View style={[styles.focusContainer, { width: FOCUS_SIZE, height: FOCUS_SIZE }]}>
+        {SCATTER_WORDS.map((w, i) => (
+          <Animated.Text
+            key={w.word}
+            style={[
+              styles.scatterWord,
+              {
+                left: w.x * (FOCUS_SIZE - 60),
+                top: w.y * (FOCUS_SIZE - 30),
+                opacity: wordOpacities[i],
+                transform: [{ translateY: wordDrifts[i] }],
+              },
+            ]}
+          >
+            {w.word}
+          </Animated.Text>
+        ))}
+
         <Animated.View
           style={[
-            styles.ringOuter,
-            { transform: [{ scale }], opacity: opacity.interpolate({
-              inputRange: [0.4, 1],
-              outputRange: [0.08, 0.2],
-            }) },
+            styles.tunnelCircleOuter,
+            { opacity: circleOpacity, transform: [{ scale: Animated.multiply(circleScale, pulseScale) }] },
           ]}
         />
-        {/* Middle ring */}
         <Animated.View
           style={[
-            styles.ringMid,
-            { transform: [{ scale }], opacity: opacity.interpolate({
-              inputRange: [0.4, 1],
-              outputRange: [0.15, 0.4],
-            }) },
+            styles.tunnelCircleInner,
+            { opacity: circleOpacity, transform: [{ scale: Animated.multiply(circleScale, pulseScale) }] },
           ]}
         />
-        {/* Core orb */}
-        <Animated.View
-          style={[
-            styles.ringCore,
-            { transform: [{ scale }], opacity },
-          ]}
-        />
-        {/* Center label */}
-        <View style={styles.breatheCenter}>
-          <Text style={styles.breathePhaseText}>
-            {breathPhase === 'in' ? 'Breathe in' : 'Breathe out'}
-          </Text>
-        </View>
+        <Animated.View style={[styles.tunnelCenter, { opacity: labelOpacity }]}>
+          <Text style={styles.tunnelCenterText}>Focus{'\n'}here</Text>
+        </Animated.View>
+
+        <Animated.Text style={[styles.releaseText, { opacity: releaseOpacity }]}>
+          {"That's the skill.\nNot silence. Not calm.\nJust choosing where\nyour attention goes."}
+        </Animated.Text>
       </View>
-      <Text style={styles.breatheHint}>Slow, deep breaths</Text>
     </View>
   );
 
@@ -165,7 +221,7 @@ export default function SampleExerciseScreen() {
     <View style={styles.topSection}>
       <Text style={styles.title}>Pick one performance cue</Text>
       <Text style={styles.body}>
-        {"You've just reset. Now choose one thought to carry into competition."}
+        {"You just narrowed your focus under pressure. Now choose one thought to carry forward."}
       </Text>
       <View style={styles.cueList}>
         {CUES.map((c) => (
@@ -174,9 +230,7 @@ export default function SampleExerciseScreen() {
             style={[styles.cueBtn, selectedCue === c && styles.cueBtnActive]}
             onPress={() => setSelectedCue(c)}
           >
-            <Text style={[styles.cueText, selectedCue === c && styles.cueTextActive]}>
-              {c}
-            </Text>
+            <Text style={[styles.cueText, selectedCue === c && styles.cueTextActive]}>{c}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -185,8 +239,8 @@ export default function SampleExerciseScreen() {
 
   const renderRateAfter = () => (
     <View style={styles.topSection}>
-      <Text style={styles.title}>How do you feel now?</Text>
-      <Text style={styles.body}>1 = totally relaxed, 5 = very tense</Text>
+      <Text style={styles.title}>How scattered does your mind feel now?</Text>
+      <Text style={styles.body}>1 = totally clear, 5 = all over the place</Text>
       <View style={styles.ratingRow}>
         {RATINGS.map((r) => (
           <TouchableOpacity
@@ -194,9 +248,7 @@ export default function SampleExerciseScreen() {
             style={[styles.ratingBtn, ratingAfter === r && styles.ratingBtnActive]}
             onPress={() => setRatingAfter(r)}
           >
-            <Text style={[styles.ratingText, ratingAfter === r && styles.ratingTextActive]}>
-              {r}
-            </Text>
+            <Text style={[styles.ratingText, ratingAfter === r && styles.ratingTextActive]}>{r}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -211,22 +263,22 @@ export default function SampleExerciseScreen() {
         <Text style={styles.badge}>EXERCISE COMPLETE</Text>
         <Text style={styles.title}>
           {improved
-            ? 'You just shifted your mental state.'
+            ? 'You just narrowed your tunnel.'
             : same
-            ? 'You stayed locked in.'
-            : 'That was a reset.'}
+            ? 'You held your focus.'
+            : 'You practiced the skill.'}
         </Text>
         <Text style={styles.body}>
           {improved
-            ? `You went from a ${ratingBefore} to a ${ratingAfter} in under 60 seconds. That's real. That's trainable.`
+            ? `You went from a ${ratingBefore} to a ${ratingAfter}. That shift is real — and it's trainable.`
             : same
-            ? 'Maintaining your state under pressure is a skill. You just practiced it.'
-            : 'Awareness is the first step. The shift comes with reps.'}
+            ? 'Maintaining focus under noise is the whole game. You just did it.'
+            : 'Awareness comes first. The narrowing gets sharper with every rep.'}
         </Text>
         <View style={styles.doneCard}>
-          <Text style={styles.doneCardTitle}>This is what mental training feels like</Text>
+          <Text style={styles.doneCardTitle}>This is mental performance training</Text>
           <Text style={styles.doneCardBody}>
-            Short, focused exercises that build Mindfulness, Acceptance, and Commitment — the three pillars elite athletes train daily.
+            Short, focused exercises that build the three skills elite athletes actually use: Mindfulness, Acceptance, and Commitment.
           </Text>
         </View>
       </View>
@@ -237,7 +289,8 @@ export default function SampleExerciseScreen() {
     switch (step) {
       case 'intro': return renderIntro();
       case 'rate-before': return renderRateBefore();
-      case 'breathe': return renderBreathe();
+      case 'scene': return renderScene();
+      case 'focus': return renderFocus();
       case 'cue': return renderCue();
       case 'rate-after': return renderRateAfter();
       case 'done': return renderDone();
@@ -248,7 +301,8 @@ export default function SampleExerciseScreen() {
     switch (step) {
       case 'intro': return true;
       case 'rate-before': return ratingBefore !== null;
-      case 'breathe': return false;
+      case 'scene': return true;
+      case 'focus': return false;
       case 'cue': return selectedCue !== null;
       case 'rate-after': return ratingAfter !== null;
       case 'done': return true;
@@ -256,7 +310,7 @@ export default function SampleExerciseScreen() {
   };
 
   const advance = () => {
-    const order: Step[] = ['intro', 'rate-before', 'breathe', 'cue', 'rate-after', 'done'];
+    const order: Step[] = ['intro', 'rate-before', 'scene', 'focus', 'cue', 'rate-after', 'done'];
     const idx = order.indexOf(step);
     if (step === 'done') {
       router.push('/(onboarding)/what-you-get');
@@ -268,6 +322,7 @@ export default function SampleExerciseScreen() {
   const ctaLabel = () => {
     if (step === 'intro') return 'Start exercise';
     if (step === 'done') return 'Continue';
+    if (step === 'scene') return "I'm there";
     return 'Next';
   };
 
@@ -277,7 +332,7 @@ export default function SampleExerciseScreen() {
       <View style={styles.inner}>
         {getContent()}
 
-        {step !== 'breathe' && (
+        {step !== 'focus' && (
           <View style={styles.bottomSection}>
             <TouchableOpacity
               style={[styles.button, !canAdvance() && styles.buttonDisabled]}
@@ -333,11 +388,7 @@ const styles = StyleSheet.create({
   },
   exerciseMeta: { fontSize: 13, color: colors.textMuted },
 
-  ratingRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-  },
+  ratingRow: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
   ratingBtn: {
     width: 52,
     height: 52,
@@ -347,70 +398,63 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ratingBtnActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentSubtle,
-  },
+  ratingBtnActive: { borderColor: colors.accent, backgroundColor: colors.accentSubtle },
   ratingText: { fontSize: 20, fontWeight: '700', color: colors.textMuted },
   ratingTextActive: { color: colors.accentLight },
 
-  breatheSection: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+  focusSection: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  focusLabel: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
+    textAlign: 'center',
+    lineHeight: 22,
   },
-  breathCount: {
-    fontSize: 14,
+  focusContainer: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
+
+  scatterWord: {
+    position: 'absolute',
+    fontSize: 18,
     fontWeight: '600',
     color: colors.textMuted,
-    marginBottom: 40,
+    letterSpacing: 1,
   },
-  breatheCircleWrap: {
-    width: 260,
-    height: 260,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringOuter: {
-    position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: colors.accent,
-  },
-  ringMid: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: colors.accent,
-  },
-  ringCore: {
+  tunnelCircleOuter: {
     position: 'absolute',
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: colors.accent,
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
   },
-  breatheCenter: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.background,
+  tunnelCircleInner: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(139, 92, 246, 0.25)',
+  },
+  tunnelCenter: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1,
   },
-  breathePhaseText: {
+  tunnelCenterText: {
     fontSize: 11,
-    fontWeight: '600',
-    color: colors.accentLight,
+    fontWeight: '700',
+    color: colors.white,
     textAlign: 'center',
+    lineHeight: 14,
   },
-  breatheHint: {
-    fontSize: 16,
+  releaseText: {
+    position: 'absolute',
+    fontSize: 17,
     color: colors.textSecondary,
-    marginTop: 40,
+    textAlign: 'center',
+    lineHeight: 28,
   },
 
   doneCard: {
@@ -421,17 +465,8 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginTop: spacing.xl,
   },
-  doneCardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.white,
-    marginBottom: spacing.sm,
-  },
-  doneCardBody: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 21,
-  },
+  doneCardTitle: { fontSize: 15, fontWeight: '700', color: colors.white, marginBottom: spacing.sm },
+  doneCardBody: { fontSize: 14, color: colors.textSecondary, lineHeight: 21 },
 
   cueList: { gap: 10 },
   cueBtn: {
@@ -442,10 +477,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
   },
-  cueBtnActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentSubtle,
-  },
+  cueBtnActive: { borderColor: colors.accent, backgroundColor: colors.accentSubtle },
   cueText: { fontSize: 15, fontWeight: '600', color: colors.textSecondary },
   cueTextActive: { color: colors.accentLight },
 
