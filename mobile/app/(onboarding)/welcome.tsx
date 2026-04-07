@@ -34,7 +34,7 @@ export default function WelcomeScreen() {
         <Animated.View style={[styles.bottom, { opacity: fadeCta }]}>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => router.push('/(onboarding)/social-proof')}
+            onPress={() => router.push('/(onboarding)/study-a')}
           >
             <Text style={styles.buttonText}>Get Started</Text>
           </TouchableOpacity>

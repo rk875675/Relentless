@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 12;
 
 function formatDate(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -49,7 +49,7 @@ export default function CompetitionDateScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={6} total={TOTAL_STEPS} />
+      <ProgressBar step={12} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         <View style={styles.topSection}>
           <Text style={styles.title}>{"When's your next competition?"}</Text>

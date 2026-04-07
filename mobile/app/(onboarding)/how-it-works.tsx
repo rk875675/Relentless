@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 12;
 
 const PILLARS = [
   {
@@ -29,7 +29,7 @@ export default function HowItWorksScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={3} total={TOTAL_STEPS} />
+      <ProgressBar step={7} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         <View style={styles.topSection}>
           <Text style={styles.badge}>THE METHOD</Text>
@@ -60,9 +60,9 @@ export default function HowItWorksScreen() {
         <View style={styles.bottom}>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => router.push('/(onboarding)/sample-exercise')}
+            onPress={() => router.push('/(onboarding)/mac-question')}
           >
-            <Text style={styles.buttonText}>Try a Quick Exercise</Text>
+            <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>
         </View>
       </View>

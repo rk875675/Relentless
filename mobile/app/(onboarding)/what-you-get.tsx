@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 12;
 
 const DELIVERABLES = [
   {
@@ -35,7 +35,7 @@ export default function WhatYouGetScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={5} total={TOTAL_STEPS} />
+      <ProgressBar step={11} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         <View style={styles.topSection}>
           <Text style={styles.title}>Your daily training</Text>

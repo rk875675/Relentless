@@ -96,26 +96,42 @@ export default function JournalListScreen() {
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => (
-              <View style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.cardTitle}>
-                    {item.entry_type === 'miss_reflection'
-                      ? 'Missed Day Reflection'
-                      : (item.lesson_title ?? 'Check-In')}
-                  </Text>
-                  {item.entry_type === 'miss_reflection' && (
-                    <View style={styles.typeBadge}>
-                      <Text style={styles.typeBadgeText}>MISSED DAY</Text>
-                    </View>
+            renderItem={({ item }) => {
+              const isMiss = item.entry_type === 'miss_reflection';
+              const isFutureSelf = item.entry_type === 'onboarding_future_self';
+              return (
+                <View style={[styles.card, isMiss && styles.cardMiss]}>
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.cardTitle}>
+                      {isMiss
+                        ? 'Missed Day Reflection'
+                        : isFutureSelf
+                        ? 'Future Self'
+                        : (item.lesson_title ?? 'Check-In')}
+                    </Text>
+                    {isMiss && (
+                      <View style={styles.missBadge}>
+                        <Text style={styles.missBadgeText}>MISSED DAY</Text>
+                      </View>
+                    )}
+                    {isFutureSelf && (
+                      <View style={styles.typeBadge}>
+                        <Text style={styles.typeBadgeText}>ONBOARDING</Text>
+                      </View>
+                    )}
+                  </View>
+                  {isMiss && (
+                    <Text style={styles.missSubtext}>
+                      You missed a day — here{"'"}s what you wrote about it.
+                    </Text>
                   )}
+                  <Text style={styles.cardDate}>
+                    {formatDate(item.created_at)} · {formatTime(item.created_at)}
+                  </Text>
+                  <Text style={styles.cardBody}>{item.body}</Text>
                 </View>
-                <Text style={styles.cardDate}>
-                  {formatDate(item.created_at)} · {formatTime(item.created_at)}
-                </Text>
-                <Text style={styles.cardBody}>{item.body}</Text>
-              </View>
-            )}
+              );
+            }}
           />
         )}
       </View>
@@ -157,8 +173,30 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 10,
   },
+  cardMiss: {
+    borderColor: 'rgba(239,68,68,0.35)',
+    borderWidth: 1.5,
+  },
+  missBadge: {
+    backgroundColor: 'rgba(239,68,68,0.18)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  missBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#ef4444',
+    letterSpacing: 1,
+  },
+  missSubtext: {
+    fontSize: 12,
+    color: 'rgba(239,68,68,0.6)',
+    marginBottom: 6,
+    fontWeight: '500',
+  },
   typeBadge: {
-    backgroundColor: 'rgba(239,68,68,0.15)',
+    backgroundColor: 'rgba(139,92,246,0.15)',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -166,7 +204,7 @@ const styles = StyleSheet.create({
   typeBadgeText: {
     fontSize: 9,
     fontWeight: '700',
-    color: 'rgba(239,68,68,0.7)',
+    color: colors.accentLight,
     letterSpacing: 0.8,
   },
   cardBody: {

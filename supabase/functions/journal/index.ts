@@ -35,7 +35,7 @@ const CreateSchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
-    entry_type: z.enum(["session", "miss_reflection"]).default("session"),
+    entry_type: z.enum(["session", "miss_reflection", "onboarding_future_self"]).default("session"),
   })
   .strict();
 
@@ -66,8 +66,18 @@ Deno.serve(async (req) => {
   );
   if (!rl.ok) return rl.response;
 
-  const entitlement = await requireEntitlement(supabase, auth.userId, requestId);
-  if (!entitlement.ok) return entitlement.response;
+  let skipEntitlement = false;
+  if (req.method === "POST") {
+    try {
+      const peek = await req.clone().json();
+      if (peek?.entry_type === "onboarding_future_self") skipEntitlement = true;
+    } catch { /* proceed with entitlement check */ }
+  }
+
+  if (!skipEntitlement) {
+    const entitlement = await requireEntitlement(supabase, auth.userId, requestId);
+    if (!entitlement.ok) return entitlement.response;
+  }
 
   const url = new URL(req.url);
   const pathMatch = url.pathname.match(/\/journal(?:\/(.+))?$/);
@@ -250,6 +260,7 @@ async function handleUpdate(
     .from("journal_entries")
     .update({ body: parsed.data.body })
     .eq("id", idParsed.data)
+    .eq("user_id", userId)
     .select("id, lesson_id, competition_date, body, entry_type, created_at, updated_at")
     .single();
 
@@ -288,7 +299,8 @@ async function handleDelete(
   const { error } = await supabase
     .from("journal_entries")
     .delete()
-    .eq("id", idParsed.data);
+    .eq("id", idParsed.data)
+    .eq("user_id", userId);
 
   if (error) {
     return errorResponse(500, "INTERNAL_ERROR", "Failed to delete journal entry", requestId);
