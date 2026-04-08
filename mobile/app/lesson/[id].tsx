@@ -38,7 +38,7 @@ type VoiceoverBlock = {
 type TimedExerciseBlock = {
   type: 'timed_exercise';
   duration_seconds: number;
-  ambient_audio: string;
+  ambient_audio?: string | null;
   steps: ExerciseStep[];
 };
 type JournalPromptBlock = {
@@ -119,7 +119,9 @@ export default function LessonPlayerScreen() {
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
   const [onScreenText, setOnScreenText] = useState('');
   const [exerciseElapsed, setExerciseElapsed] = useState(0);
+  const [exerciseStepIndex, setExerciseStepIndex] = useState(0);
   const textFade = useRef(new Animated.Value(1)).current;
+  const cardScale = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   // Text cue tracking — guards against conflicting animations and backward regression
@@ -216,6 +218,7 @@ export default function LessonPlayerScreen() {
   const stopAllTimers = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (exerciseTimerRef.current) { clearInterval(exerciseTimerRef.current); exerciseTimerRef.current = null; }
+    progressAnim.stopAnimation();
   }, []);
 
   // -----------------------------------------------------------------------
@@ -327,11 +330,20 @@ export default function LessonPlayerScreen() {
       setOnScreenText('');
     } else if (block.type === 'timed_exercise') {
       setExerciseElapsed(0);
+      setExerciseStepIndex(0);
       lastCueRef.current = '';
       textFade.setValue(0);
+      cardScale.setValue(1);
       setOnScreenText('');
-      // Ambient audio uses dedicated pre-loaded player — no source swap needed
       try { ambientPlayer.seekTo(0).then(() => ambientPlayer.play()).catch(() => {}); } catch { /* noop */ }
+
+      progressAnim.setValue(0);
+      Animated.timing(progressAnim, {
+        toValue: 1,
+        duration: block.duration_seconds * 1000,
+        useNativeDriver: false,
+      }).start();
+
       const start = Date.now();
       exerciseTimerRef.current = setInterval(() => {
         const secs = Math.floor((Date.now() - start) / 1000);
@@ -345,10 +357,17 @@ export default function LessonPlayerScreen() {
             const target = block.steps[i].text;
             if (target !== lastCueRef.current) {
               lastCueRef.current = target;
+              setExerciseStepIndex(i);
               pulseBars();
-              Animated.timing(textFade, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
+              Animated.parallel([
+                Animated.timing(textFade, { toValue: 0, duration: 120, useNativeDriver: true }),
+                Animated.timing(cardScale, { toValue: 0.96, duration: 120, useNativeDriver: true }),
+              ]).start(() => {
                 setOnScreenText(target);
-                Animated.timing(textFade, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+                Animated.parallel([
+                  Animated.timing(textFade, { toValue: 1, duration: 280, useNativeDriver: true }),
+                  Animated.spring(cardScale, { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }),
+                ]).start();
               });
             }
             break;
@@ -525,6 +544,7 @@ export default function LessonPlayerScreen() {
     setCurrentAudioUrl(null);
     setOnScreenText('');
     setExerciseElapsed(0);
+    setExerciseStepIndex(0);
     setJournalText('');
     lastCueRef.current = '';
     highestCueIndexRef.current = -1;
@@ -559,28 +579,23 @@ export default function LessonPlayerScreen() {
   const primaryCat = lesson?.categories?.[0] ?? '';
   const catColor = MAC_COLORS[primaryCat] ?? colors.accentLight;
 
-  // Block-mode progress (for progress bar only)
+  // Block-mode progress (for voiceover progress bar — exercise uses continuous anim)
   let blockProgress = 0;
-  if (hasBlocks && phase === 'playing') {
-    if (isVoiceoverBlock) {
-      const t = cumulativeOffsetRef.current + audioStatus.currentTime;
-      const total = (currentBlock as VoiceoverBlock).total_audio_seconds;
-      blockProgress = total > 0 ? Math.min(t / total, 1) : 0;
-    } else if (isExerciseBlock) {
-      const total = (currentBlock as TimedExerciseBlock).duration_seconds;
-      blockProgress = total > 0 ? Math.min(exerciseElapsed / total, 1) : 0;
-    }
+  if (hasBlocks && phase === 'playing' && isVoiceoverBlock) {
+    const t = cumulativeOffsetRef.current + audioStatus.currentTime;
+    const total = (currentBlock as VoiceoverBlock).total_audio_seconds;
+    blockProgress = total > 0 ? Math.min(t / total, 1) : 0;
   }
 
-  // Animate progress bar smoothly whenever blockProgress or legacyProgress changes
   useEffect(() => {
+    if (isExerciseBlock) return;
     const target = hasBlocks ? blockProgress : legacyProgress;
     Animated.timing(progressAnim, {
       toValue: target,
       duration: 90,
       useNativeDriver: false,
     }).start();
-  }, [blockProgress, legacyProgress, hasBlocks]);
+  }, [blockProgress, legacyProgress, hasBlocks, isExerciseBlock]);
 
   useEffect(() => {
     if (phase !== 'done') return;
@@ -641,7 +656,7 @@ export default function LessonPlayerScreen() {
             <View style={{ width: 28 }} />
           )}
           {primaryCat ? (
-            <View style={[styles.catBadge, { borderColor: catColor }]}>
+            <View style={[styles.catBadge, { borderColor: catColor, backgroundColor: catColor + '12' }]}>
               <Text style={[styles.catBadgeText, { color: catColor }]}>
                 {primaryCat.toUpperCase()}
               </Text>
@@ -685,6 +700,9 @@ export default function LessonPlayerScreen() {
         {phase === 'ready' && lesson && (
           <View style={styles.centered}>
             <Text style={styles.readyTitle}>{lesson.title}</Text>
+            <Text style={styles.readyDuration}>
+              ~{Math.ceil((hasBlocks ? computeBlockDuration(blocks) : lesson.duration_seconds) / 60)} min
+            </Text>
             {!hasBlocks && lesson.on_screen_text && (
               <Text style={styles.readyDesc}>{lesson.on_screen_text}</Text>
             )}
@@ -713,21 +731,53 @@ export default function LessonPlayerScreen() {
         )}
 
         {/* Block-mode: timed exercise — text card + audio cue bars */}
-        {phase === 'playing' && lesson && hasBlocks && isExerciseBlock && (
-          <View style={styles.centered}>
-            <View style={styles.exerciseCard}>
-              <Animated.Text style={[styles.exerciseText, { opacity: textFade }]}>
-                {onScreenText}
-              </Animated.Text>
-            </View>
-            {audioBars}
-            <View style={styles.progressBarTrack}>
+        {phase === 'playing' && lesson && hasBlocks && isExerciseBlock && (() => {
+          const exBlock = currentBlock as TimedExerciseBlock;
+          const remaining = Math.max(0, exBlock.duration_seconds - exerciseElapsed);
+          return (
+            <View style={styles.centered}>
+              <View style={styles.exerciseStepDots}>
+                {exBlock.steps.map((_, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.stepDot,
+                      i === exerciseStepIndex
+                        ? { backgroundColor: catColor, width: 18 }
+                        : { backgroundColor: colors.ringTrack },
+                    ]}
+                  />
+                ))}
+              </View>
               <Animated.View
-                style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
-              />
+                style={[
+                  styles.exerciseCard,
+                  {
+                    borderColor: catColor,
+                    borderTopWidth: 2,
+                    transform: [{ scale: cardScale }],
+                    shadowColor: catColor,
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: 0.25,
+                    shadowRadius: 20,
+                    elevation: 8,
+                  },
+                ]}
+              >
+                <Animated.Text style={[styles.exerciseText, { opacity: textFade }]}>
+                  {onScreenText}
+                </Animated.Text>
+              </Animated.View>
+              <Text style={styles.exerciseCountdown}>{remaining}s</Text>
+              {audioBars}
+              <View style={styles.progressBarTrack}>
+                <Animated.View
+                  style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
+                />
+              </View>
             </View>
-          </View>
-        )}
+          );
+        })()}
 
         {/* Legacy flat-mode playing */}
         {phase === 'playing' && lesson && !hasBlocks && (
@@ -917,7 +967,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  readyDuration: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textMuted,
+    marginBottom: spacing.lg,
   },
   readyDesc: {
     fontSize: 15,
@@ -936,14 +992,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     marginBottom: spacing.xl,
   },
+  exerciseStepDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: spacing.lg,
+  },
+  stepDot: {
+    height: 4,
+    width: 8,
+    borderRadius: 2,
+  },
   exerciseCard: {
     backgroundColor: colors.surface,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 40,
+    paddingVertical: 36,
     paddingHorizontal: spacing.xl,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.md,
     width: '100%',
   },
   exerciseText: {
@@ -952,6 +1020,13 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlign: 'center',
     lineHeight: 30,
+  },
+  exerciseCountdown: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textMuted,
+    marginBottom: spacing.md,
+    fontVariant: ['tabular-nums'] as const,
   },
   audioCue: {
     flexDirection: 'row',

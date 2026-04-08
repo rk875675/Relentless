@@ -5,22 +5,22 @@
   "day_number": 1,
   "mac_categories": ["mindfulness"],
   "coach": "Coach Grant",
-  "duration_seconds": 187,
+  "duration_seconds": 148,
   "blocks": [
     {
       "type": "voiceover",
       "audio_files": [
-        "lesson_01/lesson_01_seg_01.wav",
-        "lesson_01/lesson_01_seg_02.wav"
+        "lesson_01/lesson_01_seg_01.mp3",
+        "lesson_01/lesson_01_seg_02.mp3"
       ],
-      "total_audio_seconds": 108.0,
+      "total_audio_seconds": 103.0,
       "timed_text": [
         {
           "start_s": 0.0,
           "text": "This is mental performance training."
         },
         {
-          "start_s": 22.7,
+          "start_s": 23.0,
           "text": "The framework is called MAC."
         },
         {
@@ -43,37 +43,46 @@
     },
     {
       "type": "timed_exercise",
-      "duration_seconds": 60,
+      "duration_seconds": 20,
       "ambient_audio": "ambient/ambient_music.mp3",
+      "interactive_model": "Three text cards displayed one at a time, centered on screen, auto-advancing. Each card fades out and the next fades in. Ambient music plays throughout. No user input required — athlete reads and reflects silently.",
       "steps": [
         {
           "text": "M — Mindfulness. Notice where your attention goes. Choose where it goes.",
-          "duration_seconds": 20
+          "duration_seconds": 7
         },
         {
           "text": "A — Acceptance. Feel the discomfort. Don't react to it.",
-          "duration_seconds": 20
+          "duration_seconds": 7
         },
         {
           "text": "C — Commitment. Show up. Regardless of how you feel.",
-          "duration_seconds": 20
+          "duration_seconds": 6
         }
       ]
     },
     {
       "type": "voiceover",
       "audio_files": [
-        "lesson_01/lesson_01_seg_03.wav"
+        "lesson_01/lesson_01_seg_03.mp3"
       ],
-      "total_audio_seconds": 18.5,
+      "total_audio_seconds": 25.0,
       "timed_text": [
         {
           "start_s": 0.0,
-          "text": "Remember your answer."
+          "text": "Got your answer? Remember it."
         },
         {
-          "start_s": 8.0,
+          "start_s": 5.0,
           "text": "On Day 30 — I'm going to ask you again."
+        },
+        {
+          "start_s": 10.0,
+          "text": "Go ahead and hit the journal. One question. Be honest."
+        },
+        {
+          "start_s": 17.0,
+          "text": "After you finish — you'll officially complete Day 1."
         }
       ]
     },
