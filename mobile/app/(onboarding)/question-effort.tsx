@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 10;
 
 const OPTIONS = ['Often', 'Sometimes', 'Rarely'] as const;
 

@@ -1,0 +1,75 @@
+{
+  "_meta": {
+    "note": "This is a reference template — not loaded by the app. Copy the blocks array into the SQL migration.",
+    "lesson_id": "SEE DEVELOPER_IMPL_GUIDE.md § UUID registry for the correct UUID",
+    "naming": "Library-[M|A|C]-[NN]-[Short|Long]"
+  },
+
+  "lesson_id": "e1000000-0000-0000-0000-000000000003",
+  "title": "LESSON TITLE",
+  "lesson_type": "library",
+  "mac_categories": ["mindfulness"],
+  "duration_seconds": 180,
+  "sort_order": 110,
+
+  "blocks": [
+
+    {
+      "_comment": "BLOCK 1 — tap_through_text. 3-7 short paragraphs. Ambient plays throughout.",
+      "type": "tap_through_text",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "paragraphs": [
+        "Opening sentence — hook or core insight. Keep it punchy.",
+        "Build on the idea. One or two sentences max per card.",
+        "Add nuance or context.",
+        "Shift toward the exercise. Set up what they're about to do.",
+        "Final instruction or mindset cue before the exercise begins."
+      ]
+    },
+
+    {
+      "_comment": "BLOCK 2 — choose ONE exercise type. Delete the others.",
+
+      "_option_A_box_breathing": {
+        "type": "timed_exercise",
+        "duration_seconds": 120,
+        "ambient_audio": "ambient/ambient_music.mp3",
+        "interactive_model": "box_breathing",
+        "steps": [
+          { "text": "Inhale", "duration_seconds": 4 },
+          { "text": "Hold",   "duration_seconds": 4 },
+          { "text": "Exhale", "duration_seconds": 4 },
+          { "text": "Hold",   "duration_seconds": 4 }
+        ]
+      },
+
+      "_option_B_standard_steps": {
+        "type": "timed_exercise",
+        "duration_seconds": 60,
+        "ambient_audio": "ambient/ambient_music.mp3",
+        "steps": [
+          { "text": "Step 1 instruction text shown on screen.", "duration_seconds": 20 },
+          { "text": "Step 2 instruction text shown on screen.", "duration_seconds": 20 },
+          { "text": "Step 3 instruction text shown on screen.", "duration_seconds": 20 }
+        ]
+      },
+
+      "_option_C_flash_cards": {
+        "type": "flash_cards",
+        "ambient_audio": "ambient/ambient_music.mp3",
+        "cards": [
+          { "front": "Card 1 front — term or question", "back": "Card 1 back — definition or answer" },
+          { "front": "Card 2 front", "back": "Card 2 back" },
+          { "front": "Card 3 front", "back": "Card 3 back" }
+        ]
+      }
+    },
+
+    {
+      "_comment": "BLOCK 3 — journal_prompt. Must always be last. Delete if not needed.",
+      "type": "journal_prompt",
+      "prompt": "The exact question shown to the user after the exercise."
+    }
+
+  ]
+}

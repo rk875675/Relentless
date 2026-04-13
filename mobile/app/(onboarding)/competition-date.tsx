@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 10;
 
 function formatDate(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -48,7 +48,7 @@ export default function CompetitionDateScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={11} total={TOTAL_STEPS} />
+      <ProgressBar step={9} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         <View style={styles.topSection}>
           <Text style={styles.title}>{"When's your next competition?"}</Text>

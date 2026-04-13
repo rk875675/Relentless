@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 10;
 const AUTO_SWIPE_MS = 4000;
 const CARD_WIDTH = Dimensions.get('window').width - spacing.xl * 2;
 

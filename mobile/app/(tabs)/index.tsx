@@ -276,6 +276,7 @@ export default function HomeScreen() {
   };
 
   const mins = lesson ? Math.round(lesson.duration_seconds / 60) : 0;
+  const streakIsReset = showMissReflection && !missJournalDismissed && streak?.current_streak === 0;
 
   return (
     <KeyboardAvoidingView
@@ -312,14 +313,18 @@ export default function HomeScreen() {
               </View>
             );
           })()}
-          <View style={[styles.streakPill, streakLoadError && styles.streakPillMuted]}>
-            <Text style={styles.streakNum}>
+          <View style={[
+            styles.streakPill,
+            streakLoadError && styles.streakPillMuted,
+            streakIsReset && styles.streakPillBroken,
+          ]}>
+            <Text style={[styles.streakNum, streakIsReset && { color: colors.error }]}>
               {streakLoadError ? '—' : streak?.current_streak ?? 0}
             </Text>
             <Ionicons
               name="flame"
               size={16}
-              color={streakLoadError ? colors.textMuted : '#f59e0b'}
+              color={streakIsReset ? colors.error : streakLoadError ? colors.textMuted : '#f59e0b'}
             />
           </View>
         </View>
@@ -350,54 +355,78 @@ export default function HomeScreen() {
         <Text style={styles.dataWarning}>Progress unavailable. Pull to refresh or retry.</Text>
       )}
 
-      {/* Miss-reflection card (PRD §7) — shown when freebie used & still inactive */}
+      {/* Miss-reflection cards (PRD §7) — shown when freebie used & still inactive */}
       {showMissReflection && !missJournalDismissed && (
-        <View style={styles.missCard}>
-          <Text style={styles.missLabel}>MISSED DAY REFLECTION</Text>
-          <Text style={styles.missPrompt}>What got in the way of your workout yesterday?</Text>
-          <TextInput
-            style={styles.missInput}
-            placeholder="Reflect on what happened..."
-            placeholderTextColor={colors.textMuted}
-            value={missJournalText}
-            onChangeText={setMissJournalText}
-            multiline
-            editable={!missJournalSaving}
-          />
-          <View style={styles.missBtnRow}>
-            <TouchableOpacity
-              style={styles.missSkipBtn}
-              onPress={() => {
-                setShowMissReflection(false);
-                setMissJournalDismissed(true);
-              }}
-            >
-              <Text style={styles.missSkipText}>Skip</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.missSubmitBtn, !missJournalText.trim() && { opacity: 0.5 }]}
-              disabled={!missJournalText.trim() || missJournalSaving}
-              onPress={async () => {
-                setMissJournalSaving(true);
-                await apiFetch('/journal', {
-                  method: 'POST',
-                  headers: { ...HOME_PROGRAM_ANCHOR_HEADERS },
-                  body: {
-                    body: missJournalText.trim(),
-                    entry_type: 'miss_reflection',
-                  },
-                });
-                setMissJournalSaving(false);
-                setShowMissReflection(false);
-                setMissJournalDismissed(true);
-              }}
-            >
-              <Text style={styles.missSubmitText}>
-                {missJournalSaving ? 'Saving...' : 'Submit'}
-              </Text>
-            </TouchableOpacity>
+        <>
+          {/* MISSED header card */}
+          <View style={styles.missedCard}>
+            <View style={styles.missedAccentBar} />
+            <View style={styles.missedCardInner}>
+              <View style={styles.missedHeaderRow}>
+                <Text style={styles.missedLabel}>MISSED</Text>
+                {streakIsReset && (
+                  <Text style={styles.missedDay}>Streak reset</Text>
+                )}
+              </View>
+              <View style={styles.missedDecayRow}>
+                <Ionicons name="trending-down" size={13} color={colors.error} />
+                <Text style={styles.missedDecayText}>
+                  {streakIsReset ? '−2 pts per ring · streak reset' : '−2 pts per ring'}
+                </Text>
+              </View>
+            </View>
           </View>
-        </View>
+
+          {/* Reflection card */}
+          <View style={styles.reflectionCard}>
+            <View style={styles.reflectionHeader}>
+              <Ionicons name="journal-outline" size={13} color={colors.error} />
+              <Text style={styles.reflectionLabel}>REFLECTION</Text>
+            </View>
+            <TextInput
+              style={styles.reflectionInput}
+              placeholder="Why did you miss today?"
+              placeholderTextColor="rgba(239,68,68,0.45)"
+              value={missJournalText}
+              onChangeText={setMissJournalText}
+              multiline
+              editable={!missJournalSaving}
+            />
+            <View style={styles.missBtnRow}>
+              <TouchableOpacity
+                style={styles.missSkipBtn}
+                onPress={() => {
+                  setShowMissReflection(false);
+                  setMissJournalDismissed(true);
+                }}
+              >
+                <Text style={styles.missSkipText}>Skip</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.missSubmitBtn, !missJournalText.trim() && { opacity: 0.5 }]}
+                disabled={!missJournalText.trim() || missJournalSaving}
+                onPress={async () => {
+                  setMissJournalSaving(true);
+                  await apiFetch('/journal', {
+                    method: 'POST',
+                    headers: { ...HOME_PROGRAM_ANCHOR_HEADERS },
+                    body: {
+                      body: missJournalText.trim(),
+                      entry_type: 'miss_reflection',
+                    },
+                  });
+                  setMissJournalSaving(false);
+                  setShowMissReflection(false);
+                  setMissJournalDismissed(true);
+                }}
+              >
+                <Text style={styles.missSubmitText}>
+                  {missJournalSaving ? 'Saving...' : 'Submit'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </>
       )}
 
       {error ? (
@@ -684,32 +713,82 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: spacing.md,
   },
-  missCard: {
+  streakPillBroken: {
+    borderColor: 'rgba(239,68,68,0.4)',
+    backgroundColor: 'rgba(239,68,68,0.08)',
+  },
+  // MISSED header card
+  missedCard: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(239,68,68,0.06)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.35)',
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+  },
+  missedAccentBar: {
+    width: 4,
+    backgroundColor: colors.error,
+  },
+  missedCardInner: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  missedHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  missedLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.error,
+    letterSpacing: 1.5,
+  },
+  missedDay: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  missedDecayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  missedDecayText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.error,
+  },
+  // Reflection card
+  reflectionCard: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(239,68,68,0.3)',
     padding: spacing.lg,
     marginBottom: spacing.md,
   },
-  missLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: 'rgba(239,68,68,0.7)',
-    letterSpacing: 2,
-    marginBottom: 10,
-  },
-  missPrompt: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
+  reflectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     marginBottom: 12,
   },
-  missInput: {
+  reflectionLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.error,
+    letterSpacing: 1.2,
+  },
+  reflectionInput: {
     backgroundColor: colors.surfaceLight,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(239,68,68,0.2)',
     padding: spacing.md,
     color: colors.textPrimary,
     fontSize: 14,

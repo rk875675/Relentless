@@ -1,0 +1,49 @@
+{
+  "lesson_id": "e1000000-0000-0000-0000-000000000005",
+  "title": "Milk Breath",
+  "lesson_type": "library",
+  "mac_categories": ["mindfulness"],
+  "duration_seconds": 120,
+  "sort_order": 120,
+  "blocks": [
+    {
+      "type": "tap_through_text",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "paragraphs": [
+        "Not every moment calls for intensity. Not every moment calls for calm. Sometimes you just need to be level.",
+        "Milk Breath is equal breathing — the same count in as out. No force in either direction.",
+        "Four seconds in through the nose. Four seconds out through the mouth.",
+        "The goal isn't to feel anything. The goal is to return to zero.",
+        "Use this between events, between reps, or any time you've been pulled off your baseline.",
+        "Start now. Let the circle guide you."
+      ]
+    },
+    {
+      "type": "timed_exercise",
+      "duration_seconds": 80,
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "interactive_model": "milk_breath",
+      "haptic_pattern": {
+        "cycle_seconds": 8,
+        "cues": [
+          { "at_offset_seconds": 0, "intensity": "medium" },
+          { "at_offset_seconds": 4, "intensity": "medium" }
+        ]
+      },
+      "steps": [
+        { "text": "No agenda. Just breathe.", "duration_seconds": 10 },
+        { "text": "In through the nose. Out through the mouth.", "duration_seconds": 10 },
+        { "text": "Don't force calm. Let it come.", "duration_seconds": 10 },
+        { "text": "You're not going up or down. You're finding zero.", "duration_seconds": 10 },
+        { "text": "Notice where you were when you started. Notice where you are now.", "duration_seconds": 10 },
+        { "text": "Stay even. That's the whole job.", "duration_seconds": 10 },
+        { "text": "This is what steady feels like.", "duration_seconds": 10 },
+        { "text": "Carry this into whatever's next.", "duration_seconds": 10 }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "Where were you mentally before this? Where are you now?"
+    }
+  ]
+}

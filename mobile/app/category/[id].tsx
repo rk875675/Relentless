@@ -32,6 +32,12 @@ const MAC_LABELS: Record<string, string> = {
   commitment: 'Commitment',
 };
 
+const MAC_COLORS: Record<string, string> = {
+  mindfulness: colors.ringMindfulness,
+  acceptance: colors.ringAcceptance,
+  commitment: colors.ringCommitment,
+};
+
 type ListItem =
   | { kind: 'lesson'; lesson: Lesson }
   | { kind: 'divider' };
@@ -40,6 +46,7 @@ export default function CategoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const label = MAC_LABELS[id ?? ''] ?? id ?? '';
+  const categoryColor = MAC_COLORS[id ?? ''] ?? colors.accentLight;
 
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,10 +91,10 @@ export default function CategoryScreen() {
   ];
 
   const renderLesson = (lesson: Lesson) => {
-    const mins = Math.floor(lesson.duration_seconds / 60);
-    const secs = lesson.duration_seconds % 60;
-    const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+    const mins = Math.ceil(lesson.duration_seconds / 60);
     const dayLabel = lesson.program_day ? `DAY ${lesson.program_day}` : null;
+    const isLibrary =
+      lesson.lesson_type === 'library' || lesson.lesson_type === 'library_long';
 
     return (
       <TouchableOpacity
@@ -98,8 +105,24 @@ export default function CategoryScreen() {
         {dayLabel && (
           <Text style={styles.cardDayLabel}>{dayLabel}</Text>
         )}
-        <Text style={styles.cardTitle}>{lesson.title}</Text>
-        <Text style={styles.cardMeta}>{timeStr}</Text>
+        <View style={styles.cardRow}>
+          <View style={styles.cardLeft}>
+            <Text style={styles.cardTitle}>{lesson.title}</Text>
+            {!isLibrary && <Text style={styles.cardTime}>{mins} min</Text>}
+          </View>
+          <View style={[
+            styles.cardDurationPill,
+            isLibrary && {
+              backgroundColor: `${categoryColor}1e`,
+              borderColor: `${categoryColor}55`,
+            },
+          ]}>
+            <Text style={[
+              styles.cardDurationText,
+              isLibrary && { color: categoryColor },
+            ]}>~{mins} min</Text>
+          </View>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -178,18 +201,66 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textMuted,
     letterSpacing: 1.5,
-    marginBottom: 4,
+    marginBottom: 8,
+  },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  cardLeft: {
+    flex: 1,
+    minHeight: 38,
+    justifyContent: 'flex-start',
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
     color: colors.textPrimary,
+    marginBottom: 4,
   },
-  cardMeta: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 6,
-    letterSpacing: 0.3,
+  cardTime: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  cardBadge: {
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    borderWidth: 1,
+    marginLeft: 12,
+  },
+  cardBadgeShort: {
+    backgroundColor: 'rgba(96,165,250,0.12)',
+    borderColor: 'rgba(96,165,250,0.3)',
+  },
+  cardBadgeLong: {
+    backgroundColor: 'rgba(139,92,246,0.12)',
+    borderColor: 'rgba(139,92,246,0.3)',
+  },
+  cardBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  cardBadgeTextShort: {
+    color: colors.ringMindfulness,
+  },
+  cardBadgeTextLong: {
+    color: colors.accentLight,
+  },
+  cardDurationPill: {
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginLeft: 12,
+  },
+  cardDurationText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   dividerRow: {
     flexDirection: 'row',

@@ -187,11 +187,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetOnboarding = useCallback(async () => {
-    if (!session?.user) return;
+    if (!__DEV__) return;
+    // Only reset in-memory state — never write false to the DB, otherwise
+    // the account is permanently locked out of the main app after sign-in.
     setOnboardingComplete(false);
     setDevPremiumBypass(false);
-    await supabase.from('profiles').update({ onboarding_completed: false }).eq('id', session.user.id);
-  }, [session]);
+  }, []);
 
   const updateCompetitionDate = useCallback(async (date: string | null): Promise<string | null> => {
     if (!session?.user) return 'Not authenticated';

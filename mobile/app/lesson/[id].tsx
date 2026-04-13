@@ -5,6 +5,7 @@ import {
   AppState,
   AppStateStatus,
   KeyboardAvoidingView,
+  PanResponder,
   Platform,
   ScrollView,
   StyleSheet,
@@ -28,7 +29,10 @@ import { colors, spacing } from '@/lib/theme';
 // ---------------------------------------------------------------------------
 
 type TimedTextCue = { start_s: number; text: string };
-type ExerciseStep = { text: string; duration_seconds: number };
+type HapticIntensity = 'light' | 'medium' | 'heavy';
+type HapticCue = { at_offset_seconds: number; intensity: HapticIntensity };
+type HapticPattern = { cycle_seconds: number; cues: HapticCue[] };
+type ExerciseStep = { text: string; duration_seconds: number; haptic?: HapticIntensity };
 
 type VoiceoverBlock = {
   type: 'voiceover';
@@ -40,6 +44,9 @@ type TimedExerciseBlock = {
   type: 'timed_exercise';
   duration_seconds: number;
   ambient_audio?: string | null;
+  interactive_model?: string;
+  haptic_pattern?: HapticPattern;
+  visual_cues?: string[];
   steps: ExerciseStep[];
 };
 type JournalPromptBlock = {
@@ -52,8 +59,13 @@ type FlashCardsBlock = {
   ambient_audio?: string | null;
   cards: FlashCard[];
 };
+type TapThroughTextBlock = {
+  type: 'tap_through_text';
+  ambient_audio?: string | null;
+  paragraphs: string[];
+};
 
-type ContentBlock = VoiceoverBlock | TimedExerciseBlock | JournalPromptBlock | FlashCardsBlock;
+type ContentBlock = VoiceoverBlock | TimedExerciseBlock | JournalPromptBlock | FlashCardsBlock | TapThroughTextBlock;
 
 type LessonDetail = {
   id: string;
@@ -86,6 +98,17 @@ const MAC_COLORS: Record<string, string> = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Helper: fire a haptic at the specified intensity
+// ---------------------------------------------------------------------------
+function fireHaptic(intensity: HapticIntensity): void {
+  switch (intensity) {
+    case 'heavy': Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); break;
+    case 'medium': Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); break;
+    case 'light': Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); break;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helper: compute total playback seconds from block data
 // ---------------------------------------------------------------------------
 function computeBlockDuration(blocks: ContentBlock[]): number {
@@ -111,6 +134,7 @@ export default function LessonPlayerScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [doneDeltas, setDoneDeltas] = useState<Record<string, { amount: number; reason: string }> | null>(null);
   const [streakCount, setStreakCount] = useState(0);
+  const preStreakDateRef = useRef<string | null>(null);
 
   const doneAnim1 = useRef(new Animated.Value(0)).current;
   const doneAnim2 = useRef(new Animated.Value(0)).current;
@@ -142,6 +166,29 @@ export default function LessonPlayerScreen() {
   const [flashCardIndex, setFlashCardIndex] = useState(0);
   const [flashCardFlipped, setFlashCardFlipped] = useState(false);
   const flipAnim = useRef(new Animated.Value(0)).current;
+
+  // Tap-through text state
+  const [tapThroughIndex, setTapThroughIndex] = useState(0);
+  const tapThroughIndexRef = useRef(0);
+  const tapThroughSlideX = useRef(new Animated.Value(0)).current;
+  // Ref so the PanResponder (created once) always calls the latest callback
+  const advanceTapThroughCallbackRef = useRef<(dir: 'forward' | 'back') => void>(() => {});
+
+  // Breath circle animation shared across all circle-based exercise models
+  // (box_breathing, coffee_breath, milk_breath, whiskey_breath).
+  // 0 = fully exhaled / contracted, 1 = fully inhaled / expanded.
+  const breathCircleAnim = useRef(new Animated.Value(0)).current;
+  const breathAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  // Haptic tracking — prevents double-firing within the same elapsed second
+  const lastHapticSecRef = useRef(-1);
+  // Box breathing phase tracking — fires haptic on phase transitions
+  const lastBoxPhaseRef = useRef(-1);
+
+  // Box breathing visual cues — motivational phrases that cycle every 10 s
+  const [boxCueIndex, setBoxCueIndex] = useState(0);
+  const boxCueFade = useRef(new Animated.Value(0)).current;
+  const lastBoxCueSecRef = useRef(-1);
 
   // Text cue tracking — guards against conflicting animations and backward regression
   const lastCueRef = useRef('');
@@ -181,20 +228,29 @@ export default function LessonPlayerScreen() {
   // arrives so the music is already buffered when the timed exercise starts.
   const ambientSource = useMemo(() => {
     if (!lesson?.content_blocks?.blocks) return null;
-    const ex = lesson.content_blocks.blocks.find(
-      (b): b is TimedExerciseBlock => b.type === 'timed_exercise',
-    );
-    if (ex?.ambient_audio) return ex.ambient_audio;
-    const fc = lesson.content_blocks.blocks.find(
-      (b): b is FlashCardsBlock => b.type === 'flash_cards',
-    );
-    return fc?.ambient_audio ?? null;
+    for (const b of lesson.content_blocks.blocks) {
+      if (
+        (b.type === 'timed_exercise' || b.type === 'flash_cards' || b.type === 'tap_through_text') &&
+        b.ambient_audio
+      ) {
+        return b.ambient_audio;
+      }
+    }
+    return null;
   }, [lesson]);
 
   const ambientPlayer = useAudioPlayer(ambientSource, {
     updateInterval: 1000,
     downloadFirst: false,
   });
+
+  // Snapshot pre-completion streak date so we can skip the celebration
+  // for second+ lessons on the same day.
+  useEffect(() => {
+    apiFetch<{ last_activity_date: string | null }>('/streak').then(({ data }) => {
+      preStreakDateRef.current = data?.last_activity_date ?? null;
+    });
+  }, []);
 
   // -----------------------------------------------------------------------
   // Load lesson
@@ -241,6 +297,7 @@ export default function LessonPlayerScreen() {
   const stopAllTimers = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (exerciseTimerRef.current) { clearInterval(exerciseTimerRef.current); exerciseTimerRef.current = null; }
+    if (breathAnimRef.current) { breathAnimRef.current.stop(); breathAnimRef.current = null; }
     progressAnim.stopAnimation();
   }, []);
 
@@ -364,47 +421,134 @@ export default function LessonPlayerScreen() {
       textFade.setValue(0);
       cardScale.setValue(1);
       setOnScreenText('');
-      try { ambientPlayer.seekTo(0).then(() => ambientPlayer.play()).catch(() => {}); } catch { /* noop */ }
+      // Reset haptic + visual cue tracking
+      lastHapticSecRef.current = -1;
+      lastBoxPhaseRef.current = -1;
+      lastBoxCueSecRef.current = -1;
+      setBoxCueIndex(0);
+      boxCueFade.setValue(0);
+      // If ambient is already playing (continuous from tap_through_text), leave it.
+      // Otherwise seek to 0 and start (e.g. when exercise is the first block).
+      try {
+        if (!ambientPlayer.playing) {
+          ambientPlayer.seekTo(0).then(() => ambientPlayer.play()).catch(() => {});
+        }
+      } catch { /* noop */ }
+
+      // For box_breathing, extend to the next complete 16s cycle boundary so
+      // the session always ends after the hold-post-exhale phase (not mid-breath).
+      const effectiveDuration =
+        block.interactive_model === 'box_breathing'
+          ? Math.ceil(block.duration_seconds / 16) * 16
+          : block.duration_seconds;
 
       progressAnim.setValue(0);
       Animated.timing(progressAnim, {
         toValue: 1,
-        duration: block.duration_seconds * 1000,
+        duration: effectiveDuration * 1000,
         useNativeDriver: false,
       }).start();
+
+      // Drive the breath circle for all circle-based models.
+      // Each entry is [inhaleMs, holdInMs, exhaleMs, holdOutMs].
+      const CIRCLE_TIMING: Record<string, [number, number, number, number]> = {
+        box_breathing:  [4000, 4000, 4000, 4000],
+        coffee_breath:  [1000,    0, 1000,    0],
+        milk_breath:    [4000,    0, 4000,    0],
+        whiskey_breath: [4000,    0, 8000,    0],
+      };
+      const timing = block.interactive_model ? CIRCLE_TIMING[block.interactive_model] : undefined;
+      if (timing) {
+        breathCircleAnim.setValue(0);
+        const [inhaleMs, holdInMs, exhaleMs, holdOutMs] = timing;
+        const parts: Animated.CompositeAnimation[] = [
+          Animated.timing(breathCircleAnim, { toValue: 1, duration: inhaleMs, useNativeDriver: true }),
+        ];
+        if (holdInMs > 0) parts.push(Animated.delay(holdInMs));
+        parts.push(Animated.timing(breathCircleAnim, { toValue: 0, duration: exhaleMs, useNativeDriver: true }));
+        if (holdOutMs > 0) parts.push(Animated.delay(holdOutMs));
+        breathAnimRef.current = Animated.loop(Animated.sequence(parts));
+        breathAnimRef.current.start();
+      }
 
       const start = Date.now();
       exerciseTimerRef.current = setInterval(() => {
         const secs = Math.floor((Date.now() - start) / 1000);
         setExerciseElapsed(secs);
 
-        let cumulative = 0;
-        for (let i = 0; i < block.steps.length; i++) {
-          const prevCumulative = cumulative;
-          cumulative += block.steps[i].duration_seconds;
-          if (secs >= prevCumulative && secs < cumulative) {
-            const target = block.steps[i].text;
-            if (target !== lastCueRef.current) {
-              lastCueRef.current = target;
-              setExerciseStepIndex(i);
-              pulseBars();
-              Animated.parallel([
-                Animated.timing(textFade, { toValue: 0, duration: 120, useNativeDriver: true }),
-                Animated.timing(cardScale, { toValue: 0.96, duration: 120, useNativeDriver: true }),
-              ]).start(() => {
-                setOnScreenText(target);
-                Animated.parallel([
-                  Animated.timing(textFade, { toValue: 1, duration: 280, useNativeDriver: true }),
-                  Animated.spring(cardScale, { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }),
-                ]).start();
-              });
-            }
-            break;
+        // --- Haptics: box_breathing phase transitions (step-level) ---
+        if (block.interactive_model === 'box_breathing') {
+          const phaseIdx = Math.floor((secs % 16) / 4);
+          if (phaseIdx !== lastBoxPhaseRef.current) {
+            lastBoxPhaseRef.current = phaseIdx;
+            const step = block.steps[phaseIdx];
+            if (step?.haptic) fireHaptic(step.haptic);
           }
         }
 
-        if (secs >= block.duration_seconds) {
+        // --- Haptics: repeating pattern (coffee / milk / whiskey breath) ---
+        if (block.haptic_pattern && secs !== lastHapticSecRef.current) {
+          const { cycle_seconds, cues } = block.haptic_pattern;
+          const cyclePos = secs % cycle_seconds;
+          for (const cue of cues) {
+            if (Math.floor(cue.at_offset_seconds) === cyclePos) {
+              lastHapticSecRef.current = secs;
+              fireHaptic(cue.intensity);
+              break;
+            }
+          }
+        }
+
+        // --- Step advancement (non-box-breathing) + step-level haptics ---
+        if (block.interactive_model !== 'box_breathing') {
+          let cumulative = 0;
+          for (let i = 0; i < block.steps.length; i++) {
+            const prevCumulative = cumulative;
+            cumulative += block.steps[i].duration_seconds;
+            if (secs >= prevCumulative && secs < cumulative) {
+              const target = block.steps[i].text;
+              if (target !== lastCueRef.current) {
+                lastCueRef.current = target;
+                setExerciseStepIndex(i);
+                // Step-level haptic (body_scan uses this; coffee/milk/whiskey use haptic_pattern)
+                if (block.steps[i].haptic) fireHaptic(block.steps[i].haptic!);
+                pulseBars();
+                Animated.parallel([
+                  Animated.timing(textFade, { toValue: 0, duration: 120, useNativeDriver: true }),
+                  Animated.timing(cardScale, { toValue: 0.96, duration: 120, useNativeDriver: true }),
+                ]).start(() => {
+                  setOnScreenText(target);
+                  Animated.parallel([
+                    Animated.timing(textFade, { toValue: 1, duration: 280, useNativeDriver: true }),
+                    Animated.spring(cardScale, { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }),
+                  ]).start();
+                });
+              }
+              break;
+            }
+          }
+        }
+
+        // --- Box breathing visual cues — cycle every 10 s ---
+        if (block.interactive_model === 'box_breathing' && block.visual_cues?.length) {
+          const cueIdx = Math.min(Math.floor(secs / 10), block.visual_cues.length - 1);
+          if (cueIdx !== lastBoxCueSecRef.current) {
+            lastBoxCueSecRef.current = cueIdx;
+            setBoxCueIndex(cueIdx);
+            boxCueFade.setValue(0);
+            Animated.timing(boxCueFade, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+          }
+        }
+
+        // Box breathing: only stop at the end of a complete 16s cycle so the
+        // session always concludes after the hold-post-exhale (never mid-breath).
+        const done = block.interactive_model === 'box_breathing'
+          ? secs >= effectiveDuration
+          : secs >= block.duration_seconds;
+
+        if (done) {
           if (exerciseTimerRef.current) { clearInterval(exerciseTimerRef.current); exerciseTimerRef.current = null; }
+          if (breathAnimRef.current) { breathAnimRef.current.stop(); breathAnimRef.current = null; }
           try { ambientPlayer.pause(); } catch { /* noop */ }
           advanceBlock();
         }
@@ -415,6 +559,16 @@ export default function LessonPlayerScreen() {
       flipAnim.setValue(0);
       setCurrentAudioUrl(null);
       try { ambientPlayer.seekTo(0).then(() => ambientPlayer.play()).catch(() => {}); } catch { /* noop */ }
+    } else if (block.type === 'tap_through_text') {
+      tapThroughIndexRef.current = 0;
+      setTapThroughIndex(0);
+      tapThroughSlideX.setValue(0);
+      setCurrentAudioUrl(null);
+      textFade.setValue(0);
+      Animated.timing(textFade, { toValue: 1, duration: 350, useNativeDriver: true }).start();
+      if (block.ambient_audio) {
+        try { ambientPlayer.seekTo(0).then(() => ambientPlayer.play()).catch(() => {}); } catch { /* noop */ }
+      }
     } else if (block.type === 'journal_prompt') {
       setCurrentAudioUrl(null);
       setOnScreenText(block.prompt);
@@ -583,6 +737,9 @@ export default function LessonPlayerScreen() {
     setFlashCardIndex(0);
     setFlashCardFlipped(false);
     flipAnim.setValue(0);
+    tapThroughIndexRef.current = 0;
+    setTapThroughIndex(0);
+    tapThroughSlideX.setValue(0);
     setJournalText('');
     lastCueRef.current = '';
     highestCueIndexRef.current = -1;
@@ -606,6 +763,74 @@ export default function LessonPlayerScreen() {
   const isVoiceoverBlock = currentBlock?.type === 'voiceover';
   const isExerciseBlock = currentBlock?.type === 'timed_exercise';
   const isFlashCardsBlock = currentBlock?.type === 'flash_cards';
+  const isTapThroughBlock = currentBlock?.type === 'tap_through_text';
+
+  const SLIDE_DIST = 320;
+
+  const advanceTapThrough = useCallback((direction: 'forward' | 'back' = 'forward') => {
+    const currentBlocks = lessonRef.current?.content_blocks?.blocks ?? [];
+    const block = currentBlocks[blockIndexRef.current];
+    if (!block || block.type !== 'tap_through_text') return;
+
+    if (direction === 'forward') {
+      const nextIdx = tapThroughIndexRef.current + 1;
+      if (nextIdx >= block.paragraphs.length) {
+        advanceBlock();
+        return;
+      }
+      Animated.parallel([
+        Animated.timing(textFade, { toValue: 0, duration: 150, useNativeDriver: true }),
+        Animated.timing(tapThroughSlideX, { toValue: -SLIDE_DIST, duration: 200, useNativeDriver: true }),
+      ]).start(() => {
+        tapThroughSlideX.setValue(SLIDE_DIST);
+        tapThroughIndexRef.current = nextIdx;
+        setTapThroughIndex(nextIdx);
+        Animated.parallel([
+          Animated.timing(textFade, { toValue: 1, duration: 250, useNativeDriver: true }),
+          Animated.timing(tapThroughSlideX, { toValue: 0, duration: 280, useNativeDriver: true }),
+        ]).start();
+      });
+    } else {
+      const prevIdx = tapThroughIndexRef.current - 1;
+      if (prevIdx < 0) return;
+      Animated.parallel([
+        Animated.timing(textFade, { toValue: 0, duration: 150, useNativeDriver: true }),
+        Animated.timing(tapThroughSlideX, { toValue: SLIDE_DIST, duration: 200, useNativeDriver: true }),
+      ]).start(() => {
+        tapThroughSlideX.setValue(-SLIDE_DIST);
+        tapThroughIndexRef.current = prevIdx;
+        setTapThroughIndex(prevIdx);
+        Animated.parallel([
+          Animated.timing(textFade, { toValue: 1, duration: 250, useNativeDriver: true }),
+          Animated.timing(tapThroughSlideX, { toValue: 0, duration: 280, useNativeDriver: true }),
+        ]).start();
+      });
+    }
+  }, [advanceBlock, textFade, tapThroughSlideX]);
+
+  // Keep the PanResponder callback ref current so the once-created responder
+  // always calls the latest version of advanceTapThrough.
+  advanceTapThroughCallbackRef.current = advanceTapThrough;
+
+  const tapThroughPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, { dx, dy }) =>
+        Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 8,
+      onPanResponderRelease: (_, { dx, dy }) => {
+        if (Math.abs(dx) < 15 && Math.abs(dy) < 15) {
+          // Tap → forward
+          advanceTapThroughCallbackRef.current('forward');
+        } else if (dx < -40) {
+          // Swipe left → forward
+          advanceTapThroughCallbackRef.current('forward');
+        } else if (dx > 40) {
+          // Swipe right → back
+          advanceTapThroughCallbackRef.current('back');
+        }
+      },
+    }),
+  ).current;
 
   const hasLegacyVoiceover = !hasBlocks && Boolean(lesson?.voiceover_url);
   const legacyAudioElapsed = Math.floor(audioStatus.currentTime);
@@ -815,7 +1040,7 @@ export default function LessonPlayerScreen() {
           <View style={styles.centered}>
             <Text style={styles.readyTitle}>{lesson.title}</Text>
             <Text style={styles.readyDuration}>
-              ~{Math.ceil((hasBlocks ? computeBlockDuration(blocks) : lesson.duration_seconds) / 60)} min
+              ~{Math.ceil(lesson.duration_seconds / 60)} min
             </Text>
             {!hasBlocks && lesson.on_screen_text && (
               <Text style={styles.readyDesc}>{lesson.on_screen_text}</Text>
@@ -841,10 +1066,197 @@ export default function LessonPlayerScreen() {
           </View>
         )}
 
-        {/* Block-mode: timed exercise — text card + audio cue bars */}
+        {/* Block-mode: timed exercise */}
         {phase === 'playing' && lesson && hasBlocks && isExerciseBlock && (() => {
           const exBlock = currentBlock as TimedExerciseBlock;
-          const remaining = Math.max(0, exBlock.duration_seconds - exerciseElapsed);
+
+          // Shared interpolation for the breath circle (used by multiple models)
+          const circleScale = breathCircleAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.55, 1],
+            extrapolate: 'clamp',
+          });
+          const circleOpacity = breathCircleAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.35, 0.85],
+            extrapolate: 'clamp',
+          });
+          const circleNode = (
+            <View style={styles.breathCircleWrapper}>
+              <Animated.View
+                style={[
+                  styles.breathCircle,
+                  {
+                    backgroundColor: catColor,
+                    opacity: circleOpacity,
+                    transform: [{ scale: circleScale }],
+                    shadowColor: catColor,
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: 0.5,
+                    shadowRadius: 30,
+                    elevation: 12,
+                  },
+                ]}
+              />
+            </View>
+          );
+
+          // ── Box breathing ───────────────────────────────────────────────
+          if (exBlock.interactive_model === 'box_breathing') {
+            const BOX_PHASES = ['Inhale', 'Hold', 'Exhale', 'Hold'] as const;
+            const phaseIndex = Math.floor((exerciseElapsed % 16) / 4);
+            const phaseLabel = BOX_PHASES[phaseIndex] ?? 'Inhale';
+            const countdown = 4 - (exerciseElapsed % 4);
+            return (
+              <View style={styles.centered}>
+                <View style={styles.breathCircleWrapper}>
+                  <Animated.View
+                    style={[
+                      styles.breathCircle,
+                      {
+                        backgroundColor: catColor,
+                        opacity: circleOpacity,
+                        transform: [{ scale: circleScale }],
+                        shadowColor: catColor,
+                        shadowOffset: { width: 0, height: 0 },
+                        shadowOpacity: 0.5,
+                        shadowRadius: 30,
+                        elevation: 12,
+                      },
+                    ]}
+                  />
+                  <Text style={[styles.breathCountdown, { position: 'absolute' }]}>{countdown}</Text>
+                </View>
+                <Animated.View
+                  style={[
+                    styles.exerciseCard,
+                    {
+                      borderColor: catColor,
+                      borderTopWidth: 2,
+                      transform: [{ scale: cardScale }],
+                      shadowColor: catColor,
+                      shadowOffset: { width: 0, height: 0 },
+                      shadowOpacity: 0.25,
+                      shadowRadius: 20,
+                      elevation: 8,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.exercisePhaseLabel, { color: catColor }]}>{phaseLabel}</Text>
+                  <Animated.Text style={[styles.exerciseText, { opacity: boxCueFade }]}>
+                    {exBlock.visual_cues?.[boxCueIndex] ?? ''}
+                  </Animated.Text>
+                </Animated.View>
+                <View style={styles.progressBarTrack}>
+                  <Animated.View
+                    style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
+                  />
+                </View>
+              </View>
+            );
+          }
+
+          // ── Circle-based breath models (coffee / milk / whiskey) ────────
+          const CIRCLE_MODELS = ['coffee_breath', 'milk_breath', 'whiskey_breath'];
+          if (CIRCLE_MODELS.includes(exBlock.interactive_model ?? '')) {
+            const circlePhaseLabel = (() => {
+              const m = exBlock.interactive_model;
+              if (m === 'coffee_breath')  return exerciseElapsed % 2  < 1 ? 'Inhale' : 'Exhale';
+              if (m === 'milk_breath')    return exerciseElapsed % 8  < 4 ? 'Inhale' : 'Exhale';
+              if (m === 'whiskey_breath') return exerciseElapsed % 12 < 4 ? 'Inhale' : 'Exhale';
+              return '';
+            })();
+            return (
+              <View style={styles.centered}>
+                {circleNode}
+                <Animated.View
+                  style={[
+                    styles.exerciseCard,
+                    {
+                      borderColor: catColor,
+                      borderTopWidth: 2,
+                      transform: [{ scale: cardScale }],
+                      shadowColor: catColor,
+                      shadowOffset: { width: 0, height: 0 },
+                      shadowOpacity: 0.25,
+                      shadowRadius: 20,
+                      elevation: 8,
+                    },
+                  ]}
+                >
+                  {circlePhaseLabel ? (
+                    <Text style={[styles.exercisePhaseLabel, { color: catColor }]}>{circlePhaseLabel}</Text>
+                  ) : null}
+                  <Animated.Text style={[styles.exerciseText, { opacity: textFade }]}>
+                    {onScreenText}
+                  </Animated.Text>
+                </Animated.View>
+                <View style={styles.progressBarTrack}>
+                  <Animated.View
+                    style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
+                  />
+                </View>
+              </View>
+            );
+          }
+
+          // ── Body scan — descending zone indicator ───────────────────────
+          if (exBlock.interactive_model === 'body_scan') {
+            const totalZones = exBlock.steps.length;
+            const activeZone = Math.min(Math.floor(exerciseElapsed / 10), totalZones - 1);
+            return (
+              <View style={styles.centered}>
+                <View style={styles.bodyScanRow}>
+                  <View style={styles.bodyScanDots}>
+                    {exBlock.steps.map((_, i) => (
+                      <View
+                        key={i}
+                        style={[
+                          styles.bodyScanDot,
+                          {
+                            backgroundColor:
+                              i === activeZone
+                                ? catColor
+                                : i < activeZone
+                                  ? catColor + '55'
+                                  : colors.ringTrack,
+                            transform: [{ scale: i === activeZone ? 1.3 : 1 }],
+                          },
+                        ]}
+                      />
+                    ))}
+                  </View>
+                  <Animated.View
+                    style={[
+                      styles.exerciseCard,
+                      {
+                        flex: 1,
+                        borderColor: catColor,
+                        borderTopWidth: 2,
+                        transform: [{ scale: cardScale }],
+                        shadowColor: catColor,
+                        shadowOffset: { width: 0, height: 0 },
+                        shadowOpacity: 0.25,
+                        shadowRadius: 20,
+                        elevation: 8,
+                      },
+                    ]}
+                  >
+                    <Animated.Text style={[styles.exerciseText, { opacity: textFade }]}>
+                      {onScreenText}
+                    </Animated.Text>
+                  </Animated.View>
+                </View>
+                <View style={styles.progressBarTrack}>
+                  <Animated.View
+                    style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
+                  />
+                </View>
+              </View>
+            );
+          }
+
+          // ── Standard step card (fallback) ───────────────────────────────
           return (
             <View style={styles.centered}>
               <View style={styles.exerciseStepDots}>
@@ -964,6 +1376,54 @@ export default function LessonPlayerScreen() {
                   {flashCardIndex >= fcBlock.cards.length - 1 ? 'Finish' : 'Next'}
                 </Text>
               </TouchableOpacity>
+            </View>
+          );
+        })()}
+
+        {/* Block-mode: tap-through text — Duolingo-style tap/swipe to advance */}
+        {phase === 'playing' && lesson && hasBlocks && isTapThroughBlock && (() => {
+          const ttBlock = currentBlock as TapThroughTextBlock;
+          const paragraph = ttBlock.paragraphs[tapThroughIndex] ?? '';
+          const isLast = tapThroughIndex >= ttBlock.paragraphs.length - 1;
+          return (
+            <View
+              style={styles.tapThroughContainer}
+              {...tapThroughPanResponder.panHandlers}
+            >
+              {/* Dots: sit at a fixed position determined by paddingTop on the container.
+                  They are NOT inside a centering wrapper so text height never moves them. */}
+              <View style={styles.tapThroughDots}>
+                {ttBlock.paragraphs.map((_, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.stepDot,
+                      i === tapThroughIndex
+                        ? { backgroundColor: catColor, width: 18 }
+                        : i < tapThroughIndex
+                          ? { backgroundColor: catColor + '60' }
+                          : { backgroundColor: colors.ringTrack },
+                    ]}
+                  />
+                ))}
+              </View>
+
+              {/* Text flows directly below the fixed-position dots */}
+              <Animated.Text
+                style={[
+                  styles.tapThroughText,
+                  { opacity: textFade, transform: [{ translateX: tapThroughSlideX }] },
+                ]}
+              >
+                {paragraph}
+              </Animated.Text>
+
+              {/* Hint absolutely pinned so it never reflows layout */}
+              <View style={styles.tapThroughHintRow}>
+                <Text style={[styles.tapThroughHint, { color: catColor + 'aa' }]}>
+                  {isLast ? 'Begin Exercise' : 'Tap to continue'}
+                </Text>
+              </View>
             </View>
           );
         })()}
@@ -1117,6 +1577,11 @@ export default function LessonPlayerScreen() {
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={async () => {
+                  const utcToday = new Date().toISOString().slice(0, 10);
+                  if (preStreakDateRef.current === utcToday) {
+                    router.back();
+                    return;
+                  }
                   const { data } = await apiFetch<{ current_streak: number }>('/streak');
                   setStreakCount(data?.current_streak ?? 1);
                   setPhase('streak');
@@ -1237,6 +1702,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     marginBottom: spacing.md,
     width: '100%',
+    // Lock to 2-line coaching text + phase label so the card never jumps.
+    // 2 × lineHeight(30) + marginTop(4) + phaseLabel(14) + 2 × paddingVertical(36) = 156.
+    minHeight: 156,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   exerciseText: {
     fontSize: 20,
@@ -1244,6 +1714,18 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlign: 'center',
     lineHeight: 30,
+  },
+  // Phase indicator (Inhale / Exhale / Hold) at the top of the exercise card,
+  // tinted with catColor inline. Prominent enough to read at a glance.
+  exercisePhaseLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 2,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+    textTransform: 'uppercase',
+    lineHeight: 16,
   },
   audioCue: {
     flexDirection: 'row',
@@ -1503,5 +1985,79 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
     paddingHorizontal: spacing.lg,
+  },
+  tapThroughContainer: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: 60,
+    // paddingTop positions the dots at a fixed vertical location.
+    // They are always at this distance from the top of the content area
+    // regardless of how tall the paragraph text is.
+    paddingTop: '66%',
+  },
+  tapThroughDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 20,
+    marginBottom: spacing.lg,
+  },
+  tapThroughText: {
+    fontSize: 22,
+    fontWeight: '500',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    lineHeight: 34,
+    width: '100%',
+  },
+  tapThroughHintRow: {
+    position: 'absolute',
+    bottom: spacing.xl,
+    alignSelf: 'center',
+    height: 20,
+    justifyContent: 'center',
+  },
+  tapThroughHint: {
+    fontSize: 13,
+    fontWeight: '500',
+    letterSpacing: 0.5,
+  },
+  breathCircleWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xl,
+  },
+  breathCircle: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  breathCountdown: {
+    fontSize: 48,
+    fontWeight: '200',
+    color: colors.textPrimary,
+    fontVariant: ['tabular-nums'],
+  },
+  // Body scan: row layout with zone dots on the left and text card on the right
+  bodyScanRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    width: '100%',
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
+  },
+  bodyScanDots: {
+    gap: 7,
+    alignItems: 'center',
+  },
+  bodyScanDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 });

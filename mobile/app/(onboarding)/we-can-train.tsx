@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 10;
 
 export default function WeCanTrainScreen() {
   const router = useRouter();
@@ -36,7 +36,7 @@ export default function WeCanTrainScreen() {
             style={styles.button}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/(onboarding)/tutorial-home' as any);
+              router.push('/(onboarding)/tutorial' as any);
             }}
           >
             <Text style={styles.buttonText}>See How It Works</Text>

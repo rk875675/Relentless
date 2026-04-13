@@ -81,14 +81,16 @@ That's it. We handle everything else (app integration, timing, playback).
 
 ---
 
-## 4. Script template
+## 4. Script templates
 
-Copy this template for every lesson. Fill in each section that applies.
+### 4a. Daily Workout (program lesson) template
+
+Copy this template for Day 1–30 lessons. Fill in each section that applies.
 Delete any optional section you don't use.
 
 ```
 LESSON TITLE: [short title]
-LESSON NUMBER: [Day 1–30, or Library-M-01-Short, Library-A-02-Long, etc.]
+LESSON NUMBER: [Day 1–30]
 MAC TAG(S): [M, A, C, or a combination like MA, MC, MAC]
 
 ========================================
@@ -133,23 +135,80 @@ JOURNAL PROMPT  (optional — delete if none)
 [The exact question shown to the user.]
 ```
 
+---
+
+### 4b. Library lesson template
+
+Library lessons do **not** require audio recording. The intro text is
+displayed as tap-through cards instead of a voiceover. No mp3 files needed.
+
+```
+LESSON TITLE: [short title]
+LESSON NUMBER: [Library-M-01-Short, Library-A-02-Long, etc.]
+MAC TAG(S): [M, A, or C — library lessons have exactly one tag]
+
+========================================
+TAP-THROUGH TEXT  (intro cards, no audio)
+========================================
+
+[Write 3–7 short paragraphs. Each becomes one card the athlete taps through.
+Keep each paragraph to 1–2 sentences — readable at a glance.
+The last paragraph should set up the exercise.]
+
+Paragraph 1: [opening hook or core concept]
+Paragraph 2: [build on it]
+Paragraph 3: [...]
+Paragraph 4: [...]
+Paragraph 5: [transition into the exercise]
+
+
+========================================
+EXERCISE  (optional — delete if none)
+========================================
+
+[EXERCISE — total duration in seconds]
+(describe the model/interaction clearly — see Section 5 for box breathing)
+
+Step 1: "[text shown on screen]" — [duration in seconds]
+Step 2: "[text shown on screen]" — [duration in seconds]
+Step 3: "[text shown on screen]" — [duration in seconds]
+
+
+========================================
+JOURNAL PROMPT  (optional — delete if none)
+========================================
+
+[JOURNAL PROMPT]
+[The exact question shown to the user.]
+```
+
+**Library lesson delivery:** you only need the completed script above.
+No audio files required. We handle integration.
+
 ### Block ordering
 
 A lesson is played as an ordered sequence of blocks. The most common
-pattern is:
+pattern for **Daily Workouts (program lessons)** is:
 
-> Voiceover -> Exercise -> Voiceover -> Journal Prompt
+> Voiceover → Exercise → Voiceover → Journal Prompt
 
-But you are not locked into that. You can use any combination and any
-order. Examples of valid structures:
+**Library lessons** use a different structure — no recorded audio is
+needed. Instead, the coach's intro text is displayed as tap-through cards
+the athlete reads at their own pace:
+
+> Tap-Through Text → Exercise → Journal Prompt
+
+See Section 4b for the library lesson template.
+
+You can use any combination in any order. Examples of valid structures:
 
 - Voiceover only (no exercise, no journal)
-- Voiceover -> Journal Prompt
-- Voiceover -> Exercise -> Voiceover -> Exercise -> Voiceover -> Journal Prompt
+- Voiceover → Journal Prompt
+- Tap-Through Text → Journal Prompt (reflection-only library lesson)
+- Tap-Through Text → Exercise → Tap-Through Text → Exercise → Journal Prompt
 
-The only rule is that the lesson must contain **at least one voiceover
-block**. However, I do highly recommend at least one voiceover + exercise
-and/or journal.
+The only rule: the lesson must contain at least one `voiceover` or
+`tap_through_text` block. Journal prompt, if present, must always be last.
 
 ---
 
@@ -442,10 +501,17 @@ their category — you decide what short and long mean.
 
 ## Quick-start summary
 
-1. Pick a lesson (Day N or Library-X-NN-Short/Long)
-2. Copy the template from Section 4
-3. Write your voiceover script, add exercise and/or journal prompt if
-   desired
-4. Record your audio, name the files per Section 7
+**Daily Workout (Day 1–30):**
+1. Pick the day number
+2. Copy the template from Section 4a
+3. Write the voiceover script, add exercise and/or journal prompt if desired
+4. Record your audio, name files per Section 7
 5. Run through the checklist in Section 8
-6. Deliver the script document + audio files
+6. Deliver: script document + mp3 files
+
+**Library lesson (Short or Long):**
+1. Pick the lesson number (Library-M-01-Short, Library-A-02-Long, etc.)
+2. Copy the template from Section 4b
+3. Write the tap-through paragraphs, add exercise and/or journal prompt if desired
+4. No audio recording needed
+5. Deliver: script document only

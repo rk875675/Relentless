@@ -6,9 +6,10 @@ import { colors, spacing } from '@/lib/theme';
 type Props = {
   step: number;
   total: number;
+  onBack?: () => void;
 };
 
-export function ProgressBar({ step, total }: Props) {
+export function ProgressBar({ step, total, onBack }: Props) {
   const router = useRouter();
   const pct = Math.min(Math.max(step / total, 0), 1) * 100;
   const showBack = step >= 1;
@@ -16,7 +17,7 @@ export function ProgressBar({ step, total }: Props) {
   return (
     <View style={styles.container}>
       {showBack ? (
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
+        <TouchableOpacity onPress={onBack ?? (() => router.back())} style={styles.backBtn} hitSlop={12}>
           <Ionicons name="chevron-back" size={22} color={colors.textSecondary} />
         </TouchableOpacity>
       ) : (

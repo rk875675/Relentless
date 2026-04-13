@@ -8,6 +8,10 @@ export default function OnboardingLayout() {
         options={{ gestureEnabled: false }}
       />
       <Stack.Screen
+        name="tutorial"
+        options={{ gestureEnabled: false }}
+      />
+      <Stack.Screen
         name="paywall"
         options={{ gestureEnabled: false }}
       />

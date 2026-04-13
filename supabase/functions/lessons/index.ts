@@ -81,6 +81,8 @@ async function resolveContentBlockUrls(
       pathsToSign.push(block.ambient_audio);
     } else if (block.type === "flash_cards" && block.ambient_audio) {
       pathsToSign.push(block.ambient_audio);
+    } else if (block.type === "tap_through_text" && block.ambient_audio) {
+      pathsToSign.push(block.ambient_audio);
     }
   }
 
@@ -104,6 +106,8 @@ async function resolveContentBlockUrls(
     } else if (block.type === "timed_exercise" && block.ambient_audio) {
       block.ambient_audio = urlMap.get(block.ambient_audio) ?? block.ambient_audio;
     } else if (block.type === "flash_cards" && block.ambient_audio) {
+      block.ambient_audio = urlMap.get(block.ambient_audio) ?? block.ambient_audio;
+    } else if (block.type === "tap_through_text" && block.ambient_audio) {
       block.ambient_audio = urlMap.get(block.ambient_audio) ?? block.ambient_audio;
     }
   }

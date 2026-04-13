@@ -1,0 +1,52 @@
+{
+  "lesson_id": "e1000000-0000-0000-0000-000000000001",
+  "title": "Box Breathing",
+  "lesson_type": "library",
+  "mac_categories": ["mindfulness"],
+  "duration_seconds": 180,
+  "sort_order": 100,
+  "blocks": [
+    {
+      "type": "tap_through_text",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "paragraphs": [
+        "Navy SEALs use this before combat. Surgeons use it before operations. Now you're going to use it before battle.",
+        "The structure is simple: four seconds in, four hold, four out, four hold.",
+        "Breathe in through your nose, out through your mouth.",
+        "This isn't just about calming down — it gives your mind something precise to lock onto when it wants to spiral.",
+        "If your mind drifts, that's fine. Acknowledge the thought, let it go, and return to your breath.",
+        "Close your eyes if you'd like. The exercise begins now."
+      ]
+    },
+    {
+      "type": "timed_exercise",
+      "duration_seconds": 120,
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "interactive_model": "box_breathing",
+      "visual_cues": [
+        "Drop your shoulders. Relax.",
+        "Breathe in through your nose, out through your mouth.",
+        "When you breathe in, your heart may speed up. Accept it.",
+        "Breath connects your mind and your body.",
+        "Where is your mind right now? Return it to your breath.",
+        "When you breathe out, your heart will slow down. Notice it.",
+        "Holding your breath levels your blood-oxygen.",
+        "You can't always control what happens out there.",
+        "When you breathe out, release your tension.",
+        "Don't lose your rhythm.",
+        "What is one thing you can always control? Your breath.",
+        "Breath brings awareness."
+      ],
+      "steps": [
+        { "text": "Inhale", "duration_seconds": 4, "haptic": "heavy" },
+        { "text": "Hold",   "duration_seconds": 4, "haptic": "light" },
+        { "text": "Exhale", "duration_seconds": 4, "haptic": "heavy" },
+        { "text": "Hold",   "duration_seconds": 4, "haptic": "light" }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "Is there anywhere you found your mind drifting? Write about it."
+    }
+  ]
+}

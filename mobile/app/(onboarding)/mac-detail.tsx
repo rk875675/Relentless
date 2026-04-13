@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 10;
 
 const DETAIL: Record<string, { letter: string; name: string; color: string; tagline: string; body: string }> = {
   M: {
