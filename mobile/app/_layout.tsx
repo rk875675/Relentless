@@ -44,8 +44,6 @@ function RouteGuard() {
         router.replace('/(tabs)');
       } else if (onboardingComplete && !hasPremiumAccess) {
         router.replace('/(onboarding)/paywall');
-      } else {
-        router.replace('/(onboarding)/welcome');
       }
     } else if (session && !onboardingComplete && !inOnboarding) {
       router.replace('/(onboarding)/welcome');

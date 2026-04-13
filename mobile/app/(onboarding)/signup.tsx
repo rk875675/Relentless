@@ -137,7 +137,7 @@ export default function OnboardingSignupScreen() {
 
           <TouchableOpacity
             style={styles.linkButton}
-            onPress={() => router.push('/(auth)/login')}
+            onPress={() => router.replace('/(auth)/login' as any)}
           >
             <Text style={styles.linkText}>Already have an account? Sign In</Text>
           </TouchableOpacity>

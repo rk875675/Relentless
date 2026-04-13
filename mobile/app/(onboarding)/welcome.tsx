@@ -40,7 +40,7 @@ export default function WelcomeScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.signInLink}
-            onPress={() => router.push('/(auth)/login')}
+            onPress={() => router.replace('/(auth)/login' as any)}
           >
             <Text style={styles.signInText}>Already have an account? Sign In</Text>
           </TouchableOpacity>

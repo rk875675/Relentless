@@ -21,6 +21,8 @@ type AuthState = {
   completeOnboarding: () => Promise<void>;
   /** __DEV__ only: marks premium for UX and completes onboarding without StoreKit. */
   completeOnboardingDevBypass: () => Promise<void>;
+  /** __DEV__ only: revokes dev premium bypass so the route guard redirects to paywall. */
+  revokePremiumForTesting: () => void;
   /** __DEV__ only: resets onboarding so the route guard redirects back to credibility. */
   resetOnboarding: () => Promise<void>;
   refreshUserState: () => Promise<void>;
@@ -39,6 +41,7 @@ const AuthContext = createContext<AuthState>({
   signOut: async () => {},
   completeOnboarding: async () => {},
   completeOnboardingDevBypass: async () => {},
+  revokePremiumForTesting: () => {},
   resetOnboarding: async () => {},
   refreshUserState: async () => {},
   updateCompetitionDate: async () => null,
@@ -153,6 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    setOnboardingComplete(false);
     setDevPremiumBypass(false);
     bustCache();
     clearPendingGainDeltas();
@@ -171,9 +175,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const completeOnboardingDevBypass = useCallback(async () => {
     if (!__DEV__) return;
     setDevPremiumBypass(true);
-    await supabase.rpc('dev_grant_trial');
+    try { await supabase.rpc('dev_grant_trial'); } catch { /* RPC may not be deployed */ }
     await completeOnboarding();
   }, [completeOnboarding]);
+
+  const revokePremiumForTesting = useCallback(() => {
+    if (!__DEV__) return;
+    setDevPremiumBypass(false);
+    setEntitlementStatus('none');
+    setEntitlementExpiresAt(null);
+  }, []);
 
   const resetOnboarding = useCallback(async () => {
     if (!session?.user) return;
@@ -206,6 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut,
       completeOnboarding,
       completeOnboardingDevBypass,
+      revokePremiumForTesting,
       resetOnboarding,
       refreshUserState,
       updateCompetitionDate,

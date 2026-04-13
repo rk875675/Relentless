@@ -19,8 +19,12 @@ export default function LoginScreen() {
     setError('');
     setLoading(true);
     const err = await signIn(email.trim(), password);
-    setLoading(false);
-    if (err) setError(err);
+    if (err) {
+      setLoading(false);
+      setError(err);
+      return;
+    }
+    router.replace('/(onboarding)/welcome' as any);
   };
 
   return (
@@ -63,7 +67,7 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.linkButton} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.linkButton} onPress={() => router.replace('/(onboarding)/welcome' as any)}>
             <Text style={styles.linkText}>Don't have an account? Sign Up</Text>
           </TouchableOpacity>
         </View>

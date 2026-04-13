@@ -38,7 +38,7 @@ function formatDate(dateStr: string | null): string {
 }
 
 export default function ProfileScreen() {
-  const { session, signOut, competitionDate, updateCompetitionDate, refreshUserState, resetOnboarding } = useAuth();
+  const { session, signOut, competitionDate, updateCompetitionDate, refreshUserState, resetOnboarding, revokePremiumForTesting } = useAuth();
   const router = useRouter();
   const [streak, setStreak] = useState<Streak | null>(null);
   const [totalCompletions, setTotalCompletions] = useState<number | null>(null);
@@ -314,10 +314,7 @@ export default function ProfileScreen() {
               icon="card-outline"
               label="Jump to Paywall"
               chevron
-              onPress={async () => {
-                await resetOnboarding();
-                router.replace('/(onboarding)/competition-date' as any);
-              }}
+              onPress={() => revokePremiumForTesting()}
             />
             <ProfileRow
               icon="refresh-outline"
