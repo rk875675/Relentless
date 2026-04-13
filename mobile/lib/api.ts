@@ -3,12 +3,24 @@ import { getDeviceLocalCalendarYmd } from './device-calendar';
 
 const BASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 
+let _cachedToken: string | null = null;
+
+export function setApiToken(token: string | null) {
+  _cachedToken = token;
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
   options?: { method?: string; body?: unknown; headers?: Record<string, string> },
 ): Promise<{ data: T | null; error: string | null; errorCode?: string | null; rawBody?: Record<string, unknown> }> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) {
+  let token = _cachedToken;
+
+  if (!token) {
+    const { data: { session } } = await supabase.auth.getSession();
+    token = session?.access_token ?? null;
+  }
+
+  if (!token) {
     return { data: null, error: 'Not authenticated', errorCode: null };
   }
 
@@ -16,7 +28,7 @@ export async function apiFetch<T = unknown>(
   const method = options?.method ?? 'GET';
 
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${session.access_token}`,
+    Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
     'X-Local-Date': getDeviceLocalCalendarYmd(),
     ...options?.headers,

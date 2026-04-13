@@ -10,11 +10,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 10;
 const AUTO_SWIPE_MS = 4000;
 const CARD_WIDTH = Dimensions.get('window').width - spacing.xl * 2;
 
@@ -86,17 +87,9 @@ export default function SocialProofScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={3} total={TOTAL_STEPS} />
+      <ProgressBar step={2} total={TOTAL_STEPS} />
       <Animated.View style={[styles.inner, { opacity: fadeIn }]}>
         <View style={styles.content}>
-          {/* PLACEHOLDER: Replace stat before production — needs verification. */}
-          <View style={styles.header}>
-            <Text style={styles.statLine}>
-              <Text style={styles.statAccent}>93% </Text>
-              of athletes report improved focus and composure using structured mental training.
-            </Text>
-          </View>
-
           <View style={styles.divider}>
             <Text style={styles.title}>Trusted by D1 Athletes</Text>
           </View>
@@ -135,7 +128,10 @@ export default function SocialProofScreen() {
           </View>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => router.push('/(onboarding)/question-effort')}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/(onboarding)/mac-question');
+            }}
           >
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>
@@ -149,23 +145,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   inner: { flex: 1, justifyContent: 'space-between' },
   content: { flex: 1, justifyContent: 'center', marginTop: -24 },
-
-  header: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: 40,
-  },
-  statLine: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    textAlign: 'center',
-    lineHeight: 32,
-  },
-  statAccent: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: colors.accentLight,
-  },
 
   divider: {
     paddingHorizontal: spacing.xl,

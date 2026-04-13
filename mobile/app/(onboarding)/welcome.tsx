@@ -34,9 +34,15 @@ export default function WelcomeScreen() {
         <Animated.View style={[styles.bottom, { opacity: fadeCta }]}>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => router.push('/(onboarding)/study-a')}
+            onPress={() => router.push('/(onboarding)/question-effort')}
           >
             <Text style={styles.buttonText}>Get Started</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.signInLink}
+            onPress={() => router.push('/(auth)/login')}
+          >
+            <Text style={styles.signInText}>Already have an account? Sign In</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -78,4 +84,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonText: { color: colors.white, fontSize: 16, fontWeight: '700' },
+  signInLink: { marginTop: 20, alignItems: 'center' },
+  signInText: { color: colors.textSecondary, fontSize: 14 },
 });

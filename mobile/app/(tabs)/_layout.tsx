@@ -1,23 +1,45 @@
 import { Tabs } from 'expo-router';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { colors } from '@/lib/theme';
 
+type IconName = keyof typeof Ionicons.glyphMap;
+
 function TabIcon({
-  name,
+  outlineName,
+  filledName,
   focused,
   color,
   size,
 }: {
-  name: keyof typeof Ionicons.glyphMap;
+  outlineName: IconName;
+  filledName: IconName;
   focused: boolean;
   color: string;
   size: number;
 }) {
   return (
     <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-      <Ionicons name={name} size={size - 2} color={color} />
+      <Ionicons
+        name={focused ? filledName : outlineName}
+        size={size - 2}
+        color={color}
+      />
     </View>
+  );
+}
+
+function HapticTabButton(props: any) {
+  return (
+    <TouchableOpacity
+      {...props}
+      activeOpacity={0.7}
+      onPress={(e) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        props.onPress?.(e);
+      }}
+    />
   );
 }
 
@@ -27,6 +49,8 @@ export default function TabLayout() {
       initialRouteName="index"
       screenOptions={{
         headerShown: false,
+        animation: 'shift',
+        tabBarButton: HapticTabButton,
         tabBarActiveTintColor: colors.accentLight,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
@@ -62,7 +86,7 @@ export default function TabLayout() {
         options={{
           title: 'Library',
           tabBarIcon: ({ focused, color, size }) => (
-            <TabIcon name="book-outline" focused={focused} color={color} size={size} />
+            <TabIcon outlineName="book-outline" filledName="book" focused={focused} color={color} size={size} />
           ),
         }}
       />
@@ -71,7 +95,7 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ focused, color, size }) => (
-            <TabIcon name="home-outline" focused={focused} color={color} size={size} />
+            <TabIcon outlineName="home-outline" filledName="home" focused={focused} color={color} size={size} />
           ),
         }}
       />
@@ -80,7 +104,7 @@ export default function TabLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ focused, color, size }) => (
-            <TabIcon name="person-outline" focused={focused} color={color} size={size} />
+            <TabIcon outlineName="person-outline" filledName="person" focused={focused} color={color} size={size} />
           ),
         }}
       />

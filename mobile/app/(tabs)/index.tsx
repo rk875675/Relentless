@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Animated,
+  Modal,
   StyleSheet,
   Text,
   View,
@@ -12,6 +14,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
@@ -106,6 +109,10 @@ export default function HomeScreen() {
   const [missJournalText, setMissJournalText] = useState('');
   const [missJournalSaving, setMissJournalSaving] = useState(false);
   const [missJournalDismissed, setMissJournalDismissed] = useState(false);
+  const [showFreebieModal, setShowFreebieModal] = useState(false);
+  const freebieDismissedRef = useRef(false);
+  const freebieScale = useRef(new Animated.Value(0)).current;
+  const freebieOpacity = useRef(new Animated.Value(0)).current;
   const deltaDateRef = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const journalCardY = useRef(0);
@@ -164,14 +171,15 @@ export default function HomeScreen() {
     const streakData = streakRes.error ? emptyStreak : (streakRes.data ?? emptyStreak);
     setStreak(streakData);
 
-    if (!missJournalDismissed && streakData.last_activity_date) {
+    if (streakData.last_activity_date) {
       const lastDate = new Date(streakData.last_activity_date + 'T00:00:00');
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const daysSince = Math.floor((today.getTime() - lastDate.getTime()) / 86400000);
-      // gap=2 (1 missed day): only show if freebie already used (PRD: first miss is free)
-      // gap>=3 (2+ missed days): always show (at least 1 non-freebie miss)
-      if (daysSince >= 3 || (daysSince === 2 && streakData.freebie_used)) {
+
+      if (daysSince === 2 && !streakData.freebie_used && !freebieDismissedRef.current) {
+        setShowFreebieModal(true);
+      } else if (!missJournalDismissed && (daysSince >= 3 || (daysSince === 2 && streakData.freebie_used))) {
         setShowMissReflection(true);
       }
     }
@@ -213,6 +221,25 @@ export default function HomeScreen() {
     setJournalSavedHint(false);
   }, [lesson?.id]);
 
+  useEffect(() => {
+    if (!showFreebieModal) return;
+    freebieScale.setValue(0);
+    freebieOpacity.setValue(0);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    Animated.sequence([
+      Animated.timing(freebieOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.spring(freebieScale, { toValue: 1, friction: 5, tension: 100, useNativeDriver: true }),
+    ]).start();
+  }, [showFreebieModal]);
+
+  const dismissFreebie = () => {
+    freebieDismissedRef.current = true;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Animated.timing(freebieOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setShowFreebieModal(false);
+    });
+  };
+
   const flushPreWorkoutJournal = useCallback(async () => {
     const trimmed = journalText.trim();
     if (!trimmed || trimmed === lastSavedJournalRef.current) {
@@ -242,6 +269,7 @@ export default function HomeScreen() {
   const handleStartWorkout = async (overrideId?: string) => {
     const targetId = overrideId ?? lesson?.id;
     if (!targetId) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await flushPreWorkoutJournal();
     bustCache('/lessons/next', '/progress', '/streak');
     router.push(`/lesson/${targetId}` as any);
@@ -447,6 +475,8 @@ export default function HomeScreen() {
             setJournalSavedHint(false);
           }}
           multiline
+          autoCorrect
+          spellCheck
           editable={!journalSaving}
           onFocus={() => {
             setTimeout(() => {
@@ -475,6 +505,31 @@ export default function HomeScreen() {
         </View>
       </View>
     </ScrollView>
+
+    <Modal visible={showFreebieModal} transparent animationType="none">
+      <Animated.View style={[styles.freebieOverlay, { opacity: freebieOpacity }]}>
+        <Animated.View style={[styles.freebieCard, { transform: [{ scale: freebieScale }] }]}>
+          <View style={styles.freebieIconWrap}>
+            <Ionicons name="shield-checkmark" size={48} color="#f59e0b" />
+          </View>
+          <Text style={styles.freebieTitle}>Streak saved!</Text>
+          <Text style={styles.freebieSub}>
+            You missed yesterday, but your{' '}
+            <Text style={{ color: '#f59e0b', fontWeight: '700' }}>
+              {streak?.current_streak ?? 0} day streak
+            </Text>
+            {' '}is still alive.
+          </Text>
+          <Text style={styles.freebieNote}>
+            This is your one free pass — don{"'"}t let it happen again.
+          </Text>
+          <TouchableOpacity style={styles.freebieBtn} onPress={dismissFreebie}>
+            <Text style={styles.freebieBtnText}>Let{"'"}s Go</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+
     </KeyboardAvoidingView>
   );
 }
@@ -758,5 +813,65 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 14,
     fontWeight: '500',
+  },
+  freebieOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  freebieCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.xl,
+    alignItems: 'center',
+    width: '100%',
+  },
+  freebieIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  freebieTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: colors.white,
+    marginBottom: spacing.sm,
+  },
+  freebieSub: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: spacing.md,
+  },
+  freebieNote: {
+    fontSize: 14,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: spacing.xl,
+    fontStyle: 'italic',
+  },
+  freebieBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    alignItems: 'center',
+  },
+  freebieBtnText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

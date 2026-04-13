@@ -4,6 +4,7 @@ import { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { bustCache } from './api-cache';
 import { clearPendingGainDeltas } from './pending-deltas';
+import { setApiToken } from './api';
 
 const FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000;
 
@@ -49,6 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [onboardingComplete, setOnboardingComplete] = useState(false);
   const [competitionDate, setCompetitionDate] = useState<string | null>(null);
   const [entitlementStatus, setEntitlementStatus] = useState<string | null>(null);
+  const [entitlementExpiresAt, setEntitlementExpiresAt] = useState<string | null>(null);
   const [devPremiumBypass, setDevPremiumBypass] = useState(false);
 
   const fetchUserState = useCallback(async (userId: string) => {
@@ -60,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single(),
       supabase
         .from('entitlements')
-        .select('status')
+        .select('status, expires_at')
         .eq('user_id', userId)
         .single(),
     ]);
@@ -71,6 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setOnboardingComplete(profile?.onboarding_completed ?? false);
     setCompetitionDate(profile?.competition_date ?? null);
     setEntitlementStatus(ent?.status ?? 'none');
+    setEntitlementExpiresAt(ent?.expires_at ?? null);
   }, []);
 
   const refreshUserState = useCallback(async () => {
@@ -96,6 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session: s } }) => {
       setSession(s);
+      setApiToken(s?.access_token ?? null);
       if (s?.user) {
         try {
           await fetchUserState(s.user.id);
@@ -111,8 +115,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, s) => {
-        if (_event === 'INITIAL_SESSION') return; // already handled by getSession() above
+        if (_event === 'INITIAL_SESSION') return;
         setSession(s);
+        setApiToken(s?.access_token ?? null);
         if (s?.user) {
           try {
             await fetchUserState(s.user.id);
@@ -123,6 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setOnboardingComplete(false);
           setCompetitionDate(null);
           setEntitlementStatus(null);
+          setEntitlementExpiresAt(null);
           setDevPremiumBypass(false);
           clearPendingGainDeltas();
         }
@@ -132,8 +138,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [fetchUserState]);
 
-  const hasPremiumAccess =
-    entitlementStatus === 'trial' || entitlementStatus === 'active' || devPremiumBypass;
+  const statusValid = entitlementStatus === 'trial' || entitlementStatus === 'active';
+  const expired = entitlementExpiresAt ? new Date(entitlementExpiresAt) < new Date() : false;
+  const hasPremiumAccess = (statusValid && !expired) || devPremiumBypass;
 
   const signIn = async (email: string, password: string): Promise<string | null> => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -164,6 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const completeOnboardingDevBypass = useCallback(async () => {
     if (!__DEV__) return;
     setDevPremiumBypass(true);
+    await supabase.rpc('dev_grant_trial');
     await completeOnboarding();
   }, [completeOnboarding]);
 

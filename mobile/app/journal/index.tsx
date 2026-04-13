@@ -174,11 +174,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   cardMiss: {
-    borderColor: 'rgba(239,68,68,0.35)',
+    borderColor: '#ef4444',
     borderWidth: 1.5,
   },
   missBadge: {
-    backgroundColor: 'rgba(239,68,68,0.18)',
+    backgroundColor: 'rgba(239,68,68,0.25)',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -186,12 +186,12 @@ const styles = StyleSheet.create({
   missBadgeText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#ef4444',
+    color: '#f87171',
     letterSpacing: 1,
   },
   missSubtext: {
     fontSize: 12,
-    color: 'rgba(239,68,68,0.6)',
+    color: '#f87171',
     marginBottom: 6,
     fontWeight: '500',
   },

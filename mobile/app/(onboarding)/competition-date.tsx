@@ -3,7 +3,6 @@ import { StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
-import { useAuth } from '@/lib/auth-context';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
@@ -24,10 +23,8 @@ function toISODate(d: Date): string {
 
 export default function CompetitionDateScreen() {
   const router = useRouter();
-  const { updateCompetitionDate } = useAuth();
   const [date, setDate] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState(Platform.OS === 'ios');
-  const [saving, setSaving] = useState(false);
 
   const today = new Date();
 
@@ -36,20 +33,22 @@ export default function CompetitionDateScreen() {
     if (selected) setDate(selected);
   };
 
-  const saveAndContinue = async () => {
-    if (date) {
-      setSaving(true);
-      await updateCompetitionDate(toISODate(date));
-      setSaving(false);
-    }
-    router.push('/(onboarding)/paywall');
+  const goToSignup = (compDate?: string) => {
+    router.push({
+      pathname: '/(onboarding)/signup' as any,
+      params: compDate ? { competitionDate: compDate } : {},
+    });
   };
 
-  const skip = () => router.push('/(onboarding)/paywall');
+  const saveAndContinue = () => {
+    goToSignup(date ? toISODate(date) : undefined);
+  };
+
+  const skip = () => goToSignup();
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={12} total={TOTAL_STEPS} />
+      <ProgressBar step={11} total={TOTAL_STEPS} />
       <View style={styles.inner}>
         <View style={styles.topSection}>
           <Text style={styles.title}>{"When's your next competition?"}</Text>
@@ -89,7 +88,6 @@ export default function CompetitionDateScreen() {
           <TouchableOpacity
             style={styles.button}
             onPress={date ? saveAndContinue : skip}
-            disabled={saving}
           >
             <Text style={styles.buttonText}>
               {date ? 'Save & Continue' : 'Skip'}

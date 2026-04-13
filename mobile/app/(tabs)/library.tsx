@@ -9,6 +9,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { apiFetch } from '@/lib/api';
@@ -123,7 +124,7 @@ export default function LibraryScreen() {
     }, []),
   );
 
-  const libraryUnlocked = initialLoadDone && progress?.library_unlocked === true;
+  const libraryUnlocked = true;
 
   return (
     <ScrollView
@@ -169,17 +170,6 @@ export default function LibraryScreen() {
         />
       </View>
 
-      {initialLoadDone && !libraryUnlocked && !error && (
-        <View style={styles.lockedBanner}>
-          <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} />
-          <Text style={styles.lockedText}>
-            {progress?.library_lock_reason === 'BEHIND'
-              ? `Complete ${(progress?.library_lock_remaining ?? 2) - 1} missed workout${(progress?.library_lock_remaining ?? 2) - 1 > 1 ? 's' : ''} and today's on the Home tab to unlock.`
-              : "Complete today's Daily Workout on the Home tab to unlock."}
-          </Text>
-        </View>
-      )}
-
       {error ? (
         <View style={styles.inlineError}>
           <Text style={styles.errorText}>{error}</Text>
@@ -193,11 +183,11 @@ export default function LibraryScreen() {
       {MAC_CATEGORIES.map((cat) => (
         <TouchableOpacity
           key={cat.id}
-          style={[styles.categoryBtn, !libraryUnlocked && styles.categoryBtnDisabled]}
+          style={styles.categoryBtn}
           activeOpacity={0.7}
-          disabled={!libraryUnlocked}
           onPress={() => {
-            if (libraryUnlocked) router.push(`/category/${cat.id}`);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push(`/category/${cat.id}`);
           }}
         >
           <View style={[styles.categoryAccent, { backgroundColor: cat.color }]} />
@@ -208,10 +198,12 @@ export default function LibraryScreen() {
 
       {/* Coach CTA — PRD: subtle outbound path to coach for 1:1 help */}
       <TouchableOpacity
-        style={[styles.ctaCard, !libraryUnlocked && styles.categoryBtnDisabled]}
+        style={styles.ctaCard}
         activeOpacity={0.8}
-        disabled={!libraryUnlocked}
-        onPress={() => Linking.openURL('https://grantchiasson.com/home')}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          Linking.openURL('https://grantchiasson.com/home');
+        }}
       >
         <Text style={styles.ctaLabel}>1 ON 1</Text>
         <Text style={styles.ctaTitle}>

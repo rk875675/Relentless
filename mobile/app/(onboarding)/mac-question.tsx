@@ -2,15 +2,16 @@ import { useState, useRef, useEffect } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
 const TOTAL_STEPS = 12;
 
 const OPTIONS = [
-  { label: 'Staying focused under pressure', tag: 'M' },
-  { label: 'Handling doubt and resistance', tag: 'A' },
-  { label: 'Knowing who I want to become', tag: 'C' },
+  { label: 'Getting in your head', tag: 'M' },
+  { label: 'Pre-competition nerves', tag: 'A' },
+  { label: 'Losing motivation', tag: 'C' },
 ] as const;
 
 export default function MacQuestionScreen() {
@@ -24,7 +25,8 @@ export default function MacQuestionScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={8} total={TOTAL_STEPS} />
+      <ProgressBar step={3} total={TOTAL_STEPS} />
+
       <Animated.View style={[styles.inner, { opacity: fade }]}>
         <View style={styles.topSection}>
           <Text style={styles.title}>
@@ -39,7 +41,10 @@ export default function MacQuestionScreen() {
                   styles.optionBtn,
                   selected === opt.tag && styles.optionBtnActive,
                 ]}
-                onPress={() => setSelected(opt.tag)}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setSelected(opt.tag);
+                }}
               >
                 <Text
                   style={[
@@ -58,12 +63,13 @@ export default function MacQuestionScreen() {
           <TouchableOpacity
             style={[styles.button, !selected && styles.buttonDisabled]}
             disabled={!selected}
-            onPress={() =>
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push({
-                pathname: '/(onboarding)/mac-setup',
+                pathname: '/(onboarding)/mac-detail' as any,
                 params: { tag: selected! },
-              })
-            }
+              });
+            }}
           >
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>

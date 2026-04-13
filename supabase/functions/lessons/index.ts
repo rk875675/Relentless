@@ -25,6 +25,7 @@ import {
   missedWodDaysInGap,
   yesterdayYmd,
 } from "../_shared/scoring.ts";
+import { ContentBlocksSchema } from "../_shared/content_blocks.ts";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
@@ -51,21 +52,35 @@ const AUDIO_BUCKET = "lesson-audio";
 const SIGNED_URL_TTL = 3600; // 1 hour
 
 // ---------------------------------------------------------------------------
-// Resolve storage paths inside content_blocks to signed URLs
+// Resolve storage paths inside content_blocks to signed URLs.
+// Validates the JSONB shape via Zod first; strips blocks on failure so the
+// client falls back to legacy flat columns instead of crashing.
 // ---------------------------------------------------------------------------
 async function resolveContentBlockUrls(
   supabase: ReturnType<typeof createServiceClient>,
   lesson: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const cb = lesson.content_blocks as { blocks: Record<string, unknown>[] } | null;
-  if (!cb?.blocks) return lesson;
+  if (!lesson.content_blocks) return lesson;
+
+  const parsed = ContentBlocksSchema.safeParse(lesson.content_blocks);
+  if (!parsed.success) {
+    console.error(
+      `[content_blocks] validation failed for lesson ${lesson.id}:`,
+      parsed.error.issues,
+    );
+    return { ...lesson, content_blocks: null };
+  }
+
+  const cb = parsed.data;
 
   const pathsToSign: string[] = [];
   for (const block of cb.blocks) {
     if (block.type === "voiceover") {
-      for (const p of (block.audio_files as string[]) ?? []) pathsToSign.push(p);
-    } else if (block.type === "timed_exercise") {
-      if (block.ambient_audio) pathsToSign.push(block.ambient_audio as string);
+      for (const p of block.audio_files) pathsToSign.push(p);
+    } else if (block.type === "timed_exercise" && block.ambient_audio) {
+      pathsToSign.push(block.ambient_audio);
+    } else if (block.type === "flash_cards" && block.ambient_audio) {
+      pathsToSign.push(block.ambient_audio);
     }
   }
 
@@ -85,11 +100,11 @@ async function resolveContentBlockUrls(
   const resolved = structuredClone(cb);
   for (const block of resolved.blocks) {
     if (block.type === "voiceover") {
-      block.audio_files = ((block.audio_files as string[]) ?? []).map(
-        (p: string) => urlMap.get(p) ?? p,
-      );
+      block.audio_files = block.audio_files.map((p) => urlMap.get(p) ?? p);
     } else if (block.type === "timed_exercise" && block.ambient_audio) {
-      block.ambient_audio = urlMap.get(block.ambient_audio as string) ?? block.ambient_audio;
+      block.ambient_audio = urlMap.get(block.ambient_audio) ?? block.ambient_audio;
+    } else if (block.type === "flash_cards" && block.ambient_audio) {
+      block.ambient_audio = urlMap.get(block.ambient_audio) ?? block.ambient_audio;
     }
   }
 
@@ -145,7 +160,7 @@ Deno.serve(async (req) => {
 });
 
 // ---------------------------------------------------------------------------
-// C1 — list published lessons (library must be unlocked)
+// C1 — list published lessons (library always accessible)
 // ---------------------------------------------------------------------------
 async function handleList(
   url: URL,
@@ -154,15 +169,6 @@ async function handleList(
   requestId: string,
   localTodayYmd: string,
 ): Promise<Response> {
-  const lock = await computeLibraryUnlocked(supabase, userId, localTodayYmd);
-  if (!lock.unlocked) {
-    const msg =
-      lock.reason === "BEHIND"
-        ? `Complete ${lock.remaining - 1} missed workout${lock.remaining - 1 > 1 ? "s" : ""} and today's to catch up and unlock the library.`
-        : "Complete today's Daily Workout to unlock the library.";
-    return errorResponse(403, "LIBRARY_LOCKED", msg, requestId);
-  }
-
   const params = PaginationSchema.safeParse({
     page: url.searchParams.get("page") ?? undefined,
     limit: url.searchParams.get("limit") ?? undefined,
@@ -231,12 +237,11 @@ async function handleList(
 
   const items = (lessons ?? []).map((l: Record<string, unknown>) => {
     const lid = l.id as string;
-    const isCompletedWod = completedSet.has(lid) && scheduledIds.has(lid);
 
     return {
       ...l,
       categories: categoryMap.get(lid) ?? [],
-      program_day: isCompletedWod ? (dayNumberById.get(lid) ?? null) : null,
+      program_day: scheduledIds.has(lid) ? (dayNumberById.get(lid) ?? null) : null,
     };
   });
 
@@ -264,39 +269,6 @@ async function handleDetail(
   const parsed = UuidSchema.safeParse(id);
   if (!parsed.success) {
     return errorResponse(400, "VALIDATION_ERROR", "Invalid lesson ID format", requestId);
-  }
-
-  const lock = await computeLibraryUnlocked(supabase, userId, localTodayYmd);
-  if (!lock.unlocked) {
-    const wodId = await getCurrentWodLessonId(supabase, userId);
-    const isCurrentWod = wodId != null && parsed.data === wodId;
-
-    let isRepeatOfTodayWod = false;
-    if (!isCurrentWod) {
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("last_wod_completion_local_date, current_program_day")
-        .eq("id", userId)
-        .single();
-      if (prof?.last_wod_completion_local_date === localTodayYmd) {
-        const prevDay = Math.max(1, (prof.current_program_day as number) - 1);
-        const { data: prevSched } = await supabase
-          .from("program_schedule")
-          .select("lesson_id")
-          .eq("program_version", PROGRAM_VERSION)
-          .eq("day_number", prevDay)
-          .maybeSingle();
-        isRepeatOfTodayWod = prevSched?.lesson_id === parsed.data;
-      }
-    }
-
-    if (!isCurrentWod && !isRepeatOfTodayWod) {
-      const msg =
-        lock.reason === "BEHIND"
-          ? `Complete ${lock.remaining} workout${lock.remaining > 1 ? "s" : ""} to catch up. Start from the Home tab.`
-          : "Complete today's Daily Workout first. Go to the Home tab.";
-      return errorResponse(403, "WORKOUT_ONLY", msg, requestId);
-    }
   }
 
   const { data: lesson, error } = await supabase

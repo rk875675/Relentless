@@ -11,7 +11,7 @@ type Props = {
 export function ProgressBar({ step, total }: Props) {
   const router = useRouter();
   const pct = Math.min(Math.max(step / total, 0), 1) * 100;
-  const showBack = step > 1;
+  const showBack = step >= 1;
 
   return (
     <View style={styles.container}>

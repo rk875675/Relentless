@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import * as Haptics from 'expo-haptics';
 import { apiFetch } from '@/lib/api';
 import { bustCache } from '@/lib/api-cache';
 import { setPendingGainDeltas } from '@/lib/pending-deltas';
@@ -45,8 +46,14 @@ type JournalPromptBlock = {
   type: 'journal_prompt';
   prompt: string;
 };
+type FlashCard = { front: string; back: string };
+type FlashCardsBlock = {
+  type: 'flash_cards';
+  ambient_audio?: string | null;
+  cards: FlashCard[];
+};
 
-type ContentBlock = VoiceoverBlock | TimedExerciseBlock | JournalPromptBlock;
+type ContentBlock = VoiceoverBlock | TimedExerciseBlock | JournalPromptBlock | FlashCardsBlock;
 
 type LessonDetail = {
   id: string;
@@ -68,6 +75,7 @@ type Phase =
   | 'reflection'
   | 'completing'
   | 'done'
+  | 'streak'
   | 'error'
   | 'terminated';
 
@@ -102,12 +110,18 @@ export default function LessonPlayerScreen() {
   const [journalText, setJournalText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [doneDeltas, setDoneDeltas] = useState<Record<string, { amount: number; reason: string }> | null>(null);
+  const [streakCount, setStreakCount] = useState(0);
 
   const doneAnim1 = useRef(new Animated.Value(0)).current;
   const doneAnim2 = useRef(new Animated.Value(0)).current;
   const doneAnim3 = useRef(new Animated.Value(0)).current;
   const doneAnim4 = useRef(new Animated.Value(0)).current;
   const doneScale = useRef(new Animated.Value(0.3)).current;
+
+  const streakAnim1 = useRef(new Animated.Value(0)).current;
+  const streakAnim2 = useRef(new Animated.Value(0)).current;
+  const streakScale = useRef(new Animated.Value(0.3)).current;
+  const glowPulse = useRef(new Animated.Value(1)).current;
 
   // Legacy flat-mode state
   const [elapsed, setElapsed] = useState(0);
@@ -123,6 +137,11 @@ export default function LessonPlayerScreen() {
   const textFade = useRef(new Animated.Value(1)).current;
   const cardScale = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
+
+  // Flash card state
+  const [flashCardIndex, setFlashCardIndex] = useState(0);
+  const [flashCardFlipped, setFlashCardFlipped] = useState(false);
+  const flipAnim = useRef(new Animated.Value(0)).current;
 
   // Text cue tracking — guards against conflicting animations and backward regression
   const lastCueRef = useRef('');
@@ -165,7 +184,11 @@ export default function LessonPlayerScreen() {
     const ex = lesson.content_blocks.blocks.find(
       (b): b is TimedExerciseBlock => b.type === 'timed_exercise',
     );
-    return ex?.ambient_audio ?? null;
+    if (ex?.ambient_audio) return ex.ambient_audio;
+    const fc = lesson.content_blocks.blocks.find(
+      (b): b is FlashCardsBlock => b.type === 'flash_cards',
+    );
+    return fc?.ambient_audio ?? null;
   }, [lesson]);
 
   const ambientPlayer = useAudioPlayer(ambientSource, {
@@ -259,9 +282,13 @@ export default function LessonPlayerScreen() {
   // -----------------------------------------------------------------------
   // Complete lesson (reads from refs to avoid stale closures)
   // -----------------------------------------------------------------------
+  const completingRef = useRef(false);
+
   const completeLesson = useCallback(async () => {
     const currentLesson = lessonRef.current;
-    if (!currentLesson) return;
+    if (!currentLesson || completingRef.current) return;
+    completingRef.current = true;
+    setSubmitting(true);
     setPhase('completing');
 
     const text = journalTextRef.current.trim();
@@ -280,6 +307,8 @@ export default function LessonPlayerScreen() {
     });
 
     if (error) {
+      completingRef.current = false;
+      setSubmitting(false);
       setErrorMsg(error);
       setPhase('error');
     } else {
@@ -380,6 +409,12 @@ export default function LessonPlayerScreen() {
           advanceBlock();
         }
       }, 250);
+    } else if (block.type === 'flash_cards') {
+      setFlashCardIndex(0);
+      setFlashCardFlipped(false);
+      flipAnim.setValue(0);
+      setCurrentAudioUrl(null);
+      try { ambientPlayer.seekTo(0).then(() => ambientPlayer.play()).catch(() => {}); } catch { /* noop */ }
     } else if (block.type === 'journal_prompt') {
       setCurrentAudioUrl(null);
       setOnScreenText(block.prompt);
@@ -545,12 +580,17 @@ export default function LessonPlayerScreen() {
     setOnScreenText('');
     setExerciseElapsed(0);
     setExerciseStepIndex(0);
+    setFlashCardIndex(0);
+    setFlashCardFlipped(false);
+    flipAnim.setValue(0);
     setJournalText('');
     lastCueRef.current = '';
     highestCueIndexRef.current = -1;
     blockIndexRef.current = 0;
     audioFileIndexRef.current = 0;
     cumulativeOffsetRef.current = 0;
+    completingRef.current = false;
+    setSubmitting(false);
   };
 
   // -----------------------------------------------------------------------
@@ -565,6 +605,7 @@ export default function LessonPlayerScreen() {
   const currentBlock = hasBlocks ? blocks[blockIndex] : null;
   const isVoiceoverBlock = currentBlock?.type === 'voiceover';
   const isExerciseBlock = currentBlock?.type === 'timed_exercise';
+  const isFlashCardsBlock = currentBlock?.type === 'flash_cards';
 
   const hasLegacyVoiceover = !hasBlocks && Boolean(lesson?.voiceover_url);
   const legacyAudioElapsed = Math.floor(audioStatus.currentTime);
@@ -588,7 +629,11 @@ export default function LessonPlayerScreen() {
   }
 
   useEffect(() => {
-    if (isExerciseBlock) return;
+    // Use ref to detect current block type — state may lag behind ref after
+    // advanceBlock updates blockIndexRef before React re-renders, which would
+    // let a stale voiceover progress (~1.0) overwrite the exercise animation.
+    const refBlock = blocks[blockIndexRef.current];
+    if (refBlock?.type === 'timed_exercise') return;
     const target = hasBlocks ? blockProgress : legacyProgress;
     Animated.timing(progressAnim, {
       toValue: target,
@@ -599,11 +644,16 @@ export default function LessonPlayerScreen() {
 
   useEffect(() => {
     if (phase !== 'done') return;
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
     doneAnim1.setValue(0);
     doneAnim2.setValue(0);
     doneAnim3.setValue(0);
     doneAnim4.setValue(0);
     doneScale.setValue(0.3);
+    glowPulse.setValue(1);
+
     Animated.stagger(120, [
       Animated.parallel([
         Animated.timing(doneAnim1, { toValue: 1, duration: 150, useNativeDriver: true }),
@@ -613,7 +663,35 @@ export default function LessonPlayerScreen() {
       Animated.timing(doneAnim3, { toValue: 1, duration: 300, useNativeDriver: true }),
       Animated.timing(doneAnim4, { toValue: 1, duration: 300, useNativeDriver: true }),
     ]).start();
-  }, [phase, doneAnim1, doneAnim2, doneAnim3, doneAnim4, doneScale]);
+
+    // Pulsing glow on the trophy
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowPulse, { toValue: 1.15, duration: 1200, useNativeDriver: true }),
+        Animated.timing(glowPulse, { toValue: 1, duration: 1200, useNativeDriver: true }),
+      ]),
+    ).start();
+  }, [phase, doneAnim1, doneAnim2, doneAnim3, doneAnim4, doneScale, glowPulse]);
+
+  useEffect(() => {
+    if (phase !== 'streak') return;
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    streakAnim1.setValue(0);
+    streakAnim2.setValue(0);
+    streakScale.setValue(0);
+
+    Animated.sequence([
+      Animated.delay(100),
+      Animated.parallel([
+        Animated.timing(streakAnim1, { toValue: 1, duration: 250, useNativeDriver: true }),
+        Animated.spring(streakScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
+      ]),
+      Animated.delay(200),
+      Animated.timing(streakAnim2, { toValue: 1, duration: 400, useNativeDriver: true }),
+    ]).start();
+  }, [phase, streakAnim1, streakAnim2, streakScale]);
 
   const progressBarWidth = progressAnim.interpolate({
     inputRange: [0, 1],
@@ -639,6 +717,42 @@ export default function LessonPlayerScreen() {
       ))}
     </View>
   ) : null;
+
+  // -----------------------------------------------------------------------
+  // Flash card helpers
+  // -----------------------------------------------------------------------
+  const flipCard = () => {
+    Animated.spring(flipAnim, {
+      toValue: flashCardFlipped ? 0 : 1,
+      friction: 8,
+      tension: 100,
+      useNativeDriver: true,
+    }).start();
+    setFlashCardFlipped(!flashCardFlipped);
+  };
+
+  const nextFlashCard = () => {
+    if (!isFlashCardsBlock) return;
+    const fcBlock = currentBlock as FlashCardsBlock;
+    const nextIdx = flashCardIndex + 1;
+    if (nextIdx >= fcBlock.cards.length) {
+      try { ambientPlayer.pause(); } catch { /* noop */ }
+      advanceBlock();
+      return;
+    }
+    setFlashCardFlipped(false);
+    flipAnim.setValue(0);
+    setFlashCardIndex(nextIdx);
+  };
+
+  const flipFrontInterpolate = flipAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+  const flipBackInterpolate = flipAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['180deg', '360deg'],
+  });
 
   // -----------------------------------------------------------------------
   // Render
@@ -715,9 +829,6 @@ export default function LessonPlayerScreen() {
         {/* Block-mode: voiceover — text-centric, no timer */}
         {phase === 'playing' && lesson && hasBlocks && isVoiceoverBlock && (
           <View style={styles.centered}>
-            {!audioStatus.isLoaded && (
-              <Text style={styles.bufferingHint}>Loading audio…</Text>
-            )}
             <Animated.Text style={[styles.blockText, { opacity: textFade }]}>
               {onScreenText}
             </Animated.Text>
@@ -768,13 +879,91 @@ export default function LessonPlayerScreen() {
                   {onScreenText}
                 </Animated.Text>
               </Animated.View>
-              <Text style={styles.exerciseCountdown}>{remaining}s</Text>
               {audioBars}
               <View style={styles.progressBarTrack}>
                 <Animated.View
                   style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
                 />
               </View>
+            </View>
+          );
+        })()}
+
+        {/* Block-mode: flash cards — interactive flip cards */}
+        {phase === 'playing' && lesson && hasBlocks && isFlashCardsBlock && (() => {
+          const fcBlock = currentBlock as FlashCardsBlock;
+          const card = fcBlock.cards[flashCardIndex];
+          if (!card) return null;
+          return (
+            <View style={styles.centered}>
+              <View style={styles.exerciseStepDots}>
+                {fcBlock.cards.map((_, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.stepDot,
+                      i === flashCardIndex
+                        ? { backgroundColor: catColor, width: 18 }
+                        : i < flashCardIndex
+                          ? { backgroundColor: catColor }
+                          : { backgroundColor: colors.ringTrack },
+                    ]}
+                  />
+                ))}
+              </View>
+
+              <Text style={styles.flashTapHint}>
+                {flashCardFlipped ? '' : 'Tap to flip'}
+              </Text>
+
+              <TouchableOpacity activeOpacity={0.9} onPress={flipCard} style={styles.flashCardWrapper}>
+                <Animated.View
+                  style={[
+                    styles.flashCard,
+                    {
+                      borderColor: catColor,
+                      borderTopWidth: 2,
+                      shadowColor: catColor,
+                      shadowOffset: { width: 0, height: 0 },
+                      shadowOpacity: 0.25,
+                      shadowRadius: 20,
+                      elevation: 8,
+                      transform: [{ perspective: 1000 }, { rotateY: flipFrontInterpolate }],
+                      backfaceVisibility: 'hidden',
+                    },
+                  ]}
+                >
+                  <Text style={styles.flashCardFrontText}>{card.front}</Text>
+                </Animated.View>
+
+                <Animated.View
+                  style={[
+                    styles.flashCard,
+                    styles.flashCardBack,
+                    {
+                      borderColor: catColor,
+                      borderTopWidth: 2,
+                      shadowColor: catColor,
+                      shadowOffset: { width: 0, height: 0 },
+                      shadowOpacity: 0.25,
+                      shadowRadius: 20,
+                      elevation: 8,
+                      transform: [{ perspective: 1000 }, { rotateY: flipBackInterpolate }],
+                      backfaceVisibility: 'hidden',
+                    },
+                  ]}
+                >
+                  <Text style={styles.flashCardBackText}>{card.back}</Text>
+                </Animated.View>
+              </TouchableOpacity>
+
+              {audioBars}
+
+              <TouchableOpacity style={styles.primaryBtn} onPress={nextFlashCard}>
+                <Text style={styles.primaryBtnText}>
+                  {flashCardIndex >= fcBlock.cards.length - 1 ? 'Finish' : 'Next'}
+                </Text>
+              </TouchableOpacity>
             </View>
           );
         })()}
@@ -826,6 +1015,8 @@ export default function LessonPlayerScreen() {
                 value={journalText}
                 onChangeText={setJournalText}
                 multiline
+                autoCorrect
+                spellCheck
                 autoFocus
               />
               <TouchableOpacity
@@ -869,6 +1060,8 @@ export default function LessonPlayerScreen() {
                     value={journalText}
                     onChangeText={setJournalText}
                     multiline
+                    autoCorrect
+                    spellCheck
                     autoFocus
                   />
                 </>
@@ -896,9 +1089,9 @@ export default function LessonPlayerScreen() {
         {phase === 'done' && lesson && (
           <View style={styles.centered}>
             <Animated.View style={{ opacity: doneAnim1, transform: [{ scale: doneScale }] }}>
-              <View style={styles.trophyGlow}>
+              <Animated.View style={[styles.trophyGlow, { transform: [{ scale: glowPulse }] }]}>
                 <Ionicons name="trophy" size={72} color={colors.accentLight} />
-              </View>
+              </Animated.View>
             </Animated.View>
 
             <Animated.View style={{ opacity: doneAnim2, alignItems: 'center' as const }}>
@@ -921,7 +1114,38 @@ export default function LessonPlayerScreen() {
             )}
 
             <Animated.View style={{ opacity: doneAnim4, marginTop: spacing.sm }}>
-              <TouchableOpacity style={styles.primaryBtn} onPress={() => router.back()}>
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={async () => {
+                  const { data } = await apiFetch<{ current_streak: number }>('/streak');
+                  setStreakCount(data?.current_streak ?? 1);
+                  setPhase('streak');
+                }}
+              >
+                <Text style={styles.primaryBtnText}>Continue</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        )}
+
+        {phase === 'streak' && (
+          <View style={styles.centered}>
+            <Animated.View style={{ opacity: streakAnim1, transform: [{ scale: streakScale }], alignItems: 'center' as const }}>
+              <View style={styles.streakGlow}>
+                <Ionicons name="flame" size={80} color="#f59e0b" />
+              </View>
+              <Text style={styles.streakCount}>{streakCount}</Text>
+              <Text style={styles.streakLabel}>
+                {streakCount === 1 ? 'Day Streak' : 'Day Streak'}
+              </Text>
+            </Animated.View>
+            <Animated.View style={{ opacity: streakAnim2, alignItems: 'center' as const, marginTop: spacing.lg }}>
+              <Text style={styles.streakSub}>
+                {streakCount <= 1
+                  ? "Great start. Come back tomorrow to keep it going."
+                  : `You've shown up ${streakCount} days in a row. Keep building.`}
+              </Text>
+              <TouchableOpacity style={[styles.primaryBtn, { marginTop: spacing.xl }]} onPress={() => router.back()}>
                 <Text style={styles.primaryBtnText}>Done</Text>
               </TouchableOpacity>
             </Animated.View>
@@ -1020,13 +1244,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlign: 'center',
     lineHeight: 30,
-  },
-  exerciseCountdown: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.textMuted,
-    marginBottom: spacing.md,
-    fontVariant: ['tabular-nums'] as const,
   },
   audioCue: {
     flexDirection: 'row',
@@ -1214,5 +1431,77 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 14,
     fontWeight: '500',
+  },
+  flashCardWrapper: {
+    width: '100%',
+    height: 200,
+    marginBottom: spacing.lg,
+  },
+  flashCard: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  flashCardBack: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  flashCardFrontText: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  flashCardBackText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    lineHeight: 30,
+  },
+  flashTapHint: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
+    height: 18,
+  },
+  streakGlow: {
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.15)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  streakCount: {
+    fontSize: 64,
+    fontWeight: '900',
+    color: colors.textPrimary,
+    marginTop: spacing.lg,
+  },
+  streakLabel: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  streakSub: {
+    fontSize: 15,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: spacing.lg,
   },
 });

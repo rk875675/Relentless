@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
-import { Link } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 
 export default function LoginScreen() {
+  const router = useRouter();
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -62,11 +63,9 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
-          <Link href="/(auth)/signup" asChild>
-            <TouchableOpacity style={styles.linkButton}>
-              <Text style={styles.linkText}>Don't have an account? Sign Up</Text>
-            </TouchableOpacity>
-          </Link>
+          <TouchableOpacity style={styles.linkButton} onPress={() => router.back()}>
+            <Text style={styles.linkText}>Don't have an account? Sign Up</Text>
+          </TouchableOpacity>
         </View>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>

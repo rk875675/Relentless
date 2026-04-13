@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 
@@ -15,12 +16,12 @@ export default function QuestionEffortScreen() {
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(fade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+    Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
   }, []);
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={4} total={TOTAL_STEPS} />
+      <ProgressBar step={1} total={TOTAL_STEPS} />
       <Animated.View style={[styles.inner, { opacity: fade }]}>
         <View style={styles.topSection}>
           <Text style={styles.title}>
@@ -33,7 +34,10 @@ export default function QuestionEffortScreen() {
               <TouchableOpacity
                 key={opt}
                 style={[styles.optionBtn, selected === opt && styles.optionBtnActive]}
-                onPress={() => setSelected(opt)}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setSelected(opt);
+                }}
               >
                 <Text
                   style={[
@@ -52,12 +56,10 @@ export default function QuestionEffortScreen() {
           <TouchableOpacity
             style={[styles.button, !selected && styles.buttonDisabled]}
             disabled={!selected}
-            onPress={() =>
-              router.push({
-                pathname: '/(onboarding)/effort-response',
-                params: { answer: selected! },
-              })
-            }
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/(onboarding)/unlocked-potential' as any);
+            }}
           >
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>

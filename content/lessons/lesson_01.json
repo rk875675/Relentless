@@ -5,7 +5,7 @@
   "day_number": 1,
   "mac_categories": ["mindfulness"],
   "coach": "Coach Grant",
-  "duration_seconds": 148,
+  "duration_seconds": 197,
   "blocks": [
     {
       "type": "voiceover",
@@ -13,10 +13,14 @@
         "lesson_01/lesson_01_seg_01.mp3",
         "lesson_01/lesson_01_seg_02.mp3"
       ],
-      "total_audio_seconds": 103.0,
+      "total_audio_seconds": 110.6,
       "timed_text": [
         {
           "start_s": 0.0,
+          "text": "Welcome to Relentless."
+        },
+        {
+          "start_s": 17.0,
           "text": "This is mental performance training."
         },
         {
@@ -24,40 +28,38 @@
           "text": "The framework is called MAC."
         },
         {
-          "start_s": 38.0,
+          "start_s": 45.5,
           "text": "Mindfulness — notice where your attention is and choose where it goes."
         },
         {
-          "start_s": 55.0,
+          "start_s": 64.0,
           "text": "Acceptance — feel uncomfortable without treating it like an emergency."
         },
         {
-          "start_s": 72.0,
+          "start_s": 78.5,
           "text": "Commitment — show up, regardless of how you feel."
         },
         {
-          "start_s": 90.0,
+          "start_s": 104.0,
           "text": "Which one do you need most?"
         }
       ]
     },
     {
-      "type": "timed_exercise",
-      "duration_seconds": 20,
+      "type": "flash_cards",
       "ambient_audio": "ambient/ambient_music.mp3",
-      "interactive_model": "Three text cards displayed one at a time, centered on screen, auto-advancing. Each card fades out and the next fades in. Ambient music plays throughout. No user input required — athlete reads and reflects silently.",
-      "steps": [
+      "cards": [
         {
-          "text": "M — Mindfulness. Notice where your attention goes. Choose where it goes.",
-          "duration_seconds": 7
+          "front": "M — Mindfulness",
+          "back": "Notice where your attention goes. Choose where it goes."
         },
         {
-          "text": "A — Acceptance. Feel the discomfort. Don't react to it.",
-          "duration_seconds": 7
+          "front": "A — Acceptance",
+          "back": "Feel the discomfort. Don't react to it."
         },
         {
-          "text": "C — Commitment. Show up. Regardless of how you feel.",
-          "duration_seconds": 6
+          "front": "C — Commitment",
+          "back": "Show up. Regardless of how you feel."
         }
       ]
     },
@@ -66,22 +68,22 @@
       "audio_files": [
         "lesson_01/lesson_01_seg_03.mp3"
       ],
-      "total_audio_seconds": 25.0,
+      "total_audio_seconds": 26.0,
       "timed_text": [
         {
           "start_s": 0.0,
           "text": "Got your answer? Remember it."
         },
         {
-          "start_s": 5.0,
+          "start_s": 4.0,
           "text": "On Day 30 — I'm going to ask you again."
         },
         {
-          "start_s": 10.0,
+          "start_s": 9.0,
           "text": "Go ahead and hit the journal. One question. Be honest."
         },
         {
-          "start_s": 17.0,
+          "start_s": 15.0,
           "text": "After you finish — you'll officially complete Day 1."
         }
       ]

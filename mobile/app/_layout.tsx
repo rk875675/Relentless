@@ -16,6 +16,7 @@ function RouteGuard() {
   const segments = useSegments();
   const router = useRouter();
   const splashHidden = useRef(false);
+  const initialLoadDone = useRef(false);
 
   const hideSplash = () => {
     if (splashHidden.current) return;
@@ -30,13 +31,14 @@ function RouteGuard() {
 
   useEffect(() => {
     if (loading) return;
+    initialLoadDone.current = true;
 
     const inAuth = segments[0] === '(auth)';
     const inOnboarding = segments[0] === '(onboarding)';
     const onPaywall = inOnboarding && segments[1] === 'paywall';
 
-    if (!session && !inAuth) {
-      router.replace('/(auth)/login');
+    if (!session && !inAuth && !inOnboarding) {
+      router.replace('/(onboarding)/welcome');
     } else if (session && inAuth) {
       if (onboardingComplete && hasPremiumAccess) {
         router.replace('/(tabs)');
@@ -56,10 +58,10 @@ function RouteGuard() {
     setTimeout(hideSplash, 50);
   }, [session, loading, onboardingComplete, hasPremiumAccess, segments]);
 
-  if (loading) return null;
+  if (!initialLoadDone.current && loading) return null;
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(onboarding)" />
       <Stack.Screen name="(tabs)" />

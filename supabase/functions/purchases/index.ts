@@ -38,7 +38,7 @@ const APPLE_STATUS = {
 
 const RestoreBodySchema = z.object({
   originalTransactionId: z.string().min(1).max(256),
-});
+}).strict();
 
 // ---------------------------------------------------------------------------
 // Entry
@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
   const auth = await getUser(req, supabase, requestId);
   if (!auth.ok) return auth.response;
 
-  const rl = await checkRateLimit(auth.userId, requestId, "authenticated-write");
+  const rl = await checkRateLimit(auth.userId, requestId, "billing");
   if (!rl.ok) return rl.response;
 
   let body: unknown;

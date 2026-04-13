@@ -215,13 +215,16 @@ At launch, the only paid access model is subscription-based access.
 Premium is the only access tier after onboarding.
 Do not design a separate freemium product model for V1.
 The paywall should appear after the onboarding / sample experience.
-Subscription should have two purchase options, with one option including a free trial.
+Subscription purchase options (initial — may change before launch):
+Monthly: $12.99/month with a 3-day free trial.
+Annual: $59.99/year with a 7-day free trial.
+Both are auto-renewable subscriptions in the same subscription group.
+App Store product IDs: com.relentless.monthly, com.relentless.annual.
 Support purchase restoration.
 iOS monetization architecture
 For iOS, use Apple In-App Purchase / StoreKit for all digital premium features unlocked in the app.
 Use Superwall for paywall presentation, targeting, experiments, and purchase flow orchestration.
 Do not use Stripe, web checkout, or external purchase links for iOS digital unlocks in the baseline PRD.
-Do not invent final pricing, billing periods, trial length, offer structure, plan naming, or paywall copy unless explicitly provided later.
 Baseline entitlement handling
 Treat Superwall as the paywall and entitlement-aware layer on device.
 If backend enforcement of premium access is required, sync entitlement / subscription state to backend-controlled state through verified server-side billing events, webhooks, or an equivalent verified server flow.
@@ -236,8 +239,8 @@ Do not over-specify the exact UX yet.
 At most, allow only minimal subscription-management / restore-access paths if needed.
 Wording correction incorporated
 This PRD no longer frames billing provider choice as open-ended.
-Use this rule instead:
-Final pricing structure, subscription plan design, and entitlement model details are TBD. Baseline iOS purchase path is locked to Apple IAP / StoreKit, with Superwall as the paywall layer.
+Baseline iOS purchase path is locked to Apple IAP / StoreKit, with Superwall as the paywall layer.
+Initial pricing is locked above; final pricing may be adjusted before launch.
 
 11. Core architecture decisions
 Baseline stack for Relentless is React Native + Expo for the iOS app, Supabase for auth/backend/database, Apple IAP / StoreKit for iOS digital subscription purchases, Superwall for paywall presentation and purchase flow orchestration, and Upstash Redis for rate limiting.
@@ -689,37 +692,21 @@ define actual notifications / engagement logic if later added
 
 22. Open items intentionally left abstract
 These should not be filled in until you explicitly decide them:
-final pricing
-exact subscription billing periods
-free-trial length
 paywall copy
 exact purchase-option naming
-exact onboarding sequence
-precise progress scoring formula across the 3 MAC categories
 precise streak formula / reset rule
 exact post-expiration UX behavior
 exact lesson interaction types beyond approved structured-content framing
-exact backend entitlement sync implementation if backend-protected premium actions are still not concrete
 exact analytics / KPIs tied to user actions
 exact support / admin tooling behavior
-repeat-completion / diminishing-return credit formula
-decay formula, schedule, and reset behavior
 detailed miss-reflection journal contents and logic
 
 23. Human-step inputs for future implementation passes
 Before implementation of monetization or product logic, require human confirmation for details such as:
-free-trial duration
-final subscription offerings
-whether monthly / annual or other cadence is desired
 exact post-trial / post-expiration access behavior
-whether any backend-protected premium actions exist
-exact progress scoring formula across the 3 MAC categories
 exact streak reset rule
-exact onboarding screen sequence
 exact lesson presentation / interaction subtypes if needed by schema
 exact outbound coach-link behavior
-repeat-completion / diminishing-return credit formula
-decay formula, schedule, and reset behavior
 detailed miss-reflection journal contents and logic
 Cursor should not guess these.
 

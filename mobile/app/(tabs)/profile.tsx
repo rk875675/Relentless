@@ -13,6 +13,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
@@ -203,6 +204,7 @@ export default function ProfileScreen() {
           label="Competition Date"
           value={dateSaving ? 'Saving...' : formatDate(competitionDate)}
           onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setPendingDate(
               competitionDate ? new Date(competitionDate + 'T00:00:00') : new Date(),
             );
@@ -213,7 +215,10 @@ export default function ProfileScreen() {
           icon="journal-outline"
           label="Journal Entries"
           chevron
-          onPress={() => router.push('/journal' as any)}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push('/journal' as any);
+          }}
           last
         />
       </View>
@@ -326,7 +331,7 @@ export default function ProfileScreen() {
       )}
 
       {/* Sign Out */}
-      <TouchableOpacity style={styles.signOutBtn} onPress={signOut}>
+      <TouchableOpacity style={styles.signOutBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); signOut(); }}>
         <Ionicons name="log-out-outline" size={16} color={colors.error} style={{ marginRight: 8 }} />
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>

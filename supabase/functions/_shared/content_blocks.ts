@@ -30,10 +30,22 @@ const JournalPromptBlockSchema = z.object({
   prompt: z.string().min(1),
 }).strict();
 
+const FlashCardSchema = z.object({
+  front: z.string().min(1),
+  back: z.string().min(1),
+}).strict();
+
+const FlashCardsBlockSchema = z.object({
+  type: z.literal("flash_cards"),
+  ambient_audio: z.string().min(1).optional(),
+  cards: z.array(FlashCardSchema).min(1),
+}).strict();
+
 const ContentBlockSchema = z.discriminatedUnion("type", [
   VoiceoverBlockSchema,
   TimedExerciseBlockSchema,
   JournalPromptBlockSchema,
+  FlashCardsBlockSchema,
 ]);
 
 export const ContentBlocksSchema = z.object({
