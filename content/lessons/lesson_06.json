@@ -1,0 +1,83 @@
+{
+  "lesson_number": 6,
+  "title": "Body Scan — Level 1",
+  "program_version": "v1",
+  "day_number": 6,
+  "mac_categories": ["mindfulness", "acceptance"],
+  "coach": "Coach Grant",
+  "duration_seconds": 412,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_06/lesson_06_seg_01.mp3"
+      ],
+      "total_audio_seconds": 60.0,
+      "timed_text": [
+        { "start_s": 0.0, "text": "Day 6." },
+        { "start_s": 3.0, "text": "Anxiety shows up in your body before it shows up in your thoughts." },
+        { "start_s": 12.0, "text": "Tight jaw. Raised shoulders. Clenched fists. Shallow breathing." },
+        { "start_s": 22.0, "text": "Today we fix that." },
+        { "start_s": 26.0, "text": "We're going to scan your body from head to toe." },
+        { "start_s": 34.0, "text": "This teaches you to read your own nervous system in real time." },
+        { "start_s": 45.0, "text": "Before we start — take one box breath with me." }
+      ]
+    },
+    {
+      "type": "timed_exercise",
+      "duration_seconds": 16,
+      "interactive_model": "box_breathing",
+      "visual_cues": [
+        "One full breath. Settle in.",
+        "Follow the circle."
+      ],
+      "steps": [
+        { "text": "Inhale", "duration_seconds": 4, "haptic": "heavy" },
+        { "text": "Hold", "duration_seconds": 4, "haptic": "light" },
+        { "text": "Exhale", "duration_seconds": 4, "haptic": "heavy" },
+        { "text": "Hold", "duration_seconds": 4, "haptic": "light" }
+      ]
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_06/lesson_06_seg_02.mp3"
+      ],
+      "total_audio_seconds": 249.0,
+      "timed_text": [
+        { "start_s": 0.0,   "text": "Good. Close your eyes." },
+        { "start_s": 8.0,   "text": "We're moving from the top of your head down to your feet." },
+        { "start_s": 25.0,  "text": "Top of your head. Your forehead. Your eyes." },
+        { "start_s": 45.0,  "text": "Is there tension here? Breathe in — and release it on the exhale." },
+        { "start_s": 65.0,  "text": "Your jaw. Your neck. Your throat." },
+        { "start_s": 85.0,  "text": "Athletes carry a lot here. Breathe in — let it soften." },
+        { "start_s": 105.0, "text": "Your shoulders. Your upper back." },
+        { "start_s": 120.0, "text": "Are they raised right now? Drop them. One slow breath in — and release." },
+        { "start_s": 140.0, "text": "Your chest. Your lungs. Let the breath go all the way down." },
+        { "start_s": 155.0, "text": "Your arms. Your hands. Your fingers. Unclench." },
+        { "start_s": 170.0, "text": "Your core. Your stomach. This is where nerves live." },
+        { "start_s": 190.0, "text": "Breathe into it. Let it expand." },
+        { "start_s": 205.0, "text": "Your hips. Your legs. Your feet. All the way to the floor." },
+        { "start_s": 225.0, "text": "Now — whole body. One full breath in." },
+        { "start_s": 240.0, "text": "Feel everything you just released. And exhale. Let it all go." }
+      ]
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_06/lesson_06_seg_03.mp3"
+      ],
+      "total_audio_seconds": 25.0,
+      "timed_text": [
+        { "start_s": 0.0,  "text": "Open your eyes." },
+        { "start_s": 3.0,  "text": "You just learned how to read your nervous system and reset it in under two minutes." },
+        { "start_s": 10.0, "text": "Aware athletes don't get blindsided by their own bodies." },
+        { "start_s": 17.0, "text": "Go hit the journal." }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "Where did your body hold the most tension? Does that same spot show up when you compete?"
+    }
+  ]
+}

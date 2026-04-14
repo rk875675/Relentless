@@ -9,11 +9,19 @@ import {
 import { Stack } from 'expo-router';
 import { apiFetch } from '@/lib/api';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
+import FormattedJournalBody from '@/components/FormattedJournalBody';
+
+const MAC_COLORS: Record<string, string> = {
+  mindfulness: colors.ringMindfulness,
+  acceptance: colors.ringAcceptance,
+  commitment: colors.ringCommitment,
+};
 
 type JournalEntry = {
   id: string;
   lesson_id: string | null;
   lesson_title: string | null;
+  categories: string[];
   competition_date: string | null;
   body: string;
   entry_type: string;
@@ -99,8 +107,15 @@ export default function JournalListScreen() {
             renderItem={({ item }) => {
               const isMiss = item.entry_type === 'miss_reflection';
               const isFutureSelf = item.entry_type === 'onboarding_future_self';
+              const primaryCat = item.categories?.[0];
+              const catColor = MAC_COLORS[primaryCat ?? ''];
+              const cardBorder = isMiss
+                ? styles.cardMiss
+                : catColor
+                  ? { borderColor: catColor, borderWidth: 1.5 }
+                  : undefined;
               return (
-                <View style={[styles.card, isMiss && styles.cardMiss]}>
+                <View style={[styles.card, cardBorder]}>
                   <View style={styles.cardHeader}>
                     <Text style={styles.cardTitle}>
                       {isMiss
@@ -119,6 +134,13 @@ export default function JournalListScreen() {
                         <Text style={styles.typeBadgeText}>ONBOARDING</Text>
                       </View>
                     )}
+                    {!isMiss && !isFutureSelf && catColor && (
+                      <View style={[styles.catBadge, { backgroundColor: catColor + '20', borderColor: catColor }]}>
+                        <Text style={[styles.catBadgeText, { color: catColor }]}>
+                          {primaryCat!.toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   {isMiss && (
                     <Text style={styles.missSubtext}>
@@ -128,7 +150,7 @@ export default function JournalListScreen() {
                   <Text style={styles.cardDate}>
                     {formatDate(item.created_at)} · {formatTime(item.created_at)}
                   </Text>
-                  <Text style={styles.cardBody}>{item.body}</Text>
+                  <FormattedJournalBody body={item.body} />
                 </View>
               );
             }}
@@ -166,6 +188,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.textPrimary,
+    flex: 1,
+    marginRight: 8,
   },
   cardDate: {
     fontSize: 12,
@@ -206,6 +230,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.accentLight,
     letterSpacing: 0.8,
+  },
+  catBadge: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  catBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   cardBody: {
     fontSize: 14,

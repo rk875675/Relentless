@@ -73,12 +73,78 @@ const TapThroughTextBlockSchema = z.object({
   paragraphs: z.array(z.string().min(1)).min(1),
 }).strict();
 
+const PromptCardItemSchema = z.object({
+  intro_hold_seconds: z.number().min(0),
+  prompt: z.string().min(1),
+  min_entry_seconds: z.number().min(0),
+}).strict();
+
+const PromptCardsSummarySchema = z.object({
+  display: z.enum(["last", "all"]),
+  header: z.string(),
+  hold_seconds: z.number().min(0),
+  save_to_profile: z.boolean().optional(),
+}).strict();
+
+const PromptCardsBlockSchema = z.object({
+  type: z.literal("prompt_cards"),
+  ambient_audio: z.string().min(1).optional(),
+  cards: z.array(PromptCardItemSchema).min(1),
+  summary: PromptCardsSummarySchema,
+}).strict();
+
+const BubbleSortBlockSchema = z.object({
+  type: z.literal("bubble_sort"),
+  ambient_audio: z.string().min(1).optional(),
+  entry_instruction: z.string().min(1),
+  entry_done_label: z.string().min(1),
+  discard_instruction: z.string().min(1),
+  can_restore: z.boolean(),
+  action_prompt: z.string().min(1),
+}).strict();
+
+const TwoColumnSortBlockSchema = z.object({
+  type: z.literal("two_column_sort"),
+  ambient_audio: z.string().min(1).optional(),
+  columns: z.array(z.object({ id: z.string().min(1), label: z.string().min(1) }).strict()).length(2),
+  min_per_column: z.number().int().min(1),
+  min_entry_seconds: z.number().min(0),
+  intro_hold_seconds: z.number().min(0),
+  close_column_id: z.string().min(1),
+  action_prompt: z.string().min(1),
+}).strict();
+
+const ListBuilderBlockSchema = z.object({
+  type: z.literal("list_builder"),
+  ambient_audio: z.string().min(1).optional(),
+  prompts: z.array(z.string().min(1)).min(1),
+  min_entries: z.number().int().min(1),
+  min_entry_seconds: z.number().min(0),
+  summary_header: z.string().min(1),
+  summary_hold_seconds: z.number().min(0),
+  save_to_profile: z.boolean().optional(),
+}).strict();
+
+const CountdownTimerBlockSchema = z.object({
+  type: z.literal("countdown_timer"),
+  ambient_audio: z.string().min(1).optional(),
+  duration_seconds: z.number().int().positive(),
+  task_list: z.array(z.string().min(1)).min(1),
+  completion_message: z.string().min(1),
+  completion_hold_seconds: z.number().min(0),
+}).strict();
+
 const ContentBlockSchema = z.discriminatedUnion("type", [
   VoiceoverBlockSchema,
   TimedExerciseBlockSchema,
   JournalPromptBlockSchema,
   FlashCardsBlockSchema,
   TapThroughTextBlockSchema,
+  PromptCardsBlockSchema,
+  BubbleSortBlockSchema,
+  TwoColumnSortBlockSchema,
+  ListBuilderBlockSchema,
+  CountdownTimerBlockSchema,
 ]);
 
 export const ContentBlocksSchema = z.object({

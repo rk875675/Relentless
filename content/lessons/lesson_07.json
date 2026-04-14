@@ -1,0 +1,75 @@
+{
+  "lesson_number": 7,
+  "title": "Focus Anchor — Find Yours",
+  "program_version": "v1",
+  "day_number": 7,
+  "mac_categories": ["mindfulness"],
+  "coach": "Coach Grant",
+  "duration_seconds": 261,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_07/lesson_07_seg_01.mp3"
+      ],
+      "total_audio_seconds": 71.0,
+      "timed_text": [
+        { "start_s": 0.0, "text": "Day 7." },
+        { "start_s": 3.0, "text": "You've done your first week. Breathing. Body scan. Awareness." },
+        { "start_s": 12.0, "text": "Today we build the tool that ties all of it together." },
+        { "start_s": 20.0, "text": "It's called a focus anchor." },
+        { "start_s": 25.0, "text": "A word, a short phrase, or a physical sensation that your mind comes back to when it starts to drift." },
+        { "start_s": 38.0, "text": "It should be short — one or two words max. Process-focused, not outcome-focused." },
+        { "start_s": 50.0, "text": "Examples: next play, breathe, process, here, trust." },
+        { "start_s": 58.0, "text": "Before we start — take one box breath to settle in." }
+      ]
+    },
+    {
+      "type": "timed_exercise",
+      "duration_seconds": 16,
+      "interactive_model": "box_breathing",
+      "visual_cues": [
+        "One box breath. Settle in.",
+        "Follow the circle."
+      ],
+      "steps": [
+        { "text": "Inhale", "duration_seconds": 4, "haptic": "heavy" },
+        { "text": "Hold", "duration_seconds": 4, "haptic": "light" },
+        { "text": "Exhale", "duration_seconds": 4, "haptic": "heavy" },
+        { "text": "Hold", "duration_seconds": 4, "haptic": "light" }
+      ]
+    },
+    {
+      "type": "timed_exercise",
+      "duration_seconds": 89,
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "steps": [
+        {
+          "text": "What is your focus anchor? One or two words. Choose something that brings you into the present moment.",
+          "duration_seconds": 30
+        },
+        {
+          "text": "Hold your anchor. When your mind drifts — and it will — bring it back. That's the rep.",
+          "duration_seconds": 59
+        }
+      ]
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_07/lesson_07_seg_02.mp3"
+      ],
+      "total_audio_seconds": 24.0,
+      "timed_text": [
+        { "start_s": 0.0,  "text": "That word you just saved — that's your reset tool." },
+        { "start_s": 5.0,  "text": "In competition, when things get loud in your head, that's what you come back to." },
+        { "start_s": 12.0, "text": "We're going to use it throughout the rest of this program." },
+        { "start_s": 17.0, "text": "Go hit the journal. That's your first week of Relentless." }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "What anchor did you choose and why? When in competition do you think you'll need it most?"
+    }
+  ]
+}

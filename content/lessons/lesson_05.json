@@ -1,0 +1,65 @@
+{
+  "lesson_number": 5,
+  "title": "Box Breathing — Level 1",
+  "program_version": "v1",
+  "day_number": 5,
+  "mac_categories": ["mindfulness", "acceptance"],
+  "coach": "Coach Grant",
+  "duration_seconds": 234,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_05/lesson_05_seg_01.mp3"
+      ],
+      "total_audio_seconds": 78.0,
+      "timed_text": [
+        { "start_s": 0.0, "text": "Day 5. First physical tool." },
+        { "start_s": 5.0, "text": "It's called box breathing. Four sides. Four seconds each." },
+        { "start_s": 15.0, "text": "When you're in a high-pressure moment, your body runs hot." },
+        { "start_s": 25.0, "text": "Box breathing is a reset switch." },
+        { "start_s": 35.0, "text": "When you control the breath, you directly activate the part of your nervous system that says calm down." },
+        { "start_s": 50.0, "text": "On your screen you're going to see a circle. Follow it." },
+        { "start_s": 60.0, "text": "If your mind drifts — bring it back. That is not failure. That is the drill." }
+      ]
+    },
+    {
+      "type": "timed_exercise",
+      "duration_seconds": 80,
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "interactive_model": "box_breathing",
+      "visual_cues": [
+        "Follow the circle. In through your nose.",
+        "Stay with the rhythm. Don't rush.",
+        "Nice and steady. Four seconds each.",
+        "Let everything else go.",
+        "Mind drifted? Good. Bring it back.",
+        "You're building a skill. Stay present.",
+        "Last two reps. Stay locked in.",
+        "Almost there. Finish strong."
+      ],
+      "steps": [
+        { "text": "Inhale", "duration_seconds": 4, "haptic": "heavy" },
+        { "text": "Hold", "duration_seconds": 4, "haptic": "light" },
+        { "text": "Exhale", "duration_seconds": 4, "haptic": "heavy" },
+        { "text": "Hold", "duration_seconds": 4, "haptic": "light" }
+      ]
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_05/lesson_05_seg_02.mp3"
+      ],
+      "total_audio_seconds": 16.0,
+      "timed_text": [
+        { "start_s": 0.0, "text": "That's box breathing." },
+        { "start_s": 4.0, "text": "Do that before your next practice. Before your next competition." },
+        { "start_s": 10.0, "text": "The reps compound." }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "Where did your mind go during the breathing? What thought kept pulling you away from the breath?"
+    }
+  ]
+}

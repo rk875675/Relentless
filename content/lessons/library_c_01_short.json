@@ -1,0 +1,58 @@
+{
+  "lesson_id": "e3000000-0000-0000-0000-000000000001",
+  "title": "Future Self",
+  "lesson_type": "library",
+  "mac_categories": ["commitment"],
+  "duration_seconds": 300,
+  "sort_order": 300,
+  "blocks": [
+    {
+      "type": "tap_through_text",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "paragraphs": [
+        "The past does not equal the future. Just because something hasn't worked yet doesn't mean it won't. You don't make decisions based on who you were. You make them based on who you're becoming.",
+        "Most athletes set goals. The best athletes build an identity. There's a difference between 'I want to run faster' and knowing exactly who you are when you get there.",
+        "You're going to describe your future self in detail. Pick a time frame — 3 months, 6 months, a year. You choose how far out you want to look.",
+        "One rule: describe what you want, not what you don't want. Your brain thinks in images. Build the image you actually want.",
+        "Be specific. Vague answers produce vague results. The more real this person feels, the more your decisions will start pointing toward them.",
+        "Start building."
+      ]
+    },
+    {
+      "type": "prompt_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "intro_hold_seconds": 3,
+          "prompt": "What does your future self look like physically? How do they carry themselves? How do they show up?",
+          "min_entry_seconds": 30
+        },
+        {
+          "intro_hold_seconds": 3,
+          "prompt": "How do they train? What does their work ethic look like on the days they don't feel like it?",
+          "min_entry_seconds": 30
+        },
+        {
+          "intro_hold_seconds": 3,
+          "prompt": "How do they talk to themselves? To others? How do they handle pressure?",
+          "min_entry_seconds": 20
+        },
+        {
+          "intro_hold_seconds": 3,
+          "prompt": "What do they consistently do that you're not doing yet?",
+          "min_entry_seconds": 20
+        }
+      ],
+      "summary": {
+        "display": "all",
+        "header": "This is who you're becoming.",
+        "hold_seconds": 15,
+        "save_to_profile": true
+      }
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "What's the single biggest gap between where you are now and the person you just described? What's one thing you can do today to start closing it?"
+    }
+  ]
+}

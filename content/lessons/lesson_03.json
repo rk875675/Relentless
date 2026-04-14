@@ -1,0 +1,60 @@
+{
+  "lesson_number": 3,
+  "title": "Your Baseline — Mental Gut Check",
+  "program_version": "v1",
+  "day_number": 3,
+  "mac_categories": ["mindfulness", "acceptance", "commitment"],
+  "coach": "Coach Grant",
+  "duration_seconds": 227,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_03/lesson_03_seg_01.mp3"
+      ],
+      "total_audio_seconds": 51.0,
+      "timed_text": [
+        { "start_s": 0.0, "text": "Day 3." },
+        { "start_s": 3.0, "text": "Before we go any further — we need a starting point." },
+        { "start_s": 10.0, "text": "Think of this like measuring your vertical before a training block." },
+        { "start_s": 20.0, "text": "Score yourself honestly from 1 to 10." },
+        { "start_s": 30.0, "text": "1 means it's a major problem. 10 means you've got it locked in." },
+        { "start_s": 40.0, "text": "You'll have 30 seconds per question. Read it, sit with it, and be honest." }
+      ]
+    },
+    {
+      "type": "timed_exercise",
+      "duration_seconds": 90,
+      "steps": [
+        {
+          "text": "Mindfulness — During competition, how often does your mind drift to outcomes, mistakes, or what people think — instead of staying on the task in front of you? 1 = constantly, 10 = never.",
+          "duration_seconds": 30
+        },
+        {
+          "text": "Acceptance — How much do nerves, fear, or self-doubt affect your performance — even when you know physically you're ready? 1 = they control me, 10 = I use them.",
+          "duration_seconds": 30
+        },
+        {
+          "text": "Commitment — How consistent are your mental habits right now — visualization, reflection, intentional prep? 1 = nonexistent, 10 = locked in daily.",
+          "duration_seconds": 30
+        }
+      ]
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_03/lesson_03_seg_02.mp3"
+      ],
+      "total_audio_seconds": 26.0,
+      "timed_text": [
+        { "start_s": 0.0, "text": "Those three numbers are your baseline." },
+        { "start_s": 6.0, "text": "On Day 30, you're going to answer those exact same questions again." },
+        { "start_s": 15.0, "text": "Hit the journal. Write your scores down and add one sentence explaining each one." }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "Write your three baseline scores — M, A, C — and one sentence explaining each one."
+    }
+  ]
+}

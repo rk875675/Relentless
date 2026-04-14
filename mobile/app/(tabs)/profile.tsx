@@ -17,9 +17,10 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
-import { getCached, setCached } from '@/lib/api-cache';
+import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { SUPERWALL_ENABLED, SUPERWALL_ONBOARDING_PLACEMENT } from '@/lib/superwall-config';
+import { supabase } from '@/lib/supabase';
 
 type Streak = {
   current_streak: number;
@@ -47,6 +48,8 @@ export default function ProfileScreen() {
   const [dateSaving, setDateSaving] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [devToolsVisible, setDevToolsVisible] = useState(__DEV__);
+  const [devDay, setDevDay] = useState<number | null>(null);
+  const [devDayBusy, setDevDayBusy] = useState(false);
   const brandTapCount = useRef(0);
   const brandTapTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -80,6 +83,10 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchData();
+      if (__DEV__) {
+        supabase.rpc('dev_get_program_day')
+          .then(({ data }) => { if (typeof data === 'number') setDevDay(data); });
+      }
     }, []),
   );
 
@@ -99,6 +106,17 @@ export default function ProfileScreen() {
 
   const handleManageSubscription = () => {
     Linking.openURL('https://apps.apple.com/account/subscriptions');
+  };
+
+  const handleDevSetDay = async (day: number) => {
+    if (devDayBusy || day < 1 || day > 30) return;
+    setDevDayBusy(true);
+    try {
+      const { data } = await supabase.rpc('dev_set_program_day', { p_day: day });
+      if (typeof data === 'number') setDevDay(data);
+      bustCache('/lessons/next', '/progress', '/streak');
+    } catch { /* RPC may not be deployed yet */ }
+    setDevDayBusy(false);
   };
 
   const email = session?.user?.email ?? '';
@@ -310,6 +328,33 @@ export default function ProfileScreen() {
         <>
           <Text style={styles.sectionLabel}>DEV TOOLS</Text>
           <View style={styles.rowsContainer}>
+            <View style={[styles.profileRow, { justifyContent: 'space-between' }]}>
+              <View style={styles.rowLeft}>
+                <View style={styles.rowIconWrap}>
+                  <Ionicons name="calendar-outline" size={17} color={colors.accentLight} />
+                </View>
+                <Text style={styles.rowLabel}>Program Day</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <TouchableOpacity
+                  onPress={() => handleDevSetDay((devDay ?? 1) - 1)}
+                  disabled={devDayBusy || (devDay ?? 1) <= 1}
+                  style={{ opacity: (devDay ?? 1) <= 1 ? 0.3 : 1 }}
+                >
+                  <Ionicons name="remove-circle-outline" size={24} color={colors.accentLight} />
+                </TouchableOpacity>
+                <Text style={[styles.rowValue, { minWidth: 36, textAlign: 'center' }]}>
+                  {devDayBusy ? '...' : devDay ?? '—'}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => handleDevSetDay((devDay ?? 1) + 1)}
+                  disabled={devDayBusy || (devDay ?? 1) >= 30}
+                  style={{ opacity: (devDay ?? 1) >= 30 ? 0.3 : 1 }}
+                >
+                  <Ionicons name="add-circle-outline" size={24} color={colors.accentLight} />
+                </TouchableOpacity>
+              </View>
+            </View>
             <ProfileRow
               icon="card-outline"
               label="Jump to Paywall"

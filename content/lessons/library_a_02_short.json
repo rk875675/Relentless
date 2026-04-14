@@ -1,0 +1,35 @@
+{
+  "lesson_id": "e2000000-0000-0000-0000-000000000003",
+  "title": "Control Check",
+  "lesson_type": "library",
+  "mac_categories": ["acceptance"],
+  "duration_seconds": 240,
+  "sort_order": 210,
+  "blocks": [
+    {
+      "type": "tap_through_text",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "paragraphs": [
+        "One of the fastest ways to lose your mental edge is spending energy on things you cannot change. Research consistently shows that perceived control is one of the strongest predictors of performance under pressure.",
+        "This exercise forces you to get specific. Exactly what is and isn't in your hands.",
+        "You're going to fill two columns. What I control. What I don't.",
+        "The uncontrollable side gets acknowledged, and then closed. You're not ignoring it. You're making a deliberate decision to stop spending energy there.",
+        "The controllable side becomes your entire focus from this point forward.",
+        "Be honest. Vague answers won't help you."
+      ]
+    },
+    {
+      "type": "two_column_sort",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "columns": [
+        { "id": "control", "label": "What I Control" },
+        { "id": "no_control", "label": "What I Don't" }
+      ],
+      "min_per_column": 1,
+      "min_entry_seconds": 20,
+      "intro_hold_seconds": 3,
+      "close_column_id": "no_control",
+      "action_prompt": "What is your next action on this?"
+    }
+  ]
+}

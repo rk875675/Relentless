@@ -1,0 +1,61 @@
+{
+  "lesson_number": 2,
+  "title": "The Science of Choking (And How to Stop It)",
+  "program_version": "v1",
+  "day_number": 2,
+  "mac_categories": ["mindfulness"],
+  "coach": "Coach Grant",
+  "duration_seconds": 305,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_02/lesson_02_seg_01.mp3"
+      ],
+      "total_audio_seconds": 116.0,
+      "timed_text": [
+        { "start_s": 0.0,   "text": "Day 2." },
+        { "start_s": 3.0,   "text": "Today I want to show you the exact science." },
+        { "start_s": 15.0,  "text": "Daniel Kahneman won the Nobel Prize in 2002." },
+        { "start_s": 27.0,  "text": "The brain runs on two systems." },
+        { "start_s": 31.0,  "text": "System 1 is fast. Automatic. Instinctive." },
+        { "start_s": 55.0,  "text": "System 2 is slow. Deliberate. Analytical." },
+        { "start_s": 75.0,  "text": "Choking is what happens when System 2 tries to take control of something System 1 already owns." },
+        { "start_s": 88.0,  "text": "The fix isn't to think less. It's to train your mind to step back." },
+        { "start_s": 103.0, "text": "Right now I want you to find your version of that moment." }
+      ]
+    },
+    {
+      "type": "timed_exercise",
+      "duration_seconds": 105,
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "steps": [
+        {
+          "text": "Describe a moment where your mind worked against you. Where were you? What was happening? What did your brain start doing instead of competing?",
+          "duration_seconds": 60
+        },
+        {
+          "text": "What was your brain doing? Thinking about the outcome? Watching your competition? Replaying a mistake? Worrying about what others think? Identify the pattern.",
+          "duration_seconds": 45
+        }
+      ]
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_02/lesson_02_seg_02.mp3"
+      ],
+      "total_audio_seconds": 24.0,
+      "timed_text": [
+        { "start_s": 0.0,  "text": "What you just logged — that's your distraction profile." },
+        { "start_s": 7.0,  "text": "Every drill from here is training you to catch that pattern before it catches you." },
+        { "start_s": 15.0, "text": "Go hit the journal. One question." },
+        { "start_s": 20.0, "text": "After you finish — Day 2 is complete." }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "Looking at what you selected — which distraction shows up most consistently for you? Does it get worse at specific moments in competition?"
+    }
+  ]
+}

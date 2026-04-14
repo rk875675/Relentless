@@ -23,6 +23,12 @@ import { apiFetch } from '@/lib/api';
 import { bustCache } from '@/lib/api-cache';
 import { setPendingGainDeltas } from '@/lib/pending-deltas';
 import { colors, spacing } from '@/lib/theme';
+import FormattedJournalBody from '@/components/FormattedJournalBody';
+import PromptCards from '@/components/lesson/PromptCards';
+import BubbleSortExercise from '@/components/lesson/BubbleSort';
+import TwoColumnSortExercise from '@/components/lesson/TwoColumnSort';
+import ListBuilderExercise from '@/components/lesson/ListBuilder';
+import CountdownTimerExercise from '@/components/lesson/CountdownTimer';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,7 +71,67 @@ type TapThroughTextBlock = {
   paragraphs: string[];
 };
 
-type ContentBlock = VoiceoverBlock | TimedExerciseBlock | JournalPromptBlock | FlashCardsBlock | TapThroughTextBlock;
+type PromptCardItem = { intro_hold_seconds: number; prompt: string; min_entry_seconds: number };
+type PromptCardsSummary = { display: 'last' | 'all'; header: string; hold_seconds: number; save_to_profile?: boolean };
+type PromptCardsBlock = {
+  type: 'prompt_cards';
+  ambient_audio?: string | null;
+  cards: PromptCardItem[];
+  summary: PromptCardsSummary;
+};
+
+type BubbleSortBlock = {
+  type: 'bubble_sort';
+  ambient_audio?: string | null;
+  entry_instruction: string;
+  entry_done_label: string;
+  discard_instruction: string;
+  can_restore: boolean;
+  action_prompt: string;
+};
+
+type TwoColumnSortBlock = {
+  type: 'two_column_sort';
+  ambient_audio?: string | null;
+  columns: { id: string; label: string }[];
+  min_per_column: number;
+  min_entry_seconds: number;
+  intro_hold_seconds: number;
+  close_column_id: string;
+  action_prompt: string;
+};
+
+type ListBuilderBlock = {
+  type: 'list_builder';
+  ambient_audio?: string | null;
+  prompts: string[];
+  min_entries: number;
+  min_entry_seconds: number;
+  summary_header: string;
+  summary_hold_seconds: number;
+  save_to_profile?: boolean;
+};
+
+type CountdownTimerBlock = {
+  type: 'countdown_timer';
+  ambient_audio?: string | null;
+  duration_seconds: number;
+  task_list: string[];
+  completion_message: string;
+  completion_hold_seconds: number;
+};
+
+type ContentBlock =
+  | VoiceoverBlock
+  | TimedExerciseBlock
+  | JournalPromptBlock
+  | FlashCardsBlock
+  | TapThroughTextBlock
+  | PromptCardsBlock
+  | BubbleSortBlock
+  | TwoColumnSortBlock
+  | ListBuilderBlock
+  | CountdownTimerBlock;
 
 type LessonDetail = {
   id: string;
@@ -131,10 +197,13 @@ export default function LessonPlayerScreen() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [errorMsg, setErrorMsg] = useState('');
   const [journalText, setJournalText] = useState('');
+  const [journalExerciseContext, setJournalExerciseContext] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [doneDeltas, setDoneDeltas] = useState<Record<string, { amount: number; reason: string }> | null>(null);
   const [streakCount, setStreakCount] = useState(0);
   const preStreakDateRef = useRef<string | null>(null);
+  // Accumulates written content from component-block exercises for the journal.
+  const journalPartsRef = useRef<string[]>([]);
 
   const doneAnim1 = useRef(new Animated.Value(0)).current;
   const doneAnim2 = useRef(new Animated.Value(0)).current;
@@ -209,6 +278,13 @@ export default function LessonPlayerScreen() {
   const journalTextRef = useRef('');
   const lessonRef = useRef<LessonDetail | null>(null);
 
+  // Audio fallback: when audio files are missing, drive voiceover via timer
+  const audioFallbackActive = useRef(false);
+  const audioFallbackTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioFallbackStartRef = useRef(0);
+  const [audioFallbackElapsed, setAudioFallbackElapsed] = useState(0);
+
   useEffect(() => { journalTextRef.current = journalText; }, [journalText]);
   useEffect(() => { lessonRef.current = lesson; }, [lesson]);
 
@@ -230,8 +306,8 @@ export default function LessonPlayerScreen() {
     if (!lesson?.content_blocks?.blocks) return null;
     for (const b of lesson.content_blocks.blocks) {
       if (
-        (b.type === 'timed_exercise' || b.type === 'flash_cards' || b.type === 'tap_through_text') &&
-        b.ambient_audio
+        b.type !== 'voiceover' && b.type !== 'journal_prompt' &&
+        'ambient_audio' in b && b.ambient_audio
       ) {
         return b.ambient_audio;
       }
@@ -298,6 +374,9 @@ export default function LessonPlayerScreen() {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (exerciseTimerRef.current) { clearInterval(exerciseTimerRef.current); exerciseTimerRef.current = null; }
     if (breathAnimRef.current) { breathAnimRef.current.stop(); breathAnimRef.current = null; }
+    if (audioFallbackTimerRef.current) { clearInterval(audioFallbackTimerRef.current); audioFallbackTimerRef.current = null; }
+    if (audioFallbackTimeoutRef.current) { clearTimeout(audioFallbackTimeoutRef.current); audioFallbackTimeoutRef.current = null; }
+    audioFallbackActive.current = false;
     progressAnim.stopAnimation();
   }, []);
 
@@ -348,11 +427,14 @@ export default function LessonPlayerScreen() {
     setSubmitting(true);
     setPhase('completing');
 
-    const text = journalTextRef.current.trim();
-    if (text.length > 0) {
+    const parts = [
+      ...journalPartsRef.current,
+      journalTextRef.current.trim(),
+    ].filter(Boolean);
+    if (parts.length > 0) {
       await apiFetch('/journal', {
         method: 'POST',
-        body: { body: text, lesson_id: currentLesson.id },
+        body: { body: parts.join('\n\n---\n\n'), lesson_id: currentLesson.id },
       });
     }
 
@@ -414,6 +496,22 @@ export default function LessonPlayerScreen() {
       highestCueIndexRef.current = -1;
       textFade.setValue(0);
       setOnScreenText('');
+      // Reset audio fallback state
+      audioFallbackActive.current = false;
+      if (audioFallbackTimerRef.current) { clearInterval(audioFallbackTimerRef.current); audioFallbackTimerRef.current = null; }
+      if (audioFallbackTimeoutRef.current) { clearTimeout(audioFallbackTimeoutRef.current); audioFallbackTimeoutRef.current = null; }
+      setAudioFallbackElapsed(0);
+      // Start fallback timeout: if audio hasn't loaded in 1.5s, drive voiceover via timer
+      audioFallbackTimeoutRef.current = setTimeout(() => {
+        if (!voiceoverStartPending.current) return;
+        voiceoverStartPending.current = false;
+        audioFallbackActive.current = true;
+        audioFallbackStartRef.current = Date.now();
+        audioFallbackTimerRef.current = setInterval(() => {
+          const el = (Date.now() - audioFallbackStartRef.current) / 1000;
+          setAudioFallbackElapsed(el);
+        }, 100);
+      }, 1500);
     } else if (block.type === 'timed_exercise') {
       setExerciseElapsed(0);
       setExerciseStepIndex(0);
@@ -573,6 +671,21 @@ export default function LessonPlayerScreen() {
       setCurrentAudioUrl(null);
       setOnScreenText(block.prompt);
       setPhase('block_journal');
+    } else if (
+      block.type === 'prompt_cards' ||
+      block.type === 'bubble_sort' ||
+      block.type === 'two_column_sort' ||
+      block.type === 'list_builder' ||
+      block.type === 'countdown_timer'
+    ) {
+      setCurrentAudioUrl(null);
+      try {
+        if (!ambientPlayer.playing) {
+          ambientPlayer.seekTo(0).then(() => ambientPlayer.play()).catch(() => {});
+        }
+      } catch { /* noop */ }
+    } else {
+      advanceBlock();
     }
   }, [player, ambientPlayer, advanceBlock, textFade, pulseBars]);
 
@@ -583,6 +696,8 @@ export default function LessonPlayerScreen() {
     if (phase !== 'playing' || !voiceoverStartPending.current) return;
     if (!audioStatus.isLoaded) return;
     voiceoverStartPending.current = false;
+    // Audio loaded successfully — cancel fallback timeout
+    if (audioFallbackTimeoutRef.current) { clearTimeout(audioFallbackTimeoutRef.current); audioFallbackTimeoutRef.current = null; }
     void player.seekTo(0).then(() => { player.play(); });
   }, [phase, audioStatus.isLoaded, player]);
 
@@ -620,14 +735,20 @@ export default function LessonPlayerScreen() {
   //  2. highestCueIndexRef — only allow forward cue progression; never regress
   //     to an earlier cue even if absoluteTime briefly dips during file switch.
   //  3. pulseBars() on each new cue — makes bars react to speech transitions.
+  //  4. audioFallbackActive — when audio files are missing, elapsed time from
+  //     fallback timer drives text cues instead of audio playback position.
   // -----------------------------------------------------------------------
   useEffect(() => {
-    if (phase !== 'playing' || !hasBlocks || !audioStatus.isLoaded) return;
+    if (phase !== 'playing' || !hasBlocks) return;
+    const isFallback = audioFallbackActive.current;
+    if (!isFallback && !audioStatus.isLoaded) return;
     const currentBlocks = lessonRef.current?.content_blocks?.blocks ?? [];
     const block = currentBlocks[blockIndexRef.current];
     if (!block || block.type !== 'voiceover') return;
 
-    const absoluteTime = cumulativeOffsetRef.current + audioStatus.currentTime;
+    const absoluteTime = isFallback
+      ? audioFallbackElapsed
+      : cumulativeOffsetRef.current + audioStatus.currentTime;
     const cues = block.timed_text;
 
     let activeCueIdx = 0;
@@ -651,7 +772,22 @@ export default function LessonPlayerScreen() {
         Animated.timing(textFade, { toValue: 1, duration: 250, useNativeDriver: true }).start();
       });
     }
-  }, [phase, hasBlocks, audioStatus.currentTime, audioStatus.isLoaded, textFade, pulseBars]);
+  }, [phase, hasBlocks, audioStatus.currentTime, audioStatus.isLoaded, audioFallbackElapsed, textFade, pulseBars]);
+
+  // -----------------------------------------------------------------------
+  // Audio fallback: advance block when timer reaches total_audio_seconds
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (phase !== 'playing' || !audioFallbackActive.current) return;
+    const currentBlocks = lessonRef.current?.content_blocks?.blocks ?? [];
+    const block = currentBlocks[blockIndexRef.current];
+    if (!block || block.type !== 'voiceover') return;
+    if (audioFallbackElapsed >= block.total_audio_seconds) {
+      if (audioFallbackTimerRef.current) { clearInterval(audioFallbackTimerRef.current); audioFallbackTimerRef.current = null; }
+      audioFallbackActive.current = false;
+      advanceBlock();
+    }
+  }, [phase, audioFallbackElapsed, advanceBlock]);
 
   // -----------------------------------------------------------------------
   // Start lesson
@@ -724,6 +860,10 @@ export default function LessonPlayerScreen() {
   // -----------------------------------------------------------------------
   const handleRestart = () => {
     voiceoverStartPending.current = false;
+    audioFallbackActive.current = false;
+    if (audioFallbackTimerRef.current) { clearInterval(audioFallbackTimerRef.current); audioFallbackTimerRef.current = null; }
+    if (audioFallbackTimeoutRef.current) { clearTimeout(audioFallbackTimeoutRef.current); audioFallbackTimeoutRef.current = null; }
+    setAudioFallbackElapsed(0);
     try { player.pause(); void player.seekTo(0); } catch { /* noop */ }
     try { ambientPlayer.pause(); void ambientPlayer.seekTo(0); } catch { /* noop */ }
     setPhase('ready');
@@ -741,6 +881,8 @@ export default function LessonPlayerScreen() {
     setTapThroughIndex(0);
     tapThroughSlideX.setValue(0);
     setJournalText('');
+    setJournalExerciseContext('');
+    journalPartsRef.current = [];
     lastCueRef.current = '';
     highestCueIndexRef.current = -1;
     blockIndexRef.current = 0;
@@ -764,6 +906,12 @@ export default function LessonPlayerScreen() {
   const isExerciseBlock = currentBlock?.type === 'timed_exercise';
   const isFlashCardsBlock = currentBlock?.type === 'flash_cards';
   const isTapThroughBlock = currentBlock?.type === 'tap_through_text';
+  const isComponentBlock =
+    currentBlock?.type === 'prompt_cards' ||
+    currentBlock?.type === 'bubble_sort' ||
+    currentBlock?.type === 'two_column_sort' ||
+    currentBlock?.type === 'list_builder' ||
+    currentBlock?.type === 'countdown_timer';
 
   const SLIDE_DIST = 320;
 
@@ -848,7 +996,9 @@ export default function LessonPlayerScreen() {
   // Block-mode progress (for voiceover progress bar — exercise uses continuous anim)
   let blockProgress = 0;
   if (hasBlocks && phase === 'playing' && isVoiceoverBlock) {
-    const t = cumulativeOffsetRef.current + audioStatus.currentTime;
+    const t = audioFallbackActive.current
+      ? audioFallbackElapsed
+      : cumulativeOffsetRef.current + audioStatus.currentTime;
     const total = (currentBlock as VoiceoverBlock).total_audio_seconds;
     blockProgress = total > 0 ? Math.min(t / total, 1) : 0;
   }
@@ -1428,6 +1578,109 @@ export default function LessonPlayerScreen() {
           );
         })()}
 
+        {/* Component-based interactive blocks */}
+        {phase === 'playing' && lesson && hasBlocks && isComponentBlock && (() => {
+          const block = currentBlock!;
+          // Inline the advance logic here rather than delegating through
+          // advanceBlock → startBlock, which captures a stale startBlock
+          // reference when advanceBlock is memoised without it as a dep.
+          const handleComplete = (collectedText: string) => {
+            if (collectedText.trim()) {
+              journalPartsRef.current.push(collectedText.trim());
+            }
+            try { ambientPlayer.pause(); } catch { /* noop */ }
+
+            const nextIdx = blockIndexRef.current + 1;
+            const allBlocks = lessonRef.current?.content_blocks?.blocks ?? [];
+            blockIndexRef.current = nextIdx;
+
+            if (nextIdx >= allBlocks.length) {
+              sessionActive.current = false;
+              stopAllTimers();
+              completeLesson();
+              return;
+            }
+
+            // If transitioning to a journal_prompt, surface the exercise answers
+            // as context so the user can reference them while writing.
+            const nextBlock = allBlocks[nextIdx];
+            if (nextBlock?.type === 'journal_prompt' && collectedText.trim()) {
+              setJournalExerciseContext(collectedText.trim());
+            }
+
+            // Mirror advanceBlock: update state index then delegate all
+            // block-type-specific setup (including journal_prompt → block_journal)
+            // to startBlock, which already handles every block type correctly.
+            setBlockIndex(nextIdx);
+            startBlock(nextIdx);
+          };
+          if (block.type === 'prompt_cards') {
+            return (
+              <PromptCards
+                key={blockIndex}
+                cards={block.cards}
+                catColor={catColor}
+                onComplete={handleComplete}
+              />
+            );
+          }
+          if (block.type === 'bubble_sort') {
+            return (
+              <BubbleSortExercise
+                key={blockIndex}
+                entryInstruction={block.entry_instruction}
+                entryDoneLabel={block.entry_done_label}
+                discardInstruction={block.discard_instruction}
+                canRestore={block.can_restore}
+                actionPrompt={block.action_prompt}
+                catColor={catColor}
+                onComplete={handleComplete}
+              />
+            );
+          }
+          if (block.type === 'two_column_sort') {
+            return (
+              <TwoColumnSortExercise
+                key={blockIndex}
+                columns={block.columns}
+                minPerColumn={block.min_per_column}
+                closeColumnId={block.close_column_id}
+                actionPrompt={block.action_prompt}
+                catColor={catColor}
+                onComplete={handleComplete}
+              />
+            );
+          }
+          if (block.type === 'list_builder') {
+            return (
+              <ListBuilderExercise
+                key={blockIndex}
+                prompts={block.prompts}
+                minEntries={block.min_entries}
+                minEntrySeconds={block.min_entry_seconds}
+                summaryHeader={block.summary_header}
+                summaryHoldSeconds={block.summary_hold_seconds}
+                catColor={catColor}
+                onComplete={handleComplete}
+              />
+            );
+          }
+          if (block.type === 'countdown_timer') {
+            return (
+              <CountdownTimerExercise
+                key={blockIndex}
+                durationSeconds={block.duration_seconds}
+                taskList={block.task_list}
+                completionMessage={block.completion_message}
+                completionHoldSeconds={block.completion_hold_seconds}
+                catColor={catColor}
+                onComplete={handleComplete}
+              />
+            );
+          }
+          return null;
+        })()}
+
         {/* Legacy flat-mode playing */}
         {phase === 'playing' && lesson && !hasBlocks && (
           <View style={styles.centered}>
@@ -1467,6 +1720,11 @@ export default function LessonPlayerScreen() {
                 style={{ alignSelf: 'center', marginBottom: spacing.md }}
               />
               <Text style={styles.reflectionTitle}>Journal</Text>
+              {journalExerciseContext ? (
+                <View style={styles.journalContextCard}>
+                  <FormattedJournalBody body={journalExerciseContext} />
+                </View>
+              ) : null}
               <Text style={styles.reflectionPrompt}>{onScreenText}</Text>
               <TextInput
                 style={styles.journalInput}
@@ -1797,6 +2055,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
     marginBottom: spacing.lg,
+  },
+  journalContextCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    width: '100%',
+  },
+  journalContextText: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    lineHeight: 22,
   },
   journalInput: {
     backgroundColor: colors.surface,

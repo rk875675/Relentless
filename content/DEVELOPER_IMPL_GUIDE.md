@@ -19,6 +19,23 @@ How to ship a new library lesson in ~10 minutes.
 UUIDs are deterministic so they can be hardcoded in seeds and cross-referenced
 anywhere. Use the next available row in each category.
 
+### Program Lessons / Daily Workouts (d0…)
+
+| Day | Title                                      | UUID                                   | sort_order | Status   |
+|-----|--------------------------------------------|-----------------------------------------|------------|----------|
+| 1   | What MAC Training Actually Is              | `d0000000-0000-0000-0000-000000000001` | 0          | ✅ DONE  |
+| 2   | The Science of Choking (And How to Stop It)| `d0000000-0000-0000-0000-000000000002` | 1          | ✅ DONE  |
+| 3   | Your Baseline — Mental Gut Check           | `d0000000-0000-0000-0000-000000000003` | 2          | ✅ DONE  |
+| 4   | Identity Statement                         | `d0000000-0000-0000-0000-000000000004` | 3          | ✅ DONE  |
+| 5   | Box Breathing — Level 1                    | `d0000000-0000-0000-0000-000000000005` | 4          | ✅ DONE  |
+| 6   | Body Scan — Level 1                        | `d0000000-0000-0000-0000-000000000006` | 5          | ✅ DONE  |
+| 7   | Focus Anchor — Find Yours                  | `d0000000-0000-0000-0000-000000000007` | 6          | ✅ DONE  |
+| 8   | —                                          | `d0000000-0000-0000-0000-000000000008` | 7          | —        |
+| 9   | —                                          | `d0000000-0000-0000-0000-000000000009` | 8          | —        |
+| 10  | —                                          | `d0000000-0000-0000-0000-000000000010` | 9          | —        |
+
+**Sort order pattern:** 0-indexed by day number (Day 1 = 0, Day 2 = 1, …)
+
 ### Mindfulness (e1…)
 
 | Lesson         | UUID                                   | sort_order | Status  |
@@ -36,21 +53,31 @@ anywhere. Use the next available row in each category.
 
 ### Acceptance (e2…)
 
-| Lesson         | UUID                                   | sort_order | Status  |
-|----------------|----------------------------------------|------------|---------|
-| A-01 Short     | `e2000000-0000-0000-0000-000000000001` | 200        | —       |
-| A-01 Long      | `e2000000-0000-0000-0000-000000000002` | 201        | —       |
-| A-02 Short     | `e2000000-0000-0000-0000-000000000003` | 210        | —       |
-| A-02 Long      | `e2000000-0000-0000-0000-000000000004` | 211        | —       |
+| Lesson         | UUID                                   | sort_order | Status   |
+|----------------|----------------------------------------|------------|----------|
+| A-01 Short     | `e2000000-0000-0000-0000-000000000001` | 200        | ✅ DONE  |
+| A-01 Long      | `e2000000-0000-0000-0000-000000000002` | 201        | —        |
+| A-02 Short     | `e2000000-0000-0000-0000-000000000003` | 210        | ✅ DONE  |
+| A-02 Long      | `e2000000-0000-0000-0000-000000000004` | 211        | —        |
+| A-03 Short     | `e2000000-0000-0000-0000-000000000005` | 220        | ✅ DONE  |
+| A-03 Long      | `e2000000-0000-0000-0000-000000000006` | 221        | —        |
+| A-04 Short     | `e2000000-0000-0000-0000-000000000007` | 230        | ✅ DONE  |
+| A-04 Long      | `e2000000-0000-0000-0000-000000000008` | 231        | —        |
+| A-05 Short     | `e2000000-0000-0000-0000-000000000009` | 240        | ✅ DONE  |
+| A-05 Long      | `e2000000-0000-0000-0000-000000000010` | 241        | —        |
+| A-06 Short     | `e2000000-0000-0000-0000-000000000011` | 250        | ✅ DONE  |
+| A-06 Long      | `e2000000-0000-0000-0000-000000000012` | 251        | —        |
 
 ### Commitment (e3…)
 
-| Lesson         | UUID                                   | sort_order | Status  |
-|----------------|----------------------------------------|------------|---------|
-| C-01 Short     | `e3000000-0000-0000-0000-000000000001` | 300        | —       |
-| C-01 Long      | `e3000000-0000-0000-0000-000000000002` | 301        | —       |
-| C-02 Short     | `e3000000-0000-0000-0000-000000000003` | 310        | —       |
-| C-02 Long      | `e3000000-0000-0000-0000-000000000004` | 311        | —       |
+| Lesson         | UUID                                   | sort_order | Status   |
+|----------------|----------------------------------------|------------|----------|
+| C-01 Short     | `e3000000-0000-0000-0000-000000000001` | 300        | ✅ DONE  |
+| C-01 Long      | `e3000000-0000-0000-0000-000000000002` | 301        | —        |
+| C-02 Short     | `e3000000-0000-0000-0000-000000000003` | 310        | ✅ DONE  |
+| C-02 Long      | `e3000000-0000-0000-0000-000000000004` | 311        | —        |
+| C-03 Short     | `e3000000-0000-0000-0000-000000000005` | 320        | ✅ DONE  |
+| C-03 Long      | `e3000000-0000-0000-0000-000000000006` | 321        | —        |
 
 **Sort order pattern:**
 - Category ranges: M=100s, A=200s, C=300s
@@ -211,6 +238,129 @@ Library lessons can also use this once audio is recorded.
 - `timed_text` entries trigger at `start_s` relative to the start of the
   first segment (cumulative across files)
 
+### `prompt_cards`
+Sequential full-screen cards: the front shows an intro hold, the back reveals a text-entry prompt. Used in A-03 through A-06 and C-01.
+
+```json
+{
+  "type": "prompt_cards",
+  "ambient_audio": "ambient/ambient_music.mp3",
+  "cards": [
+    {
+      "intro_hold_seconds": 3,
+      "prompt": "The question shown to the user.",
+      "min_entry_seconds": 20
+    }
+  ],
+  "summary": {
+    "display": "last",
+    "header": "",
+    "hold_seconds": 10
+  }
+}
+```
+
+- `intro_hold_seconds` — minimum time on the intro face before user can flip to the entry side (typically 3 s)
+- `min_entry_seconds` — minimum time on the entry side before user can advance (20 s or 30 s per spec)
+- `summary.display` — `"last"` shows only the final card's answer; `"all"` shows all answers together
+- `summary.header` — text shown above the answer(s); empty string = no header, answer displayed large
+- `summary.hold_seconds` — how long the summary screen is held before the journal prompt appears
+- `summary.save_to_profile` — optional boolean; if true, answers are persisted to the user's profile
+
+### `bubble_sort`
+Interactive exercise: user dumps worries as text entries that become floating bubbles, then taps to pop uncontrollable ones, then gives a next-step action on each remaining bubble. Used in A-01.
+
+```json
+{
+  "type": "bubble_sort",
+  "ambient_audio": "ambient/ambient_music.mp3",
+  "entry_instruction": "Write down everything on your mind. One worry at a time.",
+  "entry_done_label": "I'm done",
+  "discard_instruction": "Tap any bubble that is outside your control right now.",
+  "can_restore": true,
+  "action_prompt": "What is the one next step you can take on this?"
+}
+```
+
+- `entry_instruction` — hint text shown during the entry phase
+- `entry_done_label` — label for the button that ends the entry phase
+- `discard_instruction` — instruction shown during the tap-to-pop phase
+- `can_restore` — if true, a back arrow lets the user restore an accidentally popped bubble
+- `action_prompt` — prompt shown per remaining bubble in the flash-card action phase
+
+### `two_column_sort`
+Split-screen UI: user fills two labelled columns via text entry. The losing column animates closed; each item in the winning column gets a follow-up action prompt. Used in A-02.
+
+```json
+{
+  "type": "two_column_sort",
+  "ambient_audio": "ambient/ambient_music.mp3",
+  "columns": [
+    { "id": "control", "label": "What I Control" },
+    { "id": "no_control", "label": "What I Don't" }
+  ],
+  "min_per_column": 1,
+  "min_entry_seconds": 20,
+  "intro_hold_seconds": 3,
+  "close_column_id": "no_control",
+  "action_prompt": "What is your next action on this?"
+}
+```
+
+- `columns` — exactly two objects with `id` and `label`; order = left, right
+- `min_per_column` — minimum entries required in each column before advancing
+- `min_entry_seconds` — total minimum time spent in the entry phase
+- `intro_hold_seconds` — minimum hold on each action-prompt intro card
+- `close_column_id` — which column's `id` to animate closed
+- `action_prompt` — prompt shown per item in the remaining (open) column
+
+### `list_builder`
+Open text-entry exercise where each submission stacks on screen. Used in C-02.
+
+```json
+{
+  "type": "list_builder",
+  "ambient_audio": "ambient/ambient_music.mp3",
+  "prompts": [
+    "Why do you love your sport?",
+    "What do you love about it?"
+  ],
+  "min_entries": 5,
+  "min_entry_seconds": 10,
+  "summary_header": "This is your foundation.",
+  "summary_hold_seconds": 15,
+  "save_to_profile": true
+}
+```
+
+- `prompts` — suggested question starters shown to the user (scrollable/tappable)
+- `min_entries` — minimum entries before the user can finish
+- `min_entry_seconds` — minimum time per entry before the user can submit it
+- `summary_header` — header text on the final all-entries screen
+- `summary_hold_seconds` — hold time before journal prompt appears
+- `save_to_profile` — if true, the list is persisted to the user's profile
+
+### `countdown_timer`
+Task-selection screen followed by a full-screen countdown ring. Used in C-03.
+
+```json
+{
+  "type": "countdown_timer",
+  "ambient_audio": "ambient/ambient_music.mp3",
+  "duration_seconds": 60,
+  "task_list": [
+    "60 seconds of stretching",
+    "A set of pushups"
+  ],
+  "completion_message": "You started. That's the hardest part.",
+  "completion_hold_seconds": 3
+}
+```
+
+- `task_list` — scrollable list of suggested tasks; user taps one to select before starting
+- `completion_message` — text shown on the completion screen after the timer finishes
+- `completion_hold_seconds` — hold time on the completion screen before journal prompt appears
+
 ### `journal_prompt`
 Full-screen journal entry. User writes freely, then saves and finishes the lesson.
 
@@ -223,6 +373,24 @@ Full-screen journal entry. User writes freely, then saves and finishes the lesso
 
 - Each lesson can have at most one `journal_prompt`
 - It must always be the **last block** in the lesson
+
+### Journal body formatting contract
+
+`FormattedJournalBody` renders saved journal text in the journal list and the
+in-lesson context card. It auto-detects these patterns per `\n\n`-separated
+block:
+
+| Pattern | Detection | Example |
+|---------|-----------|---------|
+| **Q&A pair** | First line contains `?`, ≥ 2 lines | `prompt_cards` |
+| **Labeled pair** | Every line matches `Label: value` | `bubble_sort`, `two_column_sort` |
+| **Bullet list** | Every line starts with `•` | `list_builder` |
+| **Plain text** | Anything else | Free-form reflection |
+
+Sections separated by `\n\n---\n\n` render with a visual divider.
+
+When adding a new interactive block type, ensure its `onComplete(collectedText)`
+output follows one of these patterns so the journal renders cleanly.
 
 ### Haptic fields (optional — all `timed_exercise` blocks)
 
@@ -291,6 +459,11 @@ Other valid structures:
 - `tap_through_text` → `journal_prompt` (no exercise — e.g. a reflection lesson)
 - `tap_through_text` → `flash_cards` → `journal_prompt`
 - `tap_through_text` → `timed_exercise` → `tap_through_text` → `timed_exercise` → `journal_prompt`
+- `tap_through_text` → `prompt_cards` → `journal_prompt` (A-03 through A-06, C-01)
+- `tap_through_text` → `bubble_sort` (A-01 — no journal; exercise phase handles actions)
+- `tap_through_text` → `two_column_sort` (A-02 — no journal; exercise phase handles actions)
+- `tap_through_text` → `list_builder` (C-02 — no journal; summary is the closing)
+- `tap_through_text` → `countdown_timer` → `journal_prompt` (C-03)
 
 ---
 
@@ -302,9 +475,18 @@ supabase/migrations/YYYYMMDDHHMMSS_library_[category]_[NN]_[short|long].sql
 
 Examples:
 ```
-20260413000000_library_m01_box_breathing.sql     ← done
-20260414000000_library_m02_visualization.sql
-20260414000001_library_a01_discomfort_dial.sql
+20260413000000_library_m01_box_breathing.sql      ← done
+20260413000010_library_a01_worry_drop.sql         ← done
+20260413000011_library_a02_control_check.sql      ← done
+20260413000012_library_a03_name_it_face_it.sql    ← done
+20260413000013_library_a04_the_honest_line.sql    ← done
+20260413000014_library_a05_coaches_perspective.sql ← done
+20260413000015_library_a06_emotional_replay.sql   ← done
+20260413000016_library_c01_future_self.sql        ← done
+20260413000017_library_c02_your_foundation.sql    ← done
+20260413000018_library_c03_one_minute_ignition.sql ← done
+20260414000000_wod_days_2_through_7.sql            ← done (Days 2-7 content)
+20260414000001_dev_set_program_day.sql             ← done (dev day switcher RPCs)
 ```
 
 Use timestamp = today + sequential suffix (000000, 000001…) if multiple
@@ -371,5 +553,20 @@ full URL.
 
 - Content JSON template: `content/templates/library_lesson_template.json`
 - SQL migration template: `content/templates/library_lesson_migration_template.sql`
-- Completed example: `content/lessons/library_m_01_short.json`
+- Completed example (M): `content/lessons/library_m_01_short.json`
+- Completed example (A — prompt_cards): `content/lessons/library_a_03_short.json`
+- Completed example (A — bubble_sort): `content/lessons/library_a_01_short.json`
+- Completed example (C — list_builder): `content/lessons/library_c_02_short.json`
 - Completed migration: `supabase/migrations/20260413000000_library_m01_box_breathing.sql`
+
+### New block types requiring UI implementation
+
+The following block types are defined in content but need renderer implementation in the mobile app:
+
+| Block type        | Used in      | Notes |
+|-------------------|--------------|-------|
+| `prompt_cards`    | A-03 – A-06, C-01 | Sequential flip cards with timed text entry and summary screen |
+| `bubble_sort`     | A-01         | Animated bubble entry → tap-to-pop → flash-card action phase |
+| `two_column_sort` | A-02         | Split-screen sort → close uncontrollable column → action prompts |
+| `list_builder`    | C-02         | Stacking list entry with profile save |
+| `countdown_timer` | C-03         | Task selector + 60 s countdown ring + completion hold |
