@@ -76,6 +76,29 @@ const emptyStreak: Streak = {
   last_activity_date: null,
 };
 
+const MISS_REFLECTION_JOURNAL_PATH = '/journal?entry_type=miss_reflection&limit=1';
+
+type MissReflectionJournalListResponse = {
+  items: { created_at: string; entry_type: string }[];
+};
+
+function isoToLocalYmd(iso: string): string {
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** True if the latest miss_reflection was submitted on a calendar day after `last_activity_date`. */
+function hasMissReflectionForCurrentGap(
+  lastActivityYmd: string | null | undefined,
+  latestMissCreatedAt: string | undefined,
+): boolean {
+  if (!lastActivityYmd || !latestMissCreatedAt) return false;
+  return isoToLocalYmd(latestMissCreatedAt) > lastActivityYmd;
+}
+
 function safePct(n: number | undefined): number {
   if (n == null || Number.isNaN(n)) return 0;
   return Math.min(100, Math.max(0, n));
@@ -108,6 +131,7 @@ export default function HomeScreen() {
   const [showMissReflection, setShowMissReflection] = useState(false);
   const [missJournalText, setMissJournalText] = useState('');
   const [missJournalSaving, setMissJournalSaving] = useState(false);
+  const [missJournalSaveError, setMissJournalSaveError] = useState('');
   const [missJournalDismissed, setMissJournalDismissed] = useState(false);
   const [showFreebieModal, setShowFreebieModal] = useState(false);
   const freebieDismissedRef = useRef(false);
@@ -125,11 +149,45 @@ export default function HomeScreen() {
     setError('');
     setProgressLoadError(false);
     setStreakLoadError(false);
+    const homeHeaders = { ...HOME_PROGRAM_ANCHOR_HEADERS };
+
+    const applyMissReflectionFromStreakAndJournal = (
+      streakData: Streak,
+      missJournalRes: {
+        data: MissReflectionJournalListResponse | null;
+        error: string | null;
+      },
+    ) => {
+      setShowMissReflection(false);
+      const items = missJournalRes.error ? undefined : missJournalRes.data?.items;
+      const latestCreated = items?.[0]?.created_at;
+      const hasMissJournalForGap = hasMissReflectionForCurrentGap(
+        streakData.last_activity_date,
+        latestCreated,
+      );
+
+      if (streakData.last_activity_date) {
+        const lastDate = new Date(streakData.last_activity_date + 'T00:00:00');
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const daysSince = Math.floor((today.getTime() - lastDate.getTime()) / 86400000);
+
+        if (daysSince === 2 && !streakData.freebie_used && !freebieDismissedRef.current) {
+          setShowFreebieModal(true);
+        } else if (
+          !missJournalDismissed &&
+          !hasMissJournalForGap &&
+          (daysSince >= 3 || (daysSince === 2 && streakData.freebie_used))
+        ) {
+          setShowMissReflection(true);
+        }
+      }
+    };
+
     if (isPullRefresh) {
       setRefreshing(true);
       bustCache('/lessons/next', '/progress', '/streak');
     } else {
-      // Serve from cache when available — skip loading state so tab switches feel instant
       const cachedLesson = getCached<{ data: Lesson | null; rawBody?: Record<string, unknown> }>('/lessons/next');
       const cachedProgress = getCached<Progress>('/progress');
       const cachedStreak = getCached<Streak>('/streak');
@@ -141,15 +199,23 @@ export default function HomeScreen() {
         setStreak(cachedStreak);
         setLoading(false);
         initialLoadDone.current = true;
+
+        const missJournalRes = await apiFetch<MissReflectionJournalListResponse>(
+          MISS_REFLECTION_JOURNAL_PATH,
+          { headers: homeHeaders },
+        );
+        applyMissReflectionFromStreakAndJournal(cachedStreak, missJournalRes);
+        setRefreshing(false);
         return;
       }
       if (!initialLoadDone.current) setLoading(true);
     }
-    const homeHeaders = { ...HOME_PROGRAM_ANCHOR_HEADERS };
-    const [lessonRes, progressRes, streakRes] = await Promise.all([
+
+    const [lessonRes, progressRes, streakRes, missJournalRes] = await Promise.all([
       apiFetch<Lesson>('/lessons/next', { headers: homeHeaders }),
       apiFetch<Progress>('/progress', { headers: homeHeaders }),
       apiFetch<Streak>('/streak', { headers: homeHeaders }),
+      apiFetch<MissReflectionJournalListResponse>(MISS_REFLECTION_JOURNAL_PATH, { headers: homeHeaders }),
     ]);
 
     if (lessonRes.error) {
@@ -171,18 +237,7 @@ export default function HomeScreen() {
     const streakData = streakRes.error ? emptyStreak : (streakRes.data ?? emptyStreak);
     setStreak(streakData);
 
-    if (streakData.last_activity_date) {
-      const lastDate = new Date(streakData.last_activity_date + 'T00:00:00');
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const daysSince = Math.floor((today.getTime() - lastDate.getTime()) / 86400000);
-
-      if (daysSince === 2 && !streakData.freebie_used && !freebieDismissedRef.current) {
-        setShowFreebieModal(true);
-      } else if (!missJournalDismissed && (daysSince >= 3 || (daysSince === 2 && streakData.freebie_used))) {
-        setShowMissReflection(true);
-      }
-    }
+    applyMissReflectionFromStreakAndJournal(streakData, missJournalRes);
 
     const today = getDeviceLocalCalendarYmd();
     const gainDeltas = getPendingGainDeltas();
@@ -206,7 +261,7 @@ export default function HomeScreen() {
     initialLoadDone.current = true;
     setLoading(false);
     setRefreshing(false);
-  }, []);
+  }, [missJournalDismissed]);
 
   useFocusEffect(
     useCallback(() => {
@@ -388,10 +443,16 @@ export default function HomeScreen() {
               placeholder="Why did you miss today?"
               placeholderTextColor="rgba(239,68,68,0.45)"
               value={missJournalText}
-              onChangeText={setMissJournalText}
+              onChangeText={(t) => {
+                setMissJournalText(t);
+                if (missJournalSaveError) setMissJournalSaveError('');
+              }}
               multiline
               editable={!missJournalSaving}
             />
+            {missJournalSaveError ? (
+              <Text style={styles.missJournalError}>{missJournalSaveError}</Text>
+            ) : null}
             <View style={styles.missBtnRow}>
               <TouchableOpacity
                 style={styles.missSkipBtn}
@@ -406,8 +467,9 @@ export default function HomeScreen() {
                 style={[styles.missSubmitBtn, !missJournalText.trim() && { opacity: 0.5 }]}
                 disabled={!missJournalText.trim() || missJournalSaving}
                 onPress={async () => {
+                  setMissJournalSaveError('');
                   setMissJournalSaving(true);
-                  await apiFetch('/journal', {
+                  const { error: missErr } = await apiFetch('/journal', {
                     method: 'POST',
                     headers: { ...HOME_PROGRAM_ANCHOR_HEADERS },
                     body: {
@@ -416,8 +478,15 @@ export default function HomeScreen() {
                     },
                   });
                   setMissJournalSaving(false);
-                  setShowMissReflection(false);
+                  if (missErr) {
+                    setMissJournalSaveError(missErr);
+                    return;
+                  }
+                  bustCache('/journal?limit=50', MISS_REFLECTION_JOURNAL_PATH);
+                  setMissJournalText('');
                   setMissJournalDismissed(true);
+                  setShowMissReflection(false);
+                  void fetchData(false);
                 }}
               >
                 <Text style={styles.missSubmitText}>
@@ -794,7 +863,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     minHeight: 56,
     textAlignVertical: 'top',
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  missJournalError: {
+    fontSize: 13,
+    color: colors.error,
+    marginBottom: 8,
+    fontWeight: '500',
   },
   missBtnRow: {
     flexDirection: 'row',

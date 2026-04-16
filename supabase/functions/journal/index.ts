@@ -15,6 +15,8 @@ import { ensureProgramStartIfHome } from "../_shared/program_start.ts";
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 
+const JournalEntryTypeEnum = z.enum(["session", "miss_reflection", "onboarding_future_self"]);
+
 const PaginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce
@@ -23,6 +25,10 @@ const PaginationSchema = z.object({
     .min(1)
     .max(MAX_PAGE_SIZE)
     .default(DEFAULT_PAGE_SIZE),
+});
+
+const ListQuerySchema = PaginationSchema.extend({
+  entry_type: JournalEntryTypeEnum.optional(),
 });
 
 const UuidSchema = z.string().uuid();
@@ -35,7 +41,7 @@ const CreateSchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
-    entry_type: z.enum(["session", "miss_reflection", "onboarding_future_self"]).default("session"),
+    entry_type: JournalEntryTypeEnum.default("session"),
   })
   .strict();
 
@@ -106,9 +112,11 @@ async function handleList(
   userId: string,
   requestId: string,
 ): Promise<Response> {
-  const params = PaginationSchema.safeParse({
+  const rawEntryType = url.searchParams.get("entry_type")?.trim();
+  const params = ListQuerySchema.safeParse({
     page: url.searchParams.get("page") ?? undefined,
     limit: url.searchParams.get("limit") ?? undefined,
+    entry_type: rawEntryType && rawEntryType.length > 0 ? rawEntryType : undefined,
   });
 
   if (!params.success) {
@@ -120,16 +128,22 @@ async function handleList(
     );
   }
 
-  const { page, limit } = params.data;
+  const { page, limit, entry_type } = params.data;
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
-  const { data: entries, error, count } = await supabase
+  let listQuery = supabase
     .from("journal_entries")
     .select("id, lesson_id, competition_date, body, entry_type, created_at, updated_at, lessons(title, lesson_categories(category))", {
       count: "exact",
     })
-    .eq("user_id", userId)
+    .eq("user_id", userId);
+
+  if (entry_type) {
+    listQuery = listQuery.eq("entry_type", entry_type);
+  }
+
+  const { data: entries, error, count } = await listQuery
     .order("created_at", { ascending: false })
     .range(from, to);
 

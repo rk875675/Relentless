@@ -136,7 +136,12 @@ export default function JournalListScreen() {
                     )}
                     {!isMiss && !isFutureSelf && catColor && (
                       <View style={[styles.catBadge, { backgroundColor: catColor + '20', borderColor: catColor }]}>
-                        <Text style={[styles.catBadgeText, { color: catColor }]}>
+                        <Text
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.75}
+                          style={[styles.catBadgeText, { color: catColor }]}
+                        >
                           {primaryCat!.toUpperCase()}
                         </Text>
                       </View>
@@ -181,7 +186,7 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 4,
   },
   cardTitle: {
@@ -236,11 +241,14 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
+    alignSelf: 'flex-start',
   },
   catBadgeText: {
     fontSize: 9,
     fontWeight: '700',
     letterSpacing: 1,
+    lineHeight: 12,
+    includeFontPadding: false,
   },
   cardBody: {
     fontSize: 14,

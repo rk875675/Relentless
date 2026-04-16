@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/lib/auth-context';
@@ -11,13 +11,29 @@ if (SUPERWALL_ENABLED) {
 }
 
 export function PaywallSuperwall() {
-  const { completeOnboarding, completeOnboardingDevBypass, refreshUserState } = useAuth();
+  const { completeOnboarding, completeOnboardingDevBypass, refreshUserState, hasPremiumAccess } = useAuth();
   const [busy, setBusy] = useState(false);
+  // Set to true after a purchase/restore so we complete onboarding as soon
+  // as hasPremiumAccess flips. Using a state flag (rather than reading
+  // hasPremiumAccess directly in the async callback) avoids stale-closure
+  // issues — React state updates don't synchronously mutate closed-over values.
+  const [awaitingAccess, setAwaitingAccess] = useState(false);
+
+  useEffect(() => {
+    if (awaitingAccess && hasPremiumAccess) {
+      setAwaitingAccess(false);
+      completeOnboarding().catch(() => {});
+    }
+  }, [awaitingAccess, hasPremiumAccess, completeOnboarding]);
 
   const finishAfterAccess = useCallback(async () => {
     await refreshUserState();
-    await completeOnboarding();
-  }, [refreshUserState, completeOnboarding]);
+    // Signal that we're waiting for access. The useEffect above will call
+    // completeOnboarding() as soon as hasPremiumAccess becomes true — either
+    // immediately (if the DB was already updated) or once SuperwallPurchaseSync's
+    // finally() refresh flips it after the Apple verification completes.
+    setAwaitingAccess(true);
+  }, [refreshUserState]);
 
   const { registerPlacement } = usePlacement({
     onDismiss: async (_info: any, result: any) => {

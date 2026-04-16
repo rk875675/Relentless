@@ -58,7 +58,7 @@ function SuperwallIdentitySync() {
 }
 
 function SuperwallPurchaseSync() {
-  const { refreshUserState } = useAuth();
+  const { refreshUserState, optimisticGrantAccess } = useAuth();
   useSuperwallEvents({
     onSuperwallEvent: (eventInfo: { event?: unknown; params?: Record<string, unknown> }) => {
       const ev = eventInfo.event as unknown as Record<string, unknown> | undefined;
@@ -75,7 +75,13 @@ function SuperwallPurchaseSync() {
       }
     },
     onSubscriptionStatusChange: (status: { status?: string }) => {
-      if (status.status === 'ACTIVE') { refreshUserState().catch(() => {}); }
+      if (status.status === 'ACTIVE') {
+        // Superwall's own StoreKit observer confirmed the subscription is active.
+        // Optimistically flip hasPremiumAccess in local state immediately so
+        // the RouteGuard can navigate without waiting for the Apple API round-trip.
+        optimisticGrantAccess();
+        refreshUserState().catch(() => {});
+      }
     },
   });
   return null;

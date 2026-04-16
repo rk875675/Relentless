@@ -27,6 +27,13 @@ type AuthState = {
   resetOnboarding: () => Promise<void>;
   refreshUserState: () => Promise<void>;
   updateCompetitionDate: (date: string | null) => Promise<string | null>;
+  /**
+   * Optimistically marks the user as having active entitlement in local state,
+   * without waiting for the DB write to complete. Called by SuperwallPurchaseSync
+   * when Superwall's own StoreKit observer confirms the subscription is ACTIVE.
+   * The DB is still written in background via syncSubscriptionWithBackend.
+   */
+  optimisticGrantAccess: () => void;
 };
 
 const AuthContext = createContext<AuthState>({
@@ -45,6 +52,7 @@ const AuthContext = createContext<AuthState>({
   resetOnboarding: async () => {},
   refreshUserState: async () => {},
   updateCompetitionDate: async () => null,
+  optimisticGrantAccess: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -194,6 +202,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setDevPremiumBypass(false);
   }, []);
 
+  const optimisticGrantAccess = useCallback(() => {
+    // Set a far-future expiry so the expired-check doesn't immediately revoke it.
+    // The real expiry is written to DB by syncSubscriptionWithBackend in background,
+    // and refreshUserState() replaces this value once the DB write completes.
+    setEntitlementStatus('active');
+    setEntitlementExpiresAt(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString());
+  }, []);
+
   const updateCompetitionDate = useCallback(async (date: string | null): Promise<string | null> => {
     if (!session?.user) return 'Not authenticated';
     const { error } = await supabase
@@ -222,6 +238,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       resetOnboarding,
       refreshUserState,
       updateCompetitionDate,
+      optimisticGrantAccess,
     }}>
       {children}
     </AuthContext.Provider>

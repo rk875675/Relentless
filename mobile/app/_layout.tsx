@@ -12,7 +12,7 @@ SplashScreen.preventAutoHideAsync();
 const SPLASH_SAFETY_MS = 4000;
 
 function RouteGuard() {
-  const { session, loading, onboardingComplete, hasPremiumAccess } = useAuth();
+  const { session, loading, onboardingComplete, hasPremiumAccess, completeOnboarding } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const splashHidden = useRef(false);
@@ -51,10 +51,15 @@ function RouteGuard() {
       router.replace('/(onboarding)/paywall');
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
       router.replace('/(tabs)');
+    } else if (session && !onboardingComplete && hasPremiumAccess && inOnboarding) {
+      // User purchased but completeOnboarding() hasn't fired yet (e.g. still
+      // awaiting the DB refresh in PaywallSuperwall's useEffect). Complete it
+      // here and navigate — this is a safety net for the async gap.
+      completeOnboarding().then(() => router.replace('/(tabs)')).catch(() => {});
     }
 
     setTimeout(hideSplash, 50);
-  }, [session, loading, onboardingComplete, hasPremiumAccess, segments]);
+  }, [session, loading, onboardingComplete, hasPremiumAccess, segments, completeOnboarding]);
 
   if (!initialLoadDone.current && loading) return null;
 

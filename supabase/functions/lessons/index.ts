@@ -209,8 +209,17 @@ async function handleList(
     categoryMap.set(c.lesson_id, arr);
   }
 
-  // Completed WODs get a "Day X" label when shown in the library.
-  // Look up which lessons the user completed that are also in program_schedule.
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select("current_program_day")
+    .eq("id", userId)
+    .maybeSingle();
+  const currentProgramDay = typeof profileRow?.current_program_day === "number"
+    ? profileRow.current_program_day
+    : 1;
+
+  // Past WODs in the library: completed schedule lessons only, gated by active program day
+  // (and day 30 once completed while current_program_day stays capped at 30).
   const { data: completions } = lessonIds.length > 0
     ? await supabase
         .from("user_lesson_completions")
@@ -249,10 +258,23 @@ async function handleList(
     };
   });
 
-  // Regular lessons first (sort_order preserved), completed WODs at the bottom.
+  const pastWodLibraryEligible = (
+    lessonId: string,
+    programDay: number,
+  ): boolean => {
+    if (!completedSet.has(lessonId)) return false;
+    return programDay < currentProgramDay ||
+      (programDay === 30 && currentProgramDay === 30);
+  };
+
+  // Regular lessons first (sort_order preserved), then eligible past WODs only.
   const regular = items.filter((l) => l.program_day === null);
   const wods = items
-    .filter((l) => l.program_day !== null)
+    .filter((l) => {
+      const d = l.program_day as number | null;
+      if (d === null) return false;
+      return pastWodLibraryEligible(l.id as string, d);
+    })
     .sort((a, b) => (a.program_day as number) - (b.program_day as number));
 
   const sorted = [...regular, ...wods];
