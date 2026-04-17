@@ -17,7 +17,7 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-const BUNDLE_ID = "com.rkuma.relentless";
+const BUNDLE_ID = "com.relentlessmentaltoughness.relentless";
 
 const APPLE_PRODUCTION_URL =
   "https://api.storekit.itunes.apple.com/inApps/v1/subscriptions";
