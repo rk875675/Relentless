@@ -218,8 +218,8 @@ async function handleList(
     ? profileRow.current_program_day
     : 1;
 
-  // Past WODs in the library: completed schedule lessons only, gated by active program day
-  // (and day 30 once completed while current_program_day stays capped at 30).
+  // Completions used only for day 30 in Past WODs (current_program_day caps at 30).
+  // Days 1–29 there use program_day < current_program_day only.
   const { data: completions } = lessonIds.length > 0
     ? await supabase
         .from("user_lesson_completions")
@@ -262,9 +262,11 @@ async function handleList(
     lessonId: string,
     programDay: number,
   ): boolean => {
-    if (!completedSet.has(lessonId)) return false;
-    return programDay < currentProgramDay ||
-      (programDay === 30 && currentProgramDay === 30);
+    if (programDay < currentProgramDay) return true;
+    if (programDay === 30 && currentProgramDay === 30) {
+      return completedSet.has(lessonId);
+    }
+    return false;
   };
 
   // Regular lessons first (sort_order preserved), then eligible past WODs only.
