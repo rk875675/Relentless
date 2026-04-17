@@ -220,6 +220,7 @@ Monthly: $12.99/month with a 3-day free trial.
 Annual: $59.99/year with a 7-day free trial.
 Both are auto-renewable subscriptions in the same subscription group.
 App Store product IDs: com.relentless.monthly, com.relentless.annual.
+iOS bundle identifier and Android applicationId for release builds: com.relentlessmentaltoughness.relentless.
 Support purchase restoration.
 iOS monetization architecture
 For iOS, use Apple In-App Purchase / StoreKit for all digital premium features unlocked in the app.
