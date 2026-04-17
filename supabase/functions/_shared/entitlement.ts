@@ -12,6 +12,16 @@ export async function requireEntitlement(
   userId: string,
   requestId: string,
 ): Promise<EntitlementResult> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_dev")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profile?.is_dev === true) {
+    return { ok: true };
+  }
+
   const { data, error } = await supabase
     .from("entitlements")
     .select("status, expires_at")

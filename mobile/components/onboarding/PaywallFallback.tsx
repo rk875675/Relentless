@@ -5,7 +5,7 @@ import { colors, spacing } from '@/lib/theme';
 
 /** Used when Superwall is not configured (e.g. web or missing EXPO_PUBLIC_SUPERWALL_IOS_API_KEY). */
 export function PaywallFallback() {
-  const { completeOnboardingDevBypass, signOut } = useAuth();
+  const { completeOnboardingDevBypass, signOut, isDevAccount } = useAuth();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -24,7 +24,7 @@ export function PaywallFallback() {
         </View>
 
         <View style={styles.bottomSection}>
-          {__DEV__ ? (
+          {__DEV__ || isDevAccount ? (
             <TouchableOpacity
               style={styles.devSkip}
               onPress={() => completeOnboardingDevBypass()}

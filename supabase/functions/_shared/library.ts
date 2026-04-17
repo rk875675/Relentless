@@ -47,9 +47,13 @@ export async function computeLibraryUnlocked(
 ): Promise<LibraryLockResult> {
   const { data: profile, error: err } = await supabase
     .from("profiles")
-    .select("program_start_date, current_program_day")
+    .select("program_start_date, current_program_day, is_dev")
     .eq("id", userId)
     .single();
+
+  if (profile?.is_dev === true) {
+    return { unlocked: true, remaining: 0 };
+  }
 
   if (err || !profile?.program_start_date) {
     return { unlocked: false, reason: "TODAY_WOD", remaining: 1 };

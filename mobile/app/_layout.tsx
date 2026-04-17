@@ -51,10 +51,10 @@ function RouteGuard() {
       router.replace('/(onboarding)/paywall');
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
       router.replace('/(tabs)');
-    } else if (session && !onboardingComplete && hasPremiumAccess && inOnboarding) {
+    } else if (session && !onboardingComplete && hasPremiumAccess && onPaywall) {
       // User purchased but completeOnboarding() hasn't fired yet (e.g. still
       // awaiting the DB refresh in PaywallSuperwall's useEffect). Complete it
-      // here and navigate — this is a safety net for the async gap.
+      // here and navigate — this is a safety net for the async gap (paywall only).
       completeOnboarding().then(() => router.replace('/(tabs)')).catch(() => {});
     }
 

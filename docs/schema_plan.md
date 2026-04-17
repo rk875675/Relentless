@@ -55,6 +55,7 @@ Rate-limiting state lives in Upstash Redis, not PostgreSQL.
 | `id` | `uuid` | PK, references `auth.users(id)` on delete cascade | Supabase Auth provides the user ID |
 | `competition_date` | `date` | nullable | Optional, captured in onboarding |
 | `onboarding_completed` | `boolean` | not null, default `false` | |
+| `is_dev` | `boolean` | not null, default `false` | Internal QA only; set in Supabase (not client-updatable). Enables dev RPCs and server entitlement bypass for that user. |
 | `current_program_day` | `integer` | not null, default `1`, check 1–30 | Active Daily Workout day; advances via `complete_lesson` when completion matches `program_schedule` for that day |
 | `created_at` | `timestamptz` | not null, default `now()` | |
 | `updated_at` | `timestamptz` | not null, default `now()` | |

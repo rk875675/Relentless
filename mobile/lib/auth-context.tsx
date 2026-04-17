@@ -11,6 +11,8 @@ const FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000;
 type AuthState = {
   session: Session | null;
   loading: boolean;
+  /** Server-side QA flag (profiles.is_dev); never self-writable by clients. */
+  isDevAccount: boolean;
   onboardingComplete: boolean;
   competitionDate: string | null;
   entitlementStatus: string | null;
@@ -19,11 +21,11 @@ type AuthState = {
   signUp: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
-  /** __DEV__ only: marks premium for UX and completes onboarding without StoreKit. */
+  /** __DEV__ or profiles.is_dev: trial bypass + complete onboarding without StoreKit. */
   completeOnboardingDevBypass: () => Promise<void>;
-  /** __DEV__ only: revokes dev premium bypass so the route guard redirects to paywall. */
+  /** __DEV__ or is_dev: hide premium for paywall QA (is_dev uses local suppress flag). */
   revokePremiumForTesting: () => void;
-  /** __DEV__ only: resets onboarding so the route guard redirects back to credibility. */
+  /** __DEV__: in-memory reset. is_dev: RPC clears program + onboarding in DB. */
   resetOnboarding: () => Promise<void>;
   refreshUserState: () => Promise<void>;
   updateCompetitionDate: (date: string | null) => Promise<string | null>;
@@ -39,6 +41,7 @@ type AuthState = {
 const AuthContext = createContext<AuthState>({
   session: null,
   loading: true,
+  isDevAccount: false,
   onboardingComplete: false,
   competitionDate: null,
   entitlementStatus: null,
@@ -58,17 +61,20 @@ const AuthContext = createContext<AuthState>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isDevAccount, setIsDevAccount] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
   const [competitionDate, setCompetitionDate] = useState<string | null>(null);
   const [entitlementStatus, setEntitlementStatus] = useState<string | null>(null);
   const [entitlementExpiresAt, setEntitlementExpiresAt] = useState<string | null>(null);
   const [devPremiumBypass, setDevPremiumBypass] = useState(false);
+  /** When true, is_dev accounts behave like non-subscribers for route guard (paywall QA). */
+  const [suppressDevPremium, setSuppressDevPremium] = useState(false);
 
   const fetchUserState = useCallback(async (userId: string) => {
     const [profileRes, entRes] = await Promise.all([
       supabase
         .from('profiles')
-        .select('onboarding_completed, competition_date')
+        .select('onboarding_completed, competition_date, is_dev')
         .eq('id', userId)
         .single(),
       supabase
@@ -81,6 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const profile = profileRes.data;
     const ent = entRes.data;
 
+    setIsDevAccount(profile?.is_dev === true);
     setOnboardingComplete(profile?.onboarding_completed ?? false);
     setCompetitionDate(profile?.competition_date ?? null);
     setEntitlementStatus(ent?.status ?? 'none');
@@ -136,11 +143,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             try { await fetchUserState(s.user.id); } catch { /* give up */ }
           }
         } else {
+          setIsDevAccount(false);
           setOnboardingComplete(false);
           setCompetitionDate(null);
           setEntitlementStatus(null);
           setEntitlementExpiresAt(null);
           setDevPremiumBypass(false);
+          setSuppressDevPremium(false);
           clearPendingGainDeltas();
         }
       },
@@ -151,7 +160,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const statusValid = entitlementStatus === 'trial' || entitlementStatus === 'active';
   const expired = entitlementExpiresAt ? new Date(entitlementExpiresAt) < new Date() : false;
-  const hasPremiumAccess = (statusValid && !expired) || devPremiumBypass;
+  /** QA: Jump to Paywall sets suppressDevPremium — must override DB entitlement for routing. */
+  const hasPremiumAccess =
+    isDevAccount && suppressDevPremium
+      ? false
+      : (statusValid && !expired) ||
+        devPremiumBypass ||
+        (isDevAccount && !suppressDevPremium);
 
   const signIn = async (email: string, password: string): Promise<string | null> => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -164,8 +179,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    setIsDevAccount(false);
     setOnboardingComplete(false);
     setDevPremiumBypass(false);
+    setSuppressDevPremium(false);
     bustCache();
     clearPendingGainDeltas();
     await supabase.auth.signOut();
@@ -181,28 +198,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [session]);
 
   const completeOnboardingDevBypass = useCallback(async () => {
-    if (!__DEV__) return;
+    if (!__DEV__ && !isDevAccount) return;
+    setSuppressDevPremium(false);
     setDevPremiumBypass(true);
     try { await supabase.rpc('dev_grant_trial'); } catch { /* RPC may not be deployed */ }
     await completeOnboarding();
-  }, [completeOnboarding]);
+  }, [completeOnboarding, isDevAccount]);
 
   const revokePremiumForTesting = useCallback(() => {
-    if (!__DEV__) return;
+    if (!__DEV__ && !isDevAccount) return;
     setDevPremiumBypass(false);
+    if (isDevAccount) {
+      setSuppressDevPremium(true);
+      return;
+    }
     setEntitlementStatus('none');
     setEntitlementExpiresAt(null);
-  }, []);
+  }, [isDevAccount]);
 
   const resetOnboarding = useCallback(async () => {
-    if (!__DEV__) return;
-    // Only reset in-memory state — never write false to the DB, otherwise
-    // the account is permanently locked out of the main app after sign-in.
+    if (!__DEV__ && !isDevAccount) return;
+    if (isDevAccount) {
+      try {
+        await supabase.rpc('dev_reset_onboarding_progress');
+      } catch {
+        /* migration may not be applied yet */
+      }
+      setDevPremiumBypass(false);
+      setSuppressDevPremium(false);
+      if (session?.user?.id) await fetchUserState(session.user.id);
+      return;
+    }
+    // __DEV__ only: in-memory — never write false to the DB for non–is_dev accounts.
     setOnboardingComplete(false);
     setDevPremiumBypass(false);
-  }, []);
+  }, [isDevAccount, session?.user?.id, fetchUserState]);
 
   const optimisticGrantAccess = useCallback(() => {
+    setSuppressDevPremium(false);
     // Set a far-future expiry so the expired-check doesn't immediately revoke it.
     // The real expiry is written to DB by syncSubscriptionWithBackend in background,
     // and refreshUserState() replaces this value once the DB write completes.
@@ -225,6 +258,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={{
       session,
       loading,
+      isDevAccount,
       onboardingComplete,
       competitionDate,
       entitlementStatus,

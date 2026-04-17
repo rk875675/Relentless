@@ -408,7 +408,7 @@ async function handleNext(
 ): Promise<Response> {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("current_program_day, program_start_date, last_wod_completion_local_date")
+    .select("current_program_day, program_start_date, last_wod_completion_local_date, is_dev")
     .eq("id", userId)
     .single();
 
@@ -420,8 +420,9 @@ async function handleNext(
   const completedToday =
     (profile.last_wod_completion_local_date as string | null) === localTodayYmd;
   const completedDay = day - 1;
+  const isDevAccount = profile.is_dev === true;
 
-  if (profile.program_start_date) {
+  if (!isDevAccount && profile.program_start_date) {
     const elapsed = calendarDaysInclusiveYmd(
       profile.program_start_date as string,
       localTodayYmd,

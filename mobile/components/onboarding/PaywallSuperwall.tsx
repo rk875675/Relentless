@@ -11,7 +11,13 @@ if (SUPERWALL_ENABLED) {
 }
 
 export function PaywallSuperwall() {
-  const { completeOnboarding, completeOnboardingDevBypass, refreshUserState, hasPremiumAccess } = useAuth();
+  const {
+    completeOnboarding,
+    completeOnboardingDevBypass,
+    refreshUserState,
+    hasPremiumAccess,
+    isDevAccount,
+  } = useAuth();
   const [busy, setBusy] = useState(false);
   // Set to true after a purchase/restore so we complete onboarding as soon
   // as hasPremiumAccess flips. Using a state flag (rather than reading
@@ -98,7 +104,7 @@ export function PaywallSuperwall() {
             <Text style={styles.restoreText}>Restore purchases</Text>
           </TouchableOpacity>
 
-          {__DEV__ && (
+          {(__DEV__ || isDevAccount) && (
             <TouchableOpacity
               style={styles.devSkip}
               onPress={() => completeOnboardingDevBypass()}

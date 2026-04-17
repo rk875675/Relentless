@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Linking,
   Modal,
@@ -39,7 +39,16 @@ function formatDate(dateStr: string | null): string {
 }
 
 export default function ProfileScreen() {
-  const { session, signOut, competitionDate, updateCompetitionDate, refreshUserState, resetOnboarding, revokePremiumForTesting } = useAuth();
+  const {
+    session,
+    signOut,
+    competitionDate,
+    updateCompetitionDate,
+    refreshUserState,
+    resetOnboarding,
+    revokePremiumForTesting,
+    isDevAccount,
+  } = useAuth();
   const router = useRouter();
   const [streak, setStreak] = useState<Streak | null>(null);
   const [totalCompletions, setTotalCompletions] = useState<number | null>(null);
@@ -47,13 +56,18 @@ export default function ProfileScreen() {
   const [pendingDate, setPendingDate] = useState<Date>(new Date());
   const [dateSaving, setDateSaving] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
-  const [devToolsVisible, setDevToolsVisible] = useState(__DEV__);
+  const [devToolsVisible, setDevToolsVisible] = useState(false);
+
+  useEffect(() => {
+    if (isDevAccount) setDevToolsVisible(true);
+  }, [isDevAccount]);
   const [devDay, setDevDay] = useState<number | null>(null);
   const [devDayBusy, setDevDayBusy] = useState(false);
   const brandTapCount = useRef(0);
   const brandTapTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const handleBrandTap = () => {
+    if (!isDevAccount) return;
     brandTapCount.current += 1;
     clearTimeout(brandTapTimer.current);
     if (brandTapCount.current >= 5) {
@@ -83,11 +97,11 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchData();
-      if (__DEV__) {
+      if (__DEV__ || isDevAccount) {
         supabase.rpc('dev_get_program_day')
           .then(({ data }) => { if (typeof data === 'number') setDevDay(data); });
       }
-    }, []),
+    }, [isDevAccount]),
   );
 
   const handleRestore = async () => {
@@ -323,8 +337,8 @@ export default function ProfileScreen() {
         />
       </View>
 
-      {/* Dev Tools — visible in __DEV__ by default; tap "RELENTLESS" 5× in release */}
-      {devToolsVisible && (
+      {/* Dev Tools — is_dev accounts only; tap "RELENTLESS" 5× to toggle */}
+      {isDevAccount && devToolsVisible && (
         <>
           <Text style={styles.sectionLabel}>DEV TOOLS</Text>
           <View style={styles.rowsContainer}>
