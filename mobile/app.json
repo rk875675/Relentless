@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.rkuma.relentless",
+      "bundleIdentifier": "com.relentlessmentaltoughness.relentless",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -39,7 +39,7 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
-      "package": "com.rkuma.relentless"
+      "package": "com.relentlessmentaltoughness.relentless"
     }
   }
 }
