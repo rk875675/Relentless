@@ -10,16 +10,18 @@ import {
   View,
 } from 'react-native';
 import { colors, spacing } from '@/lib/theme';
+import { pickMacColor } from '@/lib/mac-categories';
 
 type PromptCardItem = { intro_hold_seconds: number; prompt: string; min_entry_seconds: number };
 
 type Props = {
   cards: PromptCardItem[];
   catColor: string;
+  accentColors?: string[];
   onComplete: (collectedText: string) => void;
 };
 
-export default function PromptCards({ cards, catColor, onComplete }: Props) {
+export default function PromptCards({ cards, catColor, accentColors, onComplete }: Props) {
   const [cardIndex, setCardIndex] = useState(0);
   const [phase, setPhase] = useState<'intro' | 'entry'>('intro');
   const [entries, setEntries] = useState<string[]>([]);
@@ -84,19 +86,22 @@ export default function PromptCards({ cards, catColor, onComplete }: Props) {
 
   const dots = (
     <View style={styles.dots}>
-      {cards.map((_, i) => (
-        <View
-          key={i}
-          style={[
-            styles.dot,
-            i === cardIndex
-              ? { backgroundColor: catColor, width: 18 }
-              : i < cardIndex
-                ? { backgroundColor: catColor + '60' }
-                : { backgroundColor: colors.ringTrack },
-          ]}
-        />
-      ))}
+      {cards.map((_, i) => {
+        const stripe = pickMacColor(accentColors, catColor, i);
+        return (
+          <View
+            key={i}
+            style={[
+              styles.dot,
+              i === cardIndex
+                ? { backgroundColor: stripe, width: 18 }
+                : i < cardIndex
+                  ? { backgroundColor: stripe + '60' }
+                  : { backgroundColor: colors.ringTrack },
+            ]}
+          />
+        );
+      })}
     </View>
   );
 

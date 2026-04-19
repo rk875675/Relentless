@@ -2,20 +2,22 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { apiFetch } from '@/lib/api';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
-import FormattedJournalBody from '@/components/FormattedJournalBody';
 
 const MAC_COLORS: Record<string, string> = {
   mindfulness: colors.ringMindfulness,
   acceptance: colors.ringAcceptance,
   commitment: colors.ringCommitment,
 };
+
+const PREVIEW_MAX = 220;
 
 type JournalEntry = {
   id: string;
@@ -52,7 +54,14 @@ function formatTime(iso: string): string {
   });
 }
 
+function bodyPreview(body: string): string {
+  const t = body.replace(/\s+/g, ' ').trim();
+  if (t.length <= PREVIEW_MAX) return t;
+  return `${t.slice(0, PREVIEW_MAX - 1)}…`;
+}
+
 export default function JournalListScreen() {
+  const router = useRouter();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -107,45 +116,46 @@ export default function JournalListScreen() {
             renderItem={({ item }) => {
               const isMiss = item.entry_type === 'miss_reflection';
               const isFutureSelf = item.entry_type === 'onboarding_future_self';
-              const primaryCat = item.categories?.[0];
-              const catColor = MAC_COLORS[primaryCat ?? ''];
-              const cardBorder = isMiss
-                ? styles.cardMiss
-                : catColor
-                  ? { borderColor: catColor, borderWidth: 1.5 }
-                  : undefined;
+              const cats = item.categories ?? [];
               return (
-                <View style={[styles.card, cardBorder]}>
+                <Pressable
+                  onPress={() => router.push(`/journal/${item.id}`)}
+                  style={({ pressed }) => [styles.card, isMiss && styles.cardMiss, pressed && styles.cardPressed]}
+                >
                   <View style={styles.cardHeader}>
                     <Text style={styles.cardTitle}>
                       {isMiss
                         ? 'Missed Day Reflection'
                         : isFutureSelf
-                        ? 'Future Self'
-                        : (item.lesson_title ?? 'Check-In')}
+                          ? 'Future Self'
+                          : (item.lesson_title ?? 'Check-In')}
                     </Text>
-                    {isMiss && (
-                      <View style={styles.missBadge}>
-                        <Text style={styles.missBadgeText}>MISSED DAY</Text>
-                      </View>
-                    )}
-                    {isFutureSelf && (
-                      <View style={styles.typeBadge}>
-                        <Text style={styles.typeBadgeText}>ONBOARDING</Text>
-                      </View>
-                    )}
-                    {!isMiss && !isFutureSelf && catColor && (
-                      <View style={[styles.catBadge, { backgroundColor: catColor + '20', borderColor: catColor }]}>
-                        <Text
-                          numberOfLines={1}
-                          adjustsFontSizeToFit
-                          minimumFontScale={0.75}
-                          style={[styles.catBadgeText, { color: catColor }]}
-                        >
-                          {primaryCat!.toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
+                    <View style={styles.headerBadges}>
+                      {isMiss && (
+                        <View style={styles.missBadge}>
+                          <Text style={styles.missBadgeText}>MISSED DAY</Text>
+                        </View>
+                      )}
+                      {isFutureSelf && (
+                        <View style={styles.typeBadge}>
+                          <Text style={styles.typeBadgeText}>ONBOARDING</Text>
+                        </View>
+                      )}
+                      {!isMiss &&
+                        !isFutureSelf &&
+                        cats.map((cat) => {
+                          const c = MAC_COLORS[cat];
+                          if (!c) return null;
+                          return (
+                            <View
+                              key={cat}
+                              style={[styles.catBadge, { backgroundColor: c + '20', borderColor: c }]}
+                            >
+                              <Text style={[styles.catBadgeText, { color: c }]}>{cat.toUpperCase()}</Text>
+                            </View>
+                          );
+                        })}
+                    </View>
                   </View>
                   {isMiss && (
                     <Text style={styles.missSubtext}>
@@ -155,8 +165,9 @@ export default function JournalListScreen() {
                   <Text style={styles.cardDate}>
                     {formatDate(item.created_at)} · {formatTime(item.created_at)}
                   </Text>
-                  <FormattedJournalBody body={item.body} />
-                </View>
+                  <Text style={styles.previewText}>{bodyPreview(item.body)}</Text>
+                  <Text style={styles.tapHint}>Tap for full entry</Text>
+                </Pressable>
               );
             }}
           />
@@ -183,18 +194,34 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginBottom: 12,
   },
+  cardMiss: {
+    borderColor: '#ef4444',
+    borderWidth: 1.5,
+  },
+  cardPressed: {
+    opacity: 0.88,
+  },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 4,
+    gap: 8,
   },
   cardTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.textPrimary,
     flex: 1,
-    marginRight: 8,
+    minWidth: 0,
+  },
+  headerBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    maxWidth: '52%',
+    gap: 6,
   },
   cardDate: {
     fontSize: 12,
@@ -202,9 +229,16 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 10,
   },
-  cardMiss: {
-    borderColor: '#ef4444',
-    borderWidth: 1.5,
+  previewText: {
+    fontSize: 14,
+    color: colors.textPrimary,
+    lineHeight: 20,
+  },
+  tapHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 8,
+    fontWeight: '500',
   },
   missBadge: {
     backgroundColor: 'rgba(239,68,68,0.25)',
@@ -241,7 +275,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    alignSelf: 'flex-start',
   },
   catBadgeText: {
     fontSize: 9,
@@ -249,11 +282,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     lineHeight: 12,
     includeFontPadding: false,
-  },
-  cardBody: {
-    fontSize: 14,
-    color: colors.textPrimary,
-    lineHeight: 20,
   },
   empty: {
     flex: 1,

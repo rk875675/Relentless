@@ -23,12 +23,24 @@ import { apiFetch } from '@/lib/api';
 import { bustCache } from '@/lib/api-cache';
 import { setPendingGainDeltas } from '@/lib/pending-deltas';
 import { colors, spacing } from '@/lib/theme';
+import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
 import FormattedJournalBody from '@/components/FormattedJournalBody';
 import PromptCards from '@/components/lesson/PromptCards';
 import BubbleSortExercise from '@/components/lesson/BubbleSort';
 import TwoColumnSortExercise from '@/components/lesson/TwoColumnSort';
 import ListBuilderExercise from '@/components/lesson/ListBuilder';
 import CountdownTimerExercise from '@/components/lesson/CountdownTimer';
+import MacAlternatingRing from '@/components/lesson/MacAlternatingRing';
+import {
+  MAC_A11Y_NAME,
+  MAC_COLORS,
+  MAC_LETTER,
+  MAC_ORDER,
+  macAccentColors,
+  pickMacColor,
+  sortMacCategories,
+  type MacCategory,
+} from '@/lib/mac-categories';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -157,12 +169,6 @@ type Phase =
   | 'error'
   | 'terminated';
 
-const MAC_COLORS: Record<string, string> = {
-  mindfulness: colors.ringMindfulness,
-  acceptance: colors.ringAcceptance,
-  commitment: colors.ringCommitment,
-} as const;
-
 // ---------------------------------------------------------------------------
 // Helper: fire a haptic at the specified intensity
 // ---------------------------------------------------------------------------
@@ -183,6 +189,32 @@ function computeBlockDuration(blocks: ContentBlock[]): number {
     if (b.type === 'timed_exercise') return acc + b.duration_seconds;
     return acc;
   }, 0);
+}
+
+/** Match exercise timer end: box breathing rounds up to full 16s cycles. */
+function exerciseEffectiveDurationSeconds(block: TimedExerciseBlock): number {
+  if (block.interactive_model === 'box_breathing') {
+    return Math.ceil(block.duration_seconds / 16) * 16;
+  }
+  return block.duration_seconds;
+}
+
+/** Estimated seconds each block contributes to the overall lesson length.
+ *  Timed blocks use their actual duration; interactive blocks use a per-step estimate. */
+function blockWeightSeconds(block: ContentBlock): number {
+  switch (block.type) {
+    case 'voiceover': return Math.max(1, block.total_audio_seconds);
+    case 'timed_exercise': return Math.max(1, exerciseEffectiveDurationSeconds(block));
+    case 'countdown_timer': return Math.max(1, block.duration_seconds);
+    case 'tap_through_text': return Math.max(1, block.paragraphs.length * 4);
+    case 'flash_cards': return Math.max(1, block.cards.length * 4);
+    case 'prompt_cards': return Math.max(1, block.cards.length * 10);
+    case 'list_builder': return Math.max(1, block.min_entries * 10);
+    case 'journal_prompt': return 0;
+    case 'bubble_sort': return 30;
+    case 'two_column_sort': return 30;
+    default: return 10;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +254,9 @@ export default function LessonPlayerScreen() {
 
   // Block-based state
   const [blockIndex, setBlockIndex] = useState(0);
+  /** Wall-clock start for block-mode progress bar (elapsed / lesson.duration_seconds). */
+  const lessonProgressStartMsRef = useRef<number | null>(null);
+  const [lessonWallTick, setLessonWallTick] = useState(0);
   const [audioFileIndex, setAudioFileIndex] = useState(0);
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
   const [onScreenText, setOnScreenText] = useState('');
@@ -276,6 +311,8 @@ export default function LessonPlayerScreen() {
   const cumulativeOffsetRef = useRef(0);
   const exerciseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const journalTextRef = useRef('');
+  /** Block journal or end-of-lesson reflection prompt text; included in saved journal body. */
+  const journalPromptRef = useRef('');
   const lessonRef = useRef<LessonDetail | null>(null);
 
   // Audio fallback: when audio files are missing, drive voiceover via timer
@@ -290,6 +327,13 @@ export default function LessonPlayerScreen() {
 
   const hasBlocks = Boolean(lesson?.content_blocks?.blocks?.length);
   const blocks = lesson?.content_blocks?.blocks ?? [];
+
+  useEffect(() => {
+    if (!hasBlocks) return;
+    if (phase !== 'playing' && phase !== 'block_journal') return;
+    const id = setInterval(() => setLessonWallTick((n) => n + 1), 250);
+    return () => clearInterval(id);
+  }, [hasBlocks, phase]);
 
   const legacySource = !hasBlocks ? (lesson?.voiceover_url ?? null) : null;
   const activeSource = hasBlocks ? currentAudioUrl : legacySource;
@@ -340,6 +384,10 @@ export default function LessonPlayerScreen() {
         setPhase('error');
         return;
       }
+      journalPromptRef.current = '';
+      journalPartsRef.current = [];
+      setJournalText('');
+      setJournalExerciseContext('');
       setLesson(data);
       setPhase('ready');
     })();
@@ -426,11 +474,18 @@ export default function LessonPlayerScreen() {
     completingRef.current = true;
     setSubmitting(true);
     setPhase('completing');
+    progressAnim.setValue(1);
 
-    const parts = [
-      ...journalPartsRef.current,
-      journalTextRef.current.trim(),
-    ].filter(Boolean);
+    const exerciseParts = journalPartsRef.current.filter(Boolean);
+    const answer = journalTextRef.current.trim();
+    const prompt =
+      journalPromptRef.current.trim() ||
+      (currentLesson.reflection_prompt?.trim() ?? '');
+    const journalTail: string[] = [];
+    if (prompt && answer) journalTail.push(`${prompt}\n\n${answer}`);
+    else if (answer) journalTail.push(answer);
+    else if (prompt && exerciseParts.length === 0) journalTail.push(prompt);
+    const parts = [...exerciseParts, ...journalTail].filter(Boolean);
     if (parts.length > 0) {
       await apiFetch('/journal', {
         method: 'POST',
@@ -450,6 +505,7 @@ export default function LessonPlayerScreen() {
       setSubmitting(false);
       setErrorMsg(error);
       setPhase('error');
+      progressAnim.setValue(0);
     } else {
       if (completeData?.progress?.deltas) {
         setPendingGainDeltas(completeData.progress.deltas as any);
@@ -535,17 +591,7 @@ export default function LessonPlayerScreen() {
 
       // For box_breathing, extend to the next complete 16s cycle boundary so
       // the session always ends after the hold-post-exhale phase (not mid-breath).
-      const effectiveDuration =
-        block.interactive_model === 'box_breathing'
-          ? Math.ceil(block.duration_seconds / 16) * 16
-          : block.duration_seconds;
-
-      progressAnim.setValue(0);
-      Animated.timing(progressAnim, {
-        toValue: 1,
-        duration: effectiveDuration * 1000,
-        useNativeDriver: false,
-      }).start();
+      const effectiveDuration = exerciseEffectiveDurationSeconds(block);
 
       // Drive the breath circle for all circle-based models.
       // Each entry is [inhaleMs, holdInMs, exhaleMs, holdOutMs].
@@ -668,6 +714,7 @@ export default function LessonPlayerScreen() {
         try { ambientPlayer.seekTo(0).then(() => ambientPlayer.play()).catch(() => {}); } catch { /* noop */ }
       }
     } else if (block.type === 'journal_prompt') {
+      journalPromptRef.current = block.prompt;
       setCurrentAudioUrl(null);
       setOnScreenText(block.prompt);
       setPhase('block_journal');
@@ -799,6 +846,7 @@ export default function LessonPlayerScreen() {
     setPhase('playing');
 
     if (hasBlocks) {
+      lessonProgressStartMsRef.current = Date.now();
       blockIndexRef.current = 0;
       setBlockIndex(0);
       void setAudioModeAsync({
@@ -867,6 +915,8 @@ export default function LessonPlayerScreen() {
     try { player.pause(); void player.seekTo(0); } catch { /* noop */ }
     try { ambientPlayer.pause(); void ambientPlayer.seekTo(0); } catch { /* noop */ }
     setPhase('ready');
+    progressAnim.setValue(0);
+    lessonProgressStartMsRef.current = null;
     setElapsed(0);
     setBlockIndex(0);
     setAudioFileIndex(0);
@@ -882,6 +932,7 @@ export default function LessonPlayerScreen() {
     tapThroughSlideX.setValue(0);
     setJournalText('');
     setJournalExerciseContext('');
+    journalPromptRef.current = '';
     journalPartsRef.current = [];
     lastCueRef.current = '';
     highestCueIndexRef.current = -1;
@@ -990,32 +1041,74 @@ export default function LessonPlayerScreen() {
     hasLegacyVoiceover && phase === 'playing' ? legacyAudioElapsed : elapsed;
   const legacyProgress = legacyTotal > 0 ? Math.min(legacyDisplayElapsed / legacyTotal, 1) : 0;
 
-  const primaryCat = lesson?.categories?.[0] ?? '';
-  const catColor = MAC_COLORS[primaryCat] ?? colors.accentLight;
+  const sortedMacCats = useMemo(() => sortMacCategories(lesson?.categories), [lesson?.categories]);
+  const macAccentColorsRaw = useMemo(
+    () => macAccentColors(sortedMacCats),
+    [sortedMacCats],
+  );
+  const isMultiMac = sortedMacCats.length > 1;
+  const catColor = macAccentColorsRaw[0] ?? colors.accentLight;
+  /** Solid bar + exercise chrome: first tag by default; each block advances through MAC colors when multi-tag. */
+  const progressBarColor = useMemo(() => {
+    if (!isMultiMac || macAccentColorsRaw.length <= 1) return catColor;
+    return macAccentColorsRaw[blockIndex % macAccentColorsRaw.length] ?? catColor;
+  }, [isMultiMac, macAccentColorsRaw, catColor, blockIndex]);
 
-  // Block-mode progress (for voiceover progress bar — exercise uses continuous anim)
-  let blockProgress = 0;
-  if (hasBlocks && phase === 'playing' && isVoiceoverBlock) {
-    const t = audioFallbackActive.current
-      ? audioFallbackElapsed
-      : cumulativeOffsetRef.current + audioStatus.currentTime;
-    const total = (currentBlock as VoiceoverBlock).total_audio_seconds;
-    blockProgress = total > 0 ? Math.min(t / total, 1) : 0;
-  }
+  // Block-mode: weight every block by its real duration so the bar runs at
+  // a steady visual pace and reaches 100% exactly when the lesson ends.
+  // Tap-based blocks contribute proportionally per tap.
+  const lessonTotalWeight = useMemo(
+    () => (hasBlocks ? blocks.reduce((acc, b) => acc + blockWeightSeconds(b), 0) : 0),
+    [hasBlocks, blocks],
+  );
+
+  const overallLessonProgress = useMemo(() => {
+    if (!hasBlocks || lessonTotalWeight <= 0) return 0;
+    if (phase !== 'playing' && phase !== 'block_journal') return 0;
+
+    let elapsedWeight = 0;
+    for (let i = 0; i < blockIndex; i++) elapsedWeight += blockWeightSeconds(blocks[i]);
+
+    const currentBlock = blocks[blockIndex];
+    if (currentBlock) {
+      const w = blockWeightSeconds(currentBlock);
+      let withinSec = 0;
+      if (currentBlock.type === 'voiceover') {
+        withinSec = Math.max(audioStatus.currentTime, audioFallbackElapsed);
+      } else if (currentBlock.type === 'timed_exercise') {
+        withinSec = exerciseElapsed;
+      } else if (currentBlock.type === 'tap_through_text') {
+        withinSec = (tapThroughIndex / Math.max(1, currentBlock.paragraphs.length)) * w;
+      } else if (currentBlock.type === 'flash_cards') {
+        withinSec = (flashCardIndex / Math.max(1, currentBlock.cards.length)) * w;
+      }
+      elapsedWeight += Math.min(w, withinSec);
+    }
+
+    return Math.min(1, elapsedWeight / lessonTotalWeight);
+  }, [
+    hasBlocks, blocks, lessonTotalWeight, phase, blockIndex,
+    audioStatus.currentTime, audioFallbackElapsed, exerciseElapsed,
+    tapThroughIndex, flashCardIndex,
+  ]);
 
   useEffect(() => {
-    // Use ref to detect current block type — state may lag behind ref after
-    // advanceBlock updates blockIndexRef before React re-renders, which would
-    // let a stale voiceover progress (~1.0) overwrite the exercise animation.
-    const refBlock = blocks[blockIndexRef.current];
-    if (refBlock?.type === 'timed_exercise') return;
-    const target = hasBlocks ? blockProgress : legacyProgress;
-    Animated.timing(progressAnim, {
-      toValue: target,
-      duration: 90,
-      useNativeDriver: false,
-    }).start();
-  }, [blockProgress, legacyProgress, hasBlocks, isExerciseBlock]);
+    if (hasBlocks) {
+      if (phase !== 'playing' && phase !== 'block_journal') return;
+      Animated.timing(progressAnim, {
+        toValue: overallLessonProgress,
+        duration: 90,
+        useNativeDriver: false,
+      }).start();
+    } else {
+      if (phase !== 'playing') return;
+      Animated.timing(progressAnim, {
+        toValue: legacyProgress,
+        duration: 90,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [phase, hasBlocks, overallLessonProgress, legacyProgress]);
 
   useEffect(() => {
     if (phase !== 'done') return;
@@ -1084,7 +1177,7 @@ export default function LessonPlayerScreen() {
             styles.audioCueBar,
             {
               height: barBaseHeights[i],
-              backgroundColor: catColor,
+              backgroundColor: pickMacColor(isMultiMac ? macAccentColorsRaw : undefined, catColor, i),
               transform: [{ scaleY: scaleAnim }],
             },
           ]}
@@ -1144,13 +1237,38 @@ export default function LessonPlayerScreen() {
           ) : (
             <View style={{ width: 28 }} />
           )}
-          {primaryCat ? (
-            <View style={[styles.catBadge, { borderColor: catColor, backgroundColor: catColor + '12' }]}>
-              <Text style={[styles.catBadgeText, { color: catColor }]}>
-                {primaryCat.toUpperCase()}
-              </Text>
-            </View>
-          ) : <View />}
+          <View style={styles.topBarCenter}>
+            {sortedMacCats.length === 1 ? (
+              <View
+                style={[
+                  styles.catBadge,
+                  { borderColor: catColor, backgroundColor: catColor + '12' },
+                ]}
+              >
+                <Text style={[styles.catBadgeText, { color: catColor }]}>
+                  {sortedMacCats[0].toUpperCase()}
+                </Text>
+              </View>
+            ) : sortedMacCats.length > 1 ? (
+              sortedMacCats.map((cat) => (
+                <View
+                  key={cat}
+                  accessibilityRole="text"
+                  accessibilityLabel={MAC_A11Y_NAME[cat]}
+                  style={[
+                    styles.catBadgeMulti,
+                    { borderColor: MAC_COLORS[cat], backgroundColor: MAC_COLORS[cat] + '12' },
+                  ]}
+                >
+                  <Text style={[styles.catBadgeTextMulti, { color: MAC_COLORS[cat] }]}>
+                    {MAC_LETTER[cat]}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <View />
+            )}
+          </View>
           <View style={{ width: 28 }} />
         </View>
 
@@ -1190,7 +1308,7 @@ export default function LessonPlayerScreen() {
           <View style={styles.centered}>
             <Text style={styles.readyTitle}>{lesson.title}</Text>
             <Text style={styles.readyDuration}>
-              ~{Math.ceil(lesson.duration_seconds / 60)} min
+              ~{approxLessonMinutes(lesson.duration_seconds)} min
             </Text>
             {!hasBlocks && lesson.on_screen_text && (
               <Text style={styles.readyDesc}>{lesson.on_screen_text}</Text>
@@ -1210,7 +1328,10 @@ export default function LessonPlayerScreen() {
             {audioBars}
             <View style={styles.progressBarTrack}>
               <Animated.View
-                style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
+                style={[
+                  styles.progressBarFill,
+                  { width: progressBarWidth, backgroundColor: progressBarColor },
+                ]}
               />
             </View>
           </View>
@@ -1237,10 +1358,10 @@ export default function LessonPlayerScreen() {
                 style={[
                   styles.breathCircle,
                   {
-                    backgroundColor: catColor,
+                    backgroundColor: progressBarColor,
                     opacity: circleOpacity,
                     transform: [{ scale: circleScale }],
-                    shadowColor: catColor,
+                    shadowColor: progressBarColor,
                     shadowOffset: { width: 0, height: 0 },
                     shadowOpacity: 0.5,
                     shadowRadius: 30,
@@ -1248,6 +1369,11 @@ export default function LessonPlayerScreen() {
                   },
                 ]}
               />
+              {isMultiMac && (
+                <View style={styles.breathRimOverlay} pointerEvents="none">
+                  <MacAlternatingRing size={200} strokeWidth={5} colors={macAccentColorsRaw} />
+                </View>
+              )}
             </View>
           );
 
@@ -1264,10 +1390,10 @@ export default function LessonPlayerScreen() {
                     style={[
                       styles.breathCircle,
                       {
-                        backgroundColor: catColor,
+                        backgroundColor: progressBarColor,
                         opacity: circleOpacity,
                         transform: [{ scale: circleScale }],
-                        shadowColor: catColor,
+                        shadowColor: progressBarColor,
                         shadowOffset: { width: 0, height: 0 },
                         shadowOpacity: 0.5,
                         shadowRadius: 30,
@@ -1275,16 +1401,21 @@ export default function LessonPlayerScreen() {
                       },
                     ]}
                   />
+                  {isMultiMac && (
+                    <View style={styles.breathRimOverlay} pointerEvents="none">
+                      <MacAlternatingRing size={200} strokeWidth={5} colors={macAccentColorsRaw} />
+                    </View>
+                  )}
                   <Text style={[styles.breathCountdown, { position: 'absolute' }]}>{countdown}</Text>
                 </View>
                 <Animated.View
                   style={[
                     styles.exerciseCard,
                     {
-                      borderColor: catColor,
+                      borderColor: progressBarColor,
                       borderTopWidth: 2,
                       transform: [{ scale: cardScale }],
-                      shadowColor: catColor,
+                      shadowColor: progressBarColor,
                       shadowOffset: { width: 0, height: 0 },
                       shadowOpacity: 0.25,
                       shadowRadius: 20,
@@ -1292,14 +1423,17 @@ export default function LessonPlayerScreen() {
                     },
                   ]}
                 >
-                  <Text style={[styles.exercisePhaseLabel, { color: catColor }]}>{phaseLabel}</Text>
+                  <Text style={[styles.exercisePhaseLabel, { color: progressBarColor }]}>{phaseLabel}</Text>
                   <Animated.Text style={[styles.exerciseText, { opacity: boxCueFade }]}>
                     {exBlock.visual_cues?.[boxCueIndex] ?? ''}
                   </Animated.Text>
                 </Animated.View>
                 <View style={styles.progressBarTrack}>
                   <Animated.View
-                    style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
+                    style={[
+                      styles.progressBarFill,
+                      { width: progressBarWidth, backgroundColor: progressBarColor },
+                    ]}
                   />
                 </View>
               </View>
@@ -1323,10 +1457,10 @@ export default function LessonPlayerScreen() {
                   style={[
                     styles.exerciseCard,
                     {
-                      borderColor: catColor,
+                      borderColor: progressBarColor,
                       borderTopWidth: 2,
                       transform: [{ scale: cardScale }],
-                      shadowColor: catColor,
+                      shadowColor: progressBarColor,
                       shadowOffset: { width: 0, height: 0 },
                       shadowOpacity: 0.25,
                       shadowRadius: 20,
@@ -1335,7 +1469,7 @@ export default function LessonPlayerScreen() {
                   ]}
                 >
                   {circlePhaseLabel ? (
-                    <Text style={[styles.exercisePhaseLabel, { color: catColor }]}>{circlePhaseLabel}</Text>
+                    <Text style={[styles.exercisePhaseLabel, { color: progressBarColor }]}>{circlePhaseLabel}</Text>
                   ) : null}
                   <Animated.Text style={[styles.exerciseText, { opacity: textFade }]}>
                     {onScreenText}
@@ -1343,7 +1477,10 @@ export default function LessonPlayerScreen() {
                 </Animated.View>
                 <View style={styles.progressBarTrack}>
                   <Animated.View
-                    style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
+                    style={[
+                      styles.progressBarFill,
+                      { width: progressBarWidth, backgroundColor: progressBarColor },
+                    ]}
                   />
                 </View>
               </View>
@@ -1358,33 +1495,40 @@ export default function LessonPlayerScreen() {
               <View style={styles.centered}>
                 <View style={styles.bodyScanRow}>
                   <View style={styles.bodyScanDots}>
-                    {exBlock.steps.map((_, i) => (
-                      <View
-                        key={i}
-                        style={[
-                          styles.bodyScanDot,
-                          {
-                            backgroundColor:
-                              i === activeZone
-                                ? catColor
-                                : i < activeZone
-                                  ? catColor + '55'
-                                  : colors.ringTrack,
-                            transform: [{ scale: i === activeZone ? 1.3 : 1 }],
-                          },
-                        ]}
-                      />
-                    ))}
+                    {exBlock.steps.map((_, i) => {
+                      const zoneColor = pickMacColor(
+                        isMultiMac ? macAccentColorsRaw : undefined,
+                        catColor,
+                        i,
+                      );
+                      return (
+                        <View
+                          key={i}
+                          style={[
+                            styles.bodyScanDot,
+                            {
+                              backgroundColor:
+                                i === activeZone
+                                  ? zoneColor
+                                  : i < activeZone
+                                    ? zoneColor + '55'
+                                    : colors.ringTrack,
+                              transform: [{ scale: i === activeZone ? 1.3 : 1 }],
+                            },
+                          ]}
+                        />
+                      );
+                    })}
                   </View>
                   <Animated.View
                     style={[
                       styles.exerciseCard,
                       {
                         flex: 1,
-                        borderColor: catColor,
+                        borderColor: progressBarColor,
                         borderTopWidth: 2,
                         transform: [{ scale: cardScale }],
-                        shadowColor: catColor,
+                        shadowColor: progressBarColor,
                         shadowOffset: { width: 0, height: 0 },
                         shadowOpacity: 0.25,
                         shadowRadius: 20,
@@ -1399,7 +1543,10 @@ export default function LessonPlayerScreen() {
                 </View>
                 <View style={styles.progressBarTrack}>
                   <Animated.View
-                    style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
+                    style={[
+                      styles.progressBarFill,
+                      { width: progressBarWidth, backgroundColor: progressBarColor },
+                    ]}
                   />
                 </View>
               </View>
@@ -1416,7 +1563,14 @@ export default function LessonPlayerScreen() {
                     style={[
                       styles.stepDot,
                       i === exerciseStepIndex
-                        ? { backgroundColor: catColor, width: 18 }
+                        ? {
+                            backgroundColor: pickMacColor(
+                              isMultiMac ? macAccentColorsRaw : undefined,
+                              catColor,
+                              i,
+                            ),
+                            width: 18,
+                          }
                         : { backgroundColor: colors.ringTrack },
                     ]}
                   />
@@ -1426,10 +1580,10 @@ export default function LessonPlayerScreen() {
                 style={[
                   styles.exerciseCard,
                   {
-                    borderColor: catColor,
+                    borderColor: progressBarColor,
                     borderTopWidth: 2,
                     transform: [{ scale: cardScale }],
-                    shadowColor: catColor,
+                    shadowColor: progressBarColor,
                     shadowOffset: { width: 0, height: 0 },
                     shadowOpacity: 0.25,
                     shadowRadius: 20,
@@ -1441,10 +1595,12 @@ export default function LessonPlayerScreen() {
                   {onScreenText}
                 </Animated.Text>
               </Animated.View>
-              {audioBars}
               <View style={styles.progressBarTrack}>
                 <Animated.View
-                  style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
+                  style={[
+                    styles.progressBarFill,
+                    { width: progressBarWidth, backgroundColor: progressBarColor },
+                  ]}
                 />
               </View>
             </View>
@@ -1459,19 +1615,26 @@ export default function LessonPlayerScreen() {
           return (
             <View style={styles.centered}>
               <View style={styles.exerciseStepDots}>
-                {fcBlock.cards.map((_, i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.stepDot,
-                      i === flashCardIndex
-                        ? { backgroundColor: catColor, width: 18 }
-                        : i < flashCardIndex
-                          ? { backgroundColor: catColor }
-                          : { backgroundColor: colors.ringTrack },
-                    ]}
-                  />
-                ))}
+                {fcBlock.cards.map((_, i) => {
+                  const stripe = pickMacColor(
+                    isMultiMac ? macAccentColorsRaw : undefined,
+                    catColor,
+                    i,
+                  );
+                  return (
+                    <View
+                      key={i}
+                      style={[
+                        styles.stepDot,
+                        i === flashCardIndex
+                          ? { backgroundColor: stripe, width: 18 }
+                          : i < flashCardIndex
+                            ? { backgroundColor: stripe }
+                            : { backgroundColor: colors.ringTrack },
+                      ]}
+                    />
+                  );
+                })}
               </View>
 
               <Text style={styles.flashTapHint}>
@@ -1483,9 +1646,9 @@ export default function LessonPlayerScreen() {
                   style={[
                     styles.flashCard,
                     {
-                      borderColor: catColor,
+                      borderColor: progressBarColor,
                       borderTopWidth: 2,
-                      shadowColor: catColor,
+                      shadowColor: progressBarColor,
                       shadowOffset: { width: 0, height: 0 },
                       shadowOpacity: 0.25,
                       shadowRadius: 20,
@@ -1503,9 +1666,9 @@ export default function LessonPlayerScreen() {
                     styles.flashCard,
                     styles.flashCardBack,
                     {
-                      borderColor: catColor,
+                      borderColor: progressBarColor,
                       borderTopWidth: 2,
-                      shadowColor: catColor,
+                      shadowColor: progressBarColor,
                       shadowOffset: { width: 0, height: 0 },
                       shadowOpacity: 0.25,
                       shadowRadius: 20,
@@ -1519,7 +1682,14 @@ export default function LessonPlayerScreen() {
                 </Animated.View>
               </TouchableOpacity>
 
-              {audioBars}
+              <View style={styles.progressBarTrack}>
+                <Animated.View
+                  style={[
+                    styles.progressBarFill,
+                    { width: progressBarWidth, backgroundColor: progressBarColor },
+                  ]}
+                />
+              </View>
 
               <TouchableOpacity style={styles.primaryBtn} onPress={nextFlashCard}>
                 <Text style={styles.primaryBtnText}>
@@ -1543,19 +1713,26 @@ export default function LessonPlayerScreen() {
               {/* Dots: sit at a fixed position determined by paddingTop on the container.
                   They are NOT inside a centering wrapper so text height never moves them. */}
               <View style={styles.tapThroughDots}>
-                {ttBlock.paragraphs.map((_, i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.stepDot,
-                      i === tapThroughIndex
-                        ? { backgroundColor: catColor, width: 18 }
-                        : i < tapThroughIndex
-                          ? { backgroundColor: catColor + '60' }
-                          : { backgroundColor: colors.ringTrack },
-                    ]}
-                  />
-                ))}
+                {ttBlock.paragraphs.map((_, i) => {
+                  const stripe = pickMacColor(
+                    isMultiMac ? macAccentColorsRaw : undefined,
+                    catColor,
+                    i,
+                  );
+                  return (
+                    <View
+                      key={i}
+                      style={[
+                        styles.stepDot,
+                        i === tapThroughIndex
+                          ? { backgroundColor: stripe, width: 18 }
+                          : i < tapThroughIndex
+                            ? { backgroundColor: stripe + '60' }
+                            : { backgroundColor: colors.ringTrack },
+                      ]}
+                    />
+                  );
+                })}
               </View>
 
               {/* Text flows directly below the fixed-position dots */}
@@ -1570,9 +1747,20 @@ export default function LessonPlayerScreen() {
 
               {/* Hint absolutely pinned so it never reflows layout */}
               <View style={styles.tapThroughHintRow}>
-                <Text style={[styles.tapThroughHint, { color: catColor + 'aa' }]}>
+                <Text style={[styles.tapThroughHint, { color: progressBarColor + 'aa' }]}>
                   {isLast ? 'Begin Exercise' : 'Tap to continue'}
                 </Text>
+              </View>
+
+              <View style={styles.tapThroughProgressWrap}>
+                <View style={styles.progressBarTrack}>
+                  <Animated.View
+                    style={[
+                      styles.progressBarFill,
+                      { width: progressBarWidth, backgroundColor: progressBarColor },
+                    ]}
+                  />
+                </View>
               </View>
             </View>
           );
@@ -1601,11 +1789,12 @@ export default function LessonPlayerScreen() {
               return;
             }
 
-            // If transitioning to a journal_prompt, surface the exercise answers
-            // as context so the user can reference them while writing.
+            // If transitioning to a journal_prompt, surface all accumulated exercise
+            // answers as context (matches what completeLesson saves from journalPartsRef).
             const nextBlock = allBlocks[nextIdx];
-            if (nextBlock?.type === 'journal_prompt' && collectedText.trim()) {
-              setJournalExerciseContext(collectedText.trim());
+            if (nextBlock?.type === 'journal_prompt') {
+              const accumulated = journalPartsRef.current.join('\n\n---\n\n');
+              setJournalExerciseContext(accumulated.trim() ? accumulated : '');
             }
 
             // Mirror advanceBlock: update state index then delegate all
@@ -1620,6 +1809,7 @@ export default function LessonPlayerScreen() {
                 key={blockIndex}
                 cards={block.cards}
                 catColor={catColor}
+                accentColors={isMultiMac ? macAccentColorsRaw : undefined}
                 onComplete={handleComplete}
               />
             );
@@ -1634,6 +1824,7 @@ export default function LessonPlayerScreen() {
                 canRestore={block.can_restore}
                 actionPrompt={block.action_prompt}
                 catColor={catColor}
+                accentColors={isMultiMac ? macAccentColorsRaw : undefined}
                 onComplete={handleComplete}
               />
             );
@@ -1647,6 +1838,7 @@ export default function LessonPlayerScreen() {
                 closeColumnId={block.close_column_id}
                 actionPrompt={block.action_prompt}
                 catColor={catColor}
+                accentColors={isMultiMac ? macAccentColorsRaw : undefined}
                 onComplete={handleComplete}
               />
             );
@@ -1661,6 +1853,7 @@ export default function LessonPlayerScreen() {
                 summaryHeader={block.summary_header}
                 summaryHoldSeconds={block.summary_hold_seconds}
                 catColor={catColor}
+                accentColors={isMultiMac ? macAccentColorsRaw : undefined}
                 onComplete={handleComplete}
               />
             );
@@ -1674,6 +1867,7 @@ export default function LessonPlayerScreen() {
                 completionMessage={block.completion_message}
                 completionHoldSeconds={block.completion_hold_seconds}
                 catColor={catColor}
+                accentColors={isMultiMac ? macAccentColorsRaw : undefined}
                 onComplete={handleComplete}
               />
             );
@@ -1693,7 +1887,10 @@ export default function LessonPlayerScreen() {
             )}
             <View style={styles.progressBarTrack}>
               <Animated.View
-                style={[styles.progressBarFill, { width: progressBarWidth, backgroundColor: catColor }]}
+                style={[
+                  styles.progressBarFill,
+                  { width: progressBarWidth, backgroundColor: progressBarColor },
+                ]}
               />
             </View>
             {lesson.on_screen_text && (
@@ -1821,7 +2018,16 @@ export default function LessonPlayerScreen() {
               <Animated.View style={[styles.doneDeltaRow, { opacity: doneAnim3 }]}>
                 {Object.entries(doneDeltas).map(([cat, d]) => (
                   <View key={cat} style={styles.doneDeltaBadge}>
-                    <View style={[styles.doneDeltaDot, { backgroundColor: MAC_COLORS[cat] ?? colors.accentLight }]} />
+                    <View
+                      style={[
+                        styles.doneDeltaDot,
+                        {
+                          backgroundColor: (MAC_ORDER as readonly string[]).includes(cat)
+                            ? MAC_COLORS[cat as MacCategory]
+                            : colors.accentLight,
+                        },
+                      ]}
+                    />
                     <Text style={styles.doneDeltaCat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</Text>
                     <Text style={[styles.doneDeltaValue, { color: d.amount >= 0 ? colors.success : colors.error }]}>
                       {d.amount >= 0 ? '+' : ''}{(Math.round(d.amount * 10) / 10).toFixed(1)}
@@ -1892,6 +2098,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
+  topBarCenter: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 4,
+  },
   catBadge: {
     borderWidth: 1,
     borderRadius: 12,
@@ -1902,6 +2117,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.5,
+  },
+  catBadgeMulti: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    minWidth: 32,
+    alignItems: 'center',
+  },
+  catBadgeTextMulti: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   centered: {
     flex: 1,
@@ -2291,15 +2519,34 @@ const styles = StyleSheet.create({
     height: 20,
     justifyContent: 'center',
   },
+  tapThroughProgressWrap: {
+    position: 'absolute',
+    bottom: spacing.xl + 28,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
   tapThroughHint: {
     fontSize: 13,
     fontWeight: '500',
     letterSpacing: 0.5,
   },
   breathCircleWrapper: {
+    width: 200,
+    height: 200,
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xl,
+  },
+  breathRimOverlay: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: 200,
+    height: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   breathCircle: {
     width: 200,

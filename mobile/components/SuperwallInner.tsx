@@ -76,9 +76,6 @@ function SuperwallPurchaseSync() {
     },
     onSubscriptionStatusChange: (status: { status?: string }) => {
       if (status.status === 'ACTIVE') {
-        // Superwall's own StoreKit observer confirmed the subscription is active.
-        // Optimistically flip hasPremiumAccess in local state immediately so
-        // the RouteGuard can navigate without waiting for the Apple API round-trip.
         optimisticGrantAccess();
         refreshUserState().catch(() => {});
       }

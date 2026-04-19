@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '@/lib/theme';
+import MacAlternatingRing from '@/components/lesson/MacAlternatingRing';
 
 type Props = {
   durationSeconds: number;
@@ -16,6 +17,7 @@ type Props = {
   completionMessage: string;
   completionHoldSeconds: number;
   catColor: string;
+  accentColors?: string[];
   onComplete: (collectedText: string) => void;
 };
 
@@ -25,6 +27,7 @@ export default function CountdownTimer({
   completionMessage,
   completionHoldSeconds,
   catColor,
+  accentColors,
   onComplete,
 }: Props) {
   const [phase, setPhase] = useState<'select' | 'running' | 'done'>('select');
@@ -137,13 +140,20 @@ export default function CountdownTimer({
   return (
     <View style={[styles.container, styles.centered]}>
       <Text style={styles.selectedTaskLabel}>{selectedTask}</Text>
-      <View style={[styles.ring, { borderColor: catColor + '30' }]}>
+      <View style={[styles.ring, accentColors && accentColors.length > 1 ? styles.ringMulti : null]}>
+        {accentColors && accentColors.length > 1 ? (
+          <View style={styles.ringRim} pointerEvents="none">
+            <MacAlternatingRing size={200} strokeWidth={6} colors={accentColors} />
+          </View>
+        ) : null}
         <Text style={styles.countdownText}>
           {mins}:{secs.toString().padStart(2, '0')}
         </Text>
       </View>
       <View style={styles.progressTrack}>
-        <Animated.View style={[styles.progressFill, { width: progressWidth, backgroundColor: catColor }]} />
+        <Animated.View
+          style={[styles.progressFill, { width: progressWidth, backgroundColor: catColor }]}
+        />
       </View>
     </View>
   );
@@ -219,6 +229,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xl,
+  },
+  ringMulti: {
+    borderWidth: 0,
+    position: 'relative',
+  },
+  ringRim: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: 200,
+    height: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   countdownText: {
     fontSize: 56,

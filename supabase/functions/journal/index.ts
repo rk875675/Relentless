@@ -92,6 +92,9 @@ Deno.serve(async (req) => {
   if (req.method === "GET" && subPath === "") {
     return handleList(url, supabase, auth.userId, requestId);
   }
+  if (req.method === "GET" && subPath !== "") {
+    return handleGetById(supabase, subPath, auth.userId, requestId);
+  }
   if (req.method === "POST" && subPath === "") {
     return handleCreate(req, supabase, auth.userId, requestId);
   }
@@ -104,6 +107,22 @@ Deno.serve(async (req) => {
 
   return errorResponse(405, "VALIDATION_ERROR", "Method not allowed for this path", requestId);
 });
+
+type LessonJoin = {
+  title?: string;
+  lesson_categories?: { category: string } | { category: string }[] | null;
+} | null;
+
+function lessonJoinToTitleAndCategories(lesson: LessonJoin): {
+  lesson_title: string | null;
+  categories: string[];
+} {
+  if (!lesson) return { lesson_title: null, categories: [] };
+  const raw = lesson.lesson_categories;
+  const rows = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
+  const categories = rows.map((r) => r.category).filter(Boolean);
+  return { lesson_title: lesson.title ?? null, categories };
+}
 
 // J2 — list own journal entries (paginated, chronological desc)
 async function handleList(
@@ -152,16 +171,46 @@ async function handleList(
   }
 
   const items = (entries ?? []).map(({ lessons, ...e }) => {
-    const lesson = lessons as { title?: string; lesson_categories?: { category: string }[] } | null;
-    const categories = lesson?.lesson_categories?.map((lc) => lc.category) ?? [];
+    const { lesson_title, categories } = lessonJoinToTitleAndCategories(lessons as LessonJoin);
     return {
       ...e,
-      lesson_title: lesson?.title ?? null,
+      lesson_title,
       categories,
     };
   });
 
   return successResponse({ items, page, limit, total: count ?? 0 }, requestId);
+}
+
+// J2b — fetch one journal entry (same shape as list items)
+async function handleGetById(
+  supabase: ReturnType<typeof createServiceClient>,
+  id: string,
+  userId: string,
+  requestId: string,
+): Promise<Response> {
+  const idParsed = UuidSchema.safeParse(id);
+  if (!idParsed.success) {
+    return errorResponse(400, "VALIDATION_ERROR", "Invalid journal entry ID format", requestId);
+  }
+
+  const { data: row, error } = await supabase
+    .from("journal_entries")
+    .select(
+      "id, lesson_id, competition_date, body, entry_type, created_at, updated_at, lessons(title, lesson_categories(category))",
+    )
+    .eq("user_id", userId)
+    .eq("id", idParsed.data)
+    .maybeSingle();
+
+  if (error || !row) {
+    return errorResponse(404, "NOT_FOUND", "Journal entry not found", requestId);
+  }
+
+  const { lessons, ...e } = row as typeof row & { lessons: LessonJoin };
+  const { lesson_title, categories } = lessonJoinToTitleAndCategories(lessons);
+
+  return successResponse({ ...e, lesson_title, categories }, requestId);
 }
 
 // J1 — create journal entry

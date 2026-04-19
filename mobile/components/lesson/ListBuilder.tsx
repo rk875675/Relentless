@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '@/lib/theme';
+import { pickMacColor } from '@/lib/mac-categories';
 
 type Props = {
   prompts: string[];
@@ -20,6 +21,7 @@ type Props = {
   summaryHeader: string;
   summaryHoldSeconds: number;
   catColor: string;
+  accentColors?: string[];
   onComplete: (collectedText: string) => void;
 };
 
@@ -30,6 +32,7 @@ export default function ListBuilder({
   summaryHeader,
   summaryHoldSeconds,
   catColor,
+  accentColors,
   onComplete,
 }: Props) {
   const [phase, setPhase] = useState<'entry' | 'summary'>('entry');
@@ -96,7 +99,13 @@ export default function ListBuilder({
           style={{ flex: 1, width: '100%' }}
         >
           {entries.map((entry, i) => (
-            <View key={i} style={[styles.summaryItem, { borderLeftColor: catColor }]}>
+            <View
+              key={i}
+              style={[
+                styles.summaryItem,
+                { borderLeftColor: pickMacColor(accentColors, catColor, i) },
+              ]}
+            >
               <Text style={styles.summaryText}>{entry}</Text>
             </View>
           ))}
@@ -128,7 +137,13 @@ export default function ListBuilder({
           showsVerticalScrollIndicator={false}
         >
           {entries.map((entry, i) => (
-            <Animated.View key={i} style={[styles.entryItem, { borderLeftColor: catColor }]}>
+            <Animated.View
+              key={i}
+              style={[
+                styles.entryItem,
+                { borderLeftColor: pickMacColor(accentColors, catColor, i) },
+              ]}
+            >
               <Text style={styles.entryText}>{entry}</Text>
             </Animated.View>
           ))}

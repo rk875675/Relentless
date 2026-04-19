@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '@/lib/theme';
+import { pickMacColor } from '@/lib/mac-categories';
 
 type Props = {
   entryInstruction: string;
@@ -20,6 +21,7 @@ type Props = {
   canRestore: boolean;
   actionPrompt: string;
   catColor: string;
+  accentColors?: string[];
   onComplete: (collectedText: string) => void;
 };
 
@@ -32,6 +34,7 @@ export default function BubbleSort({
   canRestore,
   actionPrompt,
   catColor,
+  accentColors,
   onComplete,
 }: Props) {
   const [phase, setPhase] = useState<'entry' | 'discard' | 'action'>('entry');
@@ -190,19 +193,22 @@ export default function BubbleSort({
     >
       <Animated.View style={[styles.container, { opacity: fade }]}>
         <View style={styles.dots}>
-          {activeBubbles.map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                i === actionIndex
-                  ? { backgroundColor: catColor, width: 18 }
-                  : i < actionIndex
-                    ? { backgroundColor: catColor + '60' }
-                    : { backgroundColor: colors.ringTrack },
-              ]}
-            />
-          ))}
+          {activeBubbles.map((_, i) => {
+            const stripe = pickMacColor(accentColors, catColor, i);
+            return (
+              <View
+                key={i}
+                style={[
+                  styles.dot,
+                  i === actionIndex
+                    ? { backgroundColor: stripe, width: 18 }
+                    : i < actionIndex
+                      ? { backgroundColor: stripe + '60' }
+                      : { backgroundColor: colors.ringTrack },
+                ]}
+              />
+            );
+          })}
         </View>
         <View style={[styles.card, { borderColor: catColor, borderTopWidth: 2 }]}>
           <Text style={styles.cardLabel}>{currentBubble?.text}</Text>

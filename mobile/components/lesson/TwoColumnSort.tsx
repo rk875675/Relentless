@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '@/lib/theme';
+import { pickMacColor } from '@/lib/mac-categories';
 
 type ColDef = { id: string; label: string };
 
@@ -21,6 +22,7 @@ type Props = {
   closeColumnId: string;
   actionPrompt: string;
   catColor: string;
+  accentColors?: string[];
   onComplete: (collectedText: string) => void;
 };
 
@@ -30,6 +32,7 @@ export default function TwoColumnSort({
   closeColumnId,
   actionPrompt,
   catColor,
+  accentColors,
   onComplete,
 }: Props) {
   const [phase, setPhase] = useState<'entry' | 'close' | 'action'>('entry');
@@ -174,19 +177,22 @@ export default function TwoColumnSort({
     >
       <Animated.View style={[styles.container, { opacity: fade }]}>
         <View style={styles.dots}>
-          {openItems.map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                i === actionIndex
-                  ? { backgroundColor: catColor, width: 18 }
-                  : i < actionIndex
-                    ? { backgroundColor: catColor + '60' }
-                    : { backgroundColor: colors.ringTrack },
-              ]}
-            />
-          ))}
+          {openItems.map((_, i) => {
+            const stripe = pickMacColor(accentColors, catColor, i);
+            return (
+              <View
+                key={i}
+                style={[
+                  styles.dot,
+                  i === actionIndex
+                    ? { backgroundColor: stripe, width: 18 }
+                    : i < actionIndex
+                      ? { backgroundColor: stripe + '60' }
+                      : { backgroundColor: colors.ringTrack },
+                ]}
+              />
+            );
+          })}
         </View>
         <View style={[styles.card, { borderColor: catColor, borderTopWidth: 2 }]}>
           <Text style={styles.cardLabel}>{currentItem}</Text>

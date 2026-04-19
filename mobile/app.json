@@ -31,7 +31,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "90cd2d06-b2b9-4063-9f3b-75e81696aead"
+        "projectId": "3cac0b27-c2b7-4368-a154-b4292e7d7030"
       }
     },
     "android": {
@@ -40,6 +40,7 @@
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "package": "com.relentlessmentaltoughness.relentless"
-    }
+    },
+    "owner": "r2.rahul"
   }
 }

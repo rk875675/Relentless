@@ -166,6 +166,7 @@ entitlement.
 |---|---|---|---|---|---|---|---|
 | J1 | `/journal` | POST | Entitlement-protected write | Required | No | — | Create a journal entry (optionally tied to lesson or competition date) |
 | J2 | `/journal` | GET | Entitlement-protected read | Required | N/A | Paginated; chronological; default/max page size TBD | List own journal entries |
+| J2b | `/journal/:id` | GET | Entitlement-protected read | Required | N/A | — | Fetch one own journal entry (same item shape as list rows) |
 | J3 | `/journal/:id` | PATCH | Entitlement-protected write | Required | No | — | Update own journal entry body |
 | J4 | `/journal/:id` | DELETE | Entitlement-protected write | Required | No | — | Delete own journal entry |
 

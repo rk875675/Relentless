@@ -9,6 +9,7 @@ import {
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { apiFetch } from '@/lib/api';
 import { colors, spacing } from '@/lib/theme';
+import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
 
 type Lesson = {
   id: string;
@@ -91,7 +92,7 @@ export default function CategoryScreen() {
   ];
 
   const renderLesson = (lesson: Lesson) => {
-    const mins = Math.ceil(lesson.duration_seconds / 60);
+    const mins = approxLessonMinutes(lesson.duration_seconds);
     const dayLabel = lesson.program_day ? `DAY ${lesson.program_day}` : null;
     const isLibrary =
       lesson.lesson_type === 'library' || lesson.lesson_type === 'library_long';

@@ -245,12 +245,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateCompetitionDate = useCallback(async (date: string | null): Promise<string | null> => {
     if (!session?.user) return 'Not authenticated';
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .update({ competition_date: date })
-      .eq('id', session.user.id);
+      .eq('id', session.user.id)
+      .select('competition_date');
     if (error) return error.message;
-    setCompetitionDate(date);
+    if (!data?.length) return 'Could not save competition date';
+    setCompetitionDate(data[0]?.competition_date ?? date);
     return null;
   }, [session]);
 

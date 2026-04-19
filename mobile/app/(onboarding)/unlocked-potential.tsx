@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import {
   Animated,
   Dimensions,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,27 +23,35 @@ const CARD_WIDTH = Dimensions.get('window').width - spacing.xl * 2;
 const TESTIMONIALS = [
   {
     title: 'Locked in on race day',
-    quote: 'I used to freeze at the start line. Relentless completely changed how I show up.',
+    quote:
+      'I used to freeze at the start line. Relentless changed how I show up—I actually look forward to pressure now.',
     name: 'Marcus T.',
     detail: 'D1 Sprinter, USC',
+    avatarUrl: 'https://i.pravatar.cc/256?img=12',
   },
   {
     title: 'Actually built for athletes',
-    quote: "The exercises here actually feel relevant to my sport and what I go through on game day.",
+    quote:
+      "The exercises feel relevant to my sport and game day. Quick sessions between lifts, and it feels like prep—not generic mindfulness.",
     name: 'Ava R.',
     detail: 'D1 Hurdler, Oregon',
+    avatarUrl: 'https://i.pravatar.cc/256?img=45',
   },
   {
     title: 'My coach noticed first',
-    quote: "I'm calmer, more focused, and way more consistent in meets.",
+    quote:
+      "I'm calmer, more focused, and more consistent in meets—I bounce back faster on rough training weeks.",
     name: 'Jordan K.',
     detail: 'D1 Distance, Michigan',
+    avatarUrl: 'https://i.pravatar.cc/256?img=33',
   },
   {
     title: 'Skeptic turned believer',
-    quote: "I was skeptical about mental training. After two weeks I PR'd.",
+    quote:
+      "I was skeptical about mental training. After two weeks I PR'd—and I trust my process when it counts.",
     name: 'Dani L.',
     detail: 'D1 Jumps, Florida',
+    avatarUrl: 'https://i.pravatar.cc/256?img=68',
   },
 ];
 
@@ -50,7 +59,7 @@ function Stars() {
   return (
     <View style={styles.stars}>
       {[1, 2, 3, 4, 5].map((i) => (
-        <Ionicons key={i} name="star" size={14} color="#f59e0b" />
+        <Ionicons key={i} name="star" size={20} color="#f59e0b" />
       ))}
     </View>
   );
@@ -117,8 +126,15 @@ export default function UnlockedPotentialScreen() {
                   <Text style={styles.quote}>{`\u201C${t.quote}\u201D`}</Text>
                 </View>
                 <View style={styles.cardFooter}>
-                  <Text style={styles.name}>{t.name}</Text>
-                  <Text style={styles.detail}>{t.detail}</Text>
+                  <Image
+                    source={{ uri: t.avatarUrl }}
+                    style={styles.avatar}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.cardFooterText}>
+                    <Text style={styles.name}>{t.name}</Text>
+                    <Text style={styles.detail}>{t.detail}</Text>
+                  </View>
                 </View>
               </View>
             ))}
@@ -201,35 +217,49 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: 22,
-    paddingTop: 22,
-    paddingBottom: 18,
+    paddingTop: 18,
+    paddingBottom: 16,
     justifyContent: 'space-between',
   },
   cardTop: {},
-  stars: { flexDirection: 'row', gap: 2, marginBottom: 10 },
+  stars: { flexDirection: 'row', gap: 4, marginBottom: 14 },
   cardTitle: {
     fontSize: 19,
     fontWeight: '800',
     color: colors.white,
-    marginBottom: 8,
-    lineHeight: 24,
+    marginBottom: 12,
+    lineHeight: 26,
   },
   quote: {
     fontSize: 15,
     color: colors.textSecondary,
-    lineHeight: 22,
-    marginBottom: 18,
+    lineHeight: 24,
+    letterSpacing: 0.15,
+    marginBottom: 14,
   },
   cardFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: 12,
+    paddingTop: 10,
   },
-  name: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
-  detail: { fontSize: 13, color: colors.textMuted },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.border,
+  },
+  cardFooterText: { flex: 1, flexShrink: 1 },
+  name: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    lineHeight: 22,
+    marginBottom: 2,
+  },
+  detail: { fontSize: 15, fontWeight: '500', color: colors.textMuted, lineHeight: 20 },
   dots: {
     flexDirection: 'row',
     justifyContent: 'center',

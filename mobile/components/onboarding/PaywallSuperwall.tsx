@@ -1,69 +1,49 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/lib/auth-context';
 import { colors, spacing } from '@/lib/theme';
 import { SUPERWALL_ENABLED, SUPERWALL_ONBOARDING_PLACEMENT } from '@/lib/superwall-config';
 
-let usePlacement: any = () => ({ registerPlacement: async () => {} });
+let useSuperwall: any = () => ({ registerPlacement: async () => {} });
 if (SUPERWALL_ENABLED) {
-  try { usePlacement = require('expo-superwall').usePlacement; } catch {}
+  try { useSuperwall = require('expo-superwall').useSuperwall; } catch {}
 }
 
 export function PaywallSuperwall() {
   const {
     completeOnboarding,
     completeOnboardingDevBypass,
-    refreshUserState,
     hasPremiumAccess,
     isDevAccount,
+    signOut,
   } = useAuth();
-  const [busy, setBusy] = useState(false);
-  // Set to true after a purchase/restore so we complete onboarding as soon
-  // as hasPremiumAccess flips. Using a state flag (rather than reading
-  // hasPremiumAccess directly in the async callback) avoids stale-closure
-  // issues — React state updates don't synchronously mutate closed-over values.
-  const [awaitingAccess, setAwaitingAccess] = useState(false);
+  // #region agent log — visible on-screen debug (temporary)
+  const [dbg, setDbg] = useState('idle');
+  // #endregion
 
+  const { registerPlacement } = useSuperwall((s: any) => ({
+    registerPlacement: s.registerPlacement,
+  }));
+
+  // When SuperwallPurchaseSync flips hasPremiumAccess → complete onboarding.
+  // The RouteGuard will then navigate to /(tabs).
   useEffect(() => {
-    if (awaitingAccess && hasPremiumAccess) {
-      setAwaitingAccess(false);
+    if (hasPremiumAccess) {
+      setDbg('access-granted');
       completeOnboarding().catch(() => {});
     }
-  }, [awaitingAccess, hasPremiumAccess, completeOnboarding]);
+  }, [hasPremiumAccess, completeOnboarding]);
 
-  const finishAfterAccess = useCallback(async () => {
-    await refreshUserState();
-    // Signal that we're waiting for access. The useEffect above will call
-    // completeOnboarding() as soon as hasPremiumAccess becomes true — either
-    // immediately (if the DB was already updated) or once SuperwallPurchaseSync's
-    // finally() refresh flips it after the Apple verification completes.
-    setAwaitingAccess(true);
-  }, [refreshUserState]);
-
-  const { registerPlacement } = usePlacement({
-    onDismiss: async (_info: any, result: any) => {
-      if (result.type === 'purchased' || result.type === 'restored') {
-        await finishAfterAccess();
-      }
-    },
-    onError: (err: string) => {
-      console.warn('[Superwall] placement error', err);
-    },
-  });
-
-  const openPaywall = async () => {
-    setBusy(true);
-    try {
-      await registerPlacement({
-        placement: SUPERWALL_ONBOARDING_PLACEMENT,
-        feature: () => {
-          void finishAfterAccess();
-        },
-      });
-    } finally {
-      setBusy(false);
-    }
+  // No usePlacement, no useSuperwallEvents, no busy state.
+  // Fire-and-forget — the native promise only resolves on purchase/skip,
+  // but we don't care; SuperwallPurchaseSync handles the subscription change
+  // and the RouteGuard handles navigation.
+  const openPaywall = () => {
+    setDbg('opening');
+    registerPlacement(SUPERWALL_ONBOARDING_PLACEMENT).catch(() => {
+      setDbg('error');
+    });
   };
 
   return (
@@ -79,6 +59,11 @@ export function PaywallSuperwall() {
         </View>
 
         <View style={styles.bottomSection}>
+          {/* Temporary visible debug line */}
+          <Text style={styles.debugLine}>
+            {`${dbg} | access=${hasPremiumAccess}`}
+          </Text>
+
           <View style={styles.dots}>
             <View style={styles.dot} />
             <View style={styles.dot} />
@@ -88,19 +73,11 @@ export function PaywallSuperwall() {
             <View style={[styles.dot, styles.dotActive]} />
           </View>
 
-          <TouchableOpacity
-            style={styles.button}
-            onPress={openPaywall}
-            disabled={busy}
-          >
-            {busy ? (
-              <ActivityIndicator color={colors.white} />
-            ) : (
-              <Text style={styles.buttonText}>Continue</Text>
-            )}
+          <TouchableOpacity style={styles.button} onPress={openPaywall}>
+            <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.restoreButton} onPress={openPaywall} disabled={busy}>
+          <TouchableOpacity style={styles.restoreButton} onPress={openPaywall}>
             <Text style={styles.restoreText}>Restore purchases</Text>
           </TouchableOpacity>
 
@@ -112,6 +89,10 @@ export function PaywallSuperwall() {
               <Text style={styles.devSkipText}>Skip for development</Text>
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity style={styles.signOutButton} onPress={signOut}>
+            <Text style={styles.signOutText}>Sign out</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </SafeAreaView>
@@ -142,6 +123,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: spacing.md,
   },
+  debugLine: { color: '#555', fontSize: 10, textAlign: 'center', marginBottom: 8 },
   bottomSection: { paddingBottom: spacing.xl },
   dots: {
     flexDirection: 'row',
@@ -164,4 +146,6 @@ const styles = StyleSheet.create({
   restoreText: { color: colors.textMuted, fontSize: 14 },
   devSkip: { marginTop: spacing.lg, alignItems: 'center' },
   devSkipText: { color: colors.textMuted, fontSize: 12 },
+  signOutButton: { marginTop: spacing.md, alignItems: 'center' },
+  signOutText: { color: colors.textMuted, fontSize: 12 },
 });

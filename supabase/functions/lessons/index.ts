@@ -574,13 +574,12 @@ async function handleComplete(
   }
 
   // Count today's per-tag completions (including the one just inserted).
-  // Uses UTC date boundaries; close enough for daily reset semantics.
-  const utcToday = new Date().toISOString().slice(0, 10);
+  // Rows store completion_local_date = client device calendar day (see migration).
   const { data: todayRows } = await supabase
     .from("user_lesson_completions")
     .select("id, lesson_id")
     .eq("user_id", userId)
-    .gte("completed_at", utcToday + "T00:00:00Z");
+    .eq("completion_local_date", localYmd);
 
   const todayLessonIds = [
     ...new Set((todayRows ?? []).map((r: { lesson_id: string }) => r.lesson_id)),

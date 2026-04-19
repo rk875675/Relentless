@@ -146,7 +146,7 @@ MAC scoring — growth
 Gains are tracked per MAC category per day, not per individual lesson.
 Each category has an independent daily completion count across all lessons (WOD and library) that carry that tag.
 Stepped gains per category per day: 1st = +8, 2nd = +3.5, 3rd = +2.0, 4th = +1.0, 5th+ = +0.5.
-Daily counts reset at midnight (UTC).
+Daily counts reset at the user’s device-local calendar midnight (same local day as streak / `X-Local-Date`).
 Multi-tag lessons apply gains independently to each of their categories using that category's own daily count.
 This prevents farming/spam while still rewarding multiple sessions per day with diminishing returns.
 

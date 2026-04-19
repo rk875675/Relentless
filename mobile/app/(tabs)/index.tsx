@@ -24,6 +24,7 @@ import { ProgressRing, type ScoreDelta } from '@/components/ProgressRing';
 import { getPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
+import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
 
 type Lesson = {
   id: string;
@@ -306,7 +307,7 @@ export default function HomeScreen() {
       method: 'POST',
       headers: { ...HOME_PROGRAM_ANCHOR_HEADERS },
       body: {
-        body: trimmed,
+        body: `${journalPrompt}\n\n${trimmed}`,
         ...(lesson?.id ? { lesson_id: lesson.id } : {}),
       },
     });
@@ -319,7 +320,7 @@ export default function HomeScreen() {
     setJournalSavedHint(true);
     setTimeout(() => setJournalSavedHint(false), 2500);
     return true;
-  }, [journalText, lesson?.id]);
+  }, [journalText, lesson?.id, journalPrompt]);
 
   const handleStartWorkout = async (overrideId?: string) => {
     const targetId = overrideId ?? lesson?.id;
@@ -330,7 +331,7 @@ export default function HomeScreen() {
     router.push(`/lesson/${targetId}` as any);
   };
 
-  const mins = lesson ? Math.round(lesson.duration_seconds / 60) : 0;
+  const mins = lesson ? approxLessonMinutes(lesson.duration_seconds) : 0;
   const streakIsReset = showMissReflection && !missJournalDismissed && streak?.current_streak === 0;
 
   return (
@@ -473,7 +474,7 @@ export default function HomeScreen() {
                     method: 'POST',
                     headers: { ...HOME_PROGRAM_ANCHOR_HEADERS },
                     body: {
-                      body: missJournalText.trim(),
+                      body: `Why did you miss today?\n\n${missJournalText.trim()}`,
                       entry_type: 'miss_reflection',
                     },
                   });

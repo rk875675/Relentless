@@ -257,6 +257,7 @@ schema migrations.
 | `user_id` | `uuid` | not null, references `profiles(id)` on delete cascade | |
 | `lesson_id` | `uuid` | not null, references `lessons(id)` | |
 | `completed_at` | `timestamptz` | not null, default `now()` | |
+| `completion_local_date` | `date` | not null | Client local calendar day when completed (MAC daily gain tiers; matches `p_completion_local_date` / `X-Local-Date`) |
 
 No unique constraint on (`user_id`, `lesson_id`) — allows re-completions.
 Whether re-completions count toward progress depends on the formula (TBD).
@@ -346,6 +347,7 @@ Because backend entitlement enforcement is required for all premium content and 
 | `lessons` | (`published`, `sort_order`) | Published lesson listing |
 | `user_lesson_completions` | (`user_id`, `lesson_id`) | Completion lookups |
 | `user_lesson_completions` | (`user_id`, `completed_at`) | Streak / history queries |
+| `user_lesson_completions` | (`user_id`, `completion_local_date`) | Per-day MAC gain tier counts |
 | `journal_entries` | (`user_id`, `created_at`) | Chronological listing |
 | `idempotency_keys` | (`expires_at`) | Scheduled cleanup |
 

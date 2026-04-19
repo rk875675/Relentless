@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Linking,
   Modal,
   Platform,
@@ -10,7 +11,7 @@ import {
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -38,6 +39,12 @@ function formatDate(dateStr: string | null): string {
   return `${m}/${d}/${y}`;
 }
 
+function toLocalISODate(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 export default function ProfileScreen() {
   const {
     session,
@@ -61,10 +68,23 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (isDevAccount) setDevToolsVisible(true);
   }, [isDevAccount]);
+
+  const persistCompDate = useCallback(
+    async (date: string | null) => {
+      setDateSaving(true);
+      try {
+        const err = await updateCompetitionDate(date);
+        if (err) Alert.alert('Could not save', err);
+      } finally {
+        setDateSaving(false);
+      }
+    },
+    [updateCompetitionDate],
+  );
   const [devDay, setDevDay] = useState<number | null>(null);
   const [devDayBusy, setDevDayBusy] = useState(false);
   const brandTapCount = useRef(0);
-  const brandTapTimer = useRef<ReturnType<typeof setTimeout>>();
+  const brandTapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const handleBrandTap = () => {
     if (!isDevAccount) return;
@@ -259,7 +279,13 @@ export default function ProfileScreen() {
       {datePickerVisible && (
         Platform.OS === 'ios' ? (
           <Modal visible transparent animationType="fade" onRequestClose={() => setDatePickerVisible(false)}>
-            <Pressable style={styles.dateOverlay} onPress={() => setDatePickerVisible(false)}>
+            <View style={styles.dateOverlay}>
+              <Pressable
+                style={StyleSheet.absoluteFillObject}
+                accessibilityRole="button"
+                accessibilityLabel="Close date picker"
+                onPress={() => setDatePickerVisible(false)}
+              />
               <View style={styles.dateSheet}>
                 <DateTimePicker
                   value={pendingDate}
@@ -274,44 +300,42 @@ export default function ProfileScreen() {
                 <View style={styles.dateActions}>
                   <TouchableOpacity
                     style={styles.dateClearBtn}
-                    onPress={async () => {
+                    onPress={() => {
                       setDatePickerVisible(false);
-                      setDateSaving(true);
-                      await updateCompetitionDate(null);
-                      setDateSaving(false);
+                      void persistCompDate(null);
                     }}
                   >
                     <Text style={styles.dateClearText}>Clear</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.dateSaveBtn}
-                    onPress={async () => {
+                    onPress={() => {
                       setDatePickerVisible(false);
-                      setDateSaving(true);
-                      const ymd = pendingDate.toISOString().slice(0, 10);
-                      await updateCompetitionDate(ymd);
-                      setDateSaving(false);
+                      void persistCompDate(toLocalISODate(pendingDate));
                     }}
                   >
                     <Text style={styles.dateSaveText}>Save</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-            </Pressable>
+            </View>
           </Modal>
         ) : (
           <DateTimePicker
             value={pendingDate}
             mode="date"
             minimumDate={new Date()}
-            onChange={async (_, selected) => {
-              setDatePickerVisible(false);
-              if (selected) {
-                setDateSaving(true);
-                const ymd = selected.toISOString().slice(0, 10);
-                await updateCompetitionDate(ymd);
-                setDateSaving(false);
+            onChange={(event: DateTimePickerEvent, selected) => {
+              if (event.type === 'dismissed') {
+                setDatePickerVisible(false);
+                return;
               }
+              if (event.type !== 'set' || !selected) {
+                setDatePickerVisible(false);
+                return;
+              }
+              setDatePickerVisible(false);
+              void persistCompDate(toLocalISODate(selected));
             }}
           />
         )
