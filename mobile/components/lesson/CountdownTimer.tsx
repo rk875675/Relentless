@@ -11,6 +11,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '@/lib/theme';
 import MacAlternatingRing from '@/components/lesson/MacAlternatingRing';
 
+// `completionHoldSeconds` remains in the prop shape for backward compatibility,
+// but the user paces the post-timer Continue themselves — no forced dwell.
 type Props = {
   durationSeconds: number;
   taskList: string[];
@@ -25,7 +27,6 @@ export default function CountdownTimer({
   durationSeconds,
   taskList,
   completionMessage,
-  completionHoldSeconds,
   catColor,
   accentColors,
   onComplete,
@@ -33,7 +34,6 @@ export default function CountdownTimer({
   const [phase, setPhase] = useState<'select' | 'running' | 'done'>('select');
   const [selectedTask, setSelectedTask] = useState('');
   const [elapsed, setElapsed] = useState(0);
-  const [continueEnabled, setContinueEnabled] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const fade = useRef(new Animated.Value(0)).current;
@@ -43,14 +43,6 @@ export default function CountdownTimer({
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
-
-  // Enable Continue button after completionHoldSeconds when done.
-  useEffect(() => {
-    if (phase !== 'done') return;
-    setContinueEnabled(false);
-    const t = setTimeout(() => setContinueEnabled(true), completionHoldSeconds * 1000);
-    return () => clearTimeout(t);
-  }, [phase, completionHoldSeconds]);
 
   const startTimer = () => {
     setPhase('running');
@@ -121,9 +113,8 @@ export default function CountdownTimer({
         <Ionicons name="checkmark-circle" size={64} color={catColor} />
         <Text style={styles.completionText}>{completionMessage}</Text>
         <TouchableOpacity
-          style={[styles.btn, !continueEnabled && styles.btnDisabled, { marginTop: spacing.xl }]}
+          style={[styles.btn, { marginTop: spacing.xl }]}
           onPress={() => onComplete('')}
-          disabled={!continueEnabled}
         >
           <Text style={styles.btnText}>Continue</Text>
         </TouchableOpacity>

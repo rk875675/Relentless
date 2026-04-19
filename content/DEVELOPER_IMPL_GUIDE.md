@@ -12,6 +12,13 @@ How to ship a new library lesson in ~10 minutes.
 4. `supabase db push`
 5. Done — lesson appears in the Library tab immediately
 
+**Verbatim exercise copy:** When implementing from `CONTENT_DELIVERY_GUIDE.md` or
+any approved lesson script, transcribe **exercise** fields into `content_blocks`
+**word for word** — including `interactive_model`, `steps[].text`, multi-select
+option strings, and related coach-authored labels. Do not paraphrase, tighten, or
+merge exercise copy in JSON or SQL migrations. If the spec does not match a block
+type, resolve with a content or product revision rather than rewriting the script.
+
 ---
 
 ## 2. UUID + sort_order registry
@@ -112,6 +119,16 @@ Swipe left = next, swipe right = back, tap = next. Last paragraph shows
 - 3–7 paragraphs is the sweet spot; beyond 7 gets long
 - `ambient_audio` is optional but strongly recommended
 
+### Verbatim exercise copy (program Daily Workouts + library)
+
+Approved scripts define the athlete-facing **exercise** copy. When you add or
+update `timed_exercise` and other exercise blocks (including specialized
+interactive types), paste prompts, option labels, and `interactive_model` text
+**exactly** as authored. Do not paraphrase for length or “clarity” in the database
+or templates. Same rule applies to program lesson migrations as to library
+lessons — see also Section 1 checklist above and `CONTENT_DELIVERY_GUIDE.md`
+(Section 4a / 5).
+
 ### `timed_exercise` — standard
 Text-step exercise. Steps advance automatically on a timer.
 
@@ -198,6 +215,114 @@ Always use exactly these 4 steps in this order.
 - `visual_cues` count = `duration_seconds / 10` (12 phrases for 120 s)
 - Keep each phrase phase-neutral — the phase label already tells the user
   what phase they're in; the cue provides motivation / coaching
+
+#### Optional fields (Day 5+ box breathing)
+
+These three fields extend the box-breathing renderer for richer Daily Workout
+sessions. They are **optional**; older blocks (Day 6 / Day 7 intros) leave
+them unset and behave exactly as before.
+
+- `rep_count` (number) — total reps. When set, a "Rep N of M" badge is
+  rendered top-right of the screen for the duration of the block. Should
+  match `duration_seconds / 16`.
+- `phase_labels` (object) — verbose, coach-authored labels rendered in place
+  of the bare `INHALE / HOLD / EXHALE / HOLD` chrome. All four keys required
+  when set:
+  ```json
+  "phase_labels": {
+    "inhale":   "Inhale through your nose. 4 seconds.",
+    "hold_in":  "Hold. 4 seconds.",
+    "exhale":   "Exhale through your mouth. 4 seconds.",
+    "hold_out": "Hold. 4 seconds."
+  }
+  ```
+- `mid_overlay` (object) — overlay shown after a specific rep boundary
+  (e.g. a "mind drifted? bring it back" reset between reps). Replaces the
+  phase-label/visual-cue card text for `duration_seconds`; does **not**
+  pause the breath animation.
+  ```json
+  "mid_overlay": {
+    "after_rep": 3,
+    "text": "Mind drifted? Good. Bring it back.",
+    "duration_seconds": 5
+  }
+  ```
+
+### `multi_select`
+Tap-to-toggle multi-choice list with a Confirm button. **Tap-to-advance only**
+— Confirm is gated only by `min_select` (0 = always enabled), never by a time
+lock. Used in WOD Day 2 to capture the athlete's distraction profile.
+
+```json
+{
+  "type": "multi_select",
+  "ambient_audio": "ambient/ambient_music.mp3",
+  "prompt": "What was your brain doing? Tap all that apply.",
+  "options": [
+    "Thinking about the outcome",
+    "Watching my competition",
+    "Tracking time, score, or distance"
+  ],
+  "confirm_label": "Confirm",
+  "min_select": 0
+}
+```
+
+- `prompt` — verbatim prompt shown above the list
+- `options` — tap-to-toggle option labels; transcribe verbatim
+- `confirm_label` — button label shown when the min-select threshold is met
+- `min_select` — minimum selections required before Confirm enables; use `0`
+  to always allow Confirm (default)
+- Selections are saved to the journal entry as a bullet list under the
+  prompt (e.g. `What was your brain doing?\n\n• Thinking about the outcome`)
+
+### `examples_with_entry`
+Fixed list of authored examples shown above a multiline text input with a
+single Save button. **Tap-to-advance only**, no min-time gate. Used in WOD
+Day 4 (identity-statement examples → athlete writes their own).
+
+```json
+{
+  "type": "examples_with_entry",
+  "ambient_audio": "ambient/ambient_music.mp3",
+  "examples_header": "",
+  "examples": [
+    "I am an athlete who shows up the same — whether I'm winning or losing.",
+    "I am an athlete who competes through discomfort."
+  ],
+  "input_prompt": "Now write 2–3 of your own. Present tense. Be specific.",
+  "submit_label": "Save"
+}
+```
+
+- `examples_header` — optional heading above the example list (empty string = no header)
+- `examples` — verbatim coach-authored examples
+- `input_prompt` — verbatim prompt shown above the text input
+- `submit_label` — Save button label
+- Whatever the athlete types is appended to the journal entry under the
+  `input_prompt` (skipped if empty)
+
+### `anchor_entry`
+Two-phase block: Phase 1 = single-line text entry; Phase 2 = the entered
+value displayed large with a hold-prompt and Continue button. Both phases
+are tap-to-advance. Used in WOD Day 7 (focus-anchor selection + hold).
+
+```json
+{
+  "type": "anchor_entry",
+  "ambient_audio": "ambient/ambient_music.mp3",
+  "entry_prompt": "What is your focus anchor? One or two words. Choose something that brings you into the present moment.",
+  "save_label": "Save",
+  "hold_prompt": "Hold your anchor. When your mind drifts — and it will — bring it back. That's the rep.",
+  "continue_label": "Continue"
+}
+```
+
+- `entry_prompt` — verbatim prompt shown above the text input in Phase 1
+- `save_label` — Save button label (enabled when input is non-empty)
+- `hold_prompt` — verbatim prompt shown beneath the large-format anchor word in Phase 2
+- `continue_label` — button label that ends the block
+- Saved to the journal entry as `Anchor: <typed value>`
 
 ### `flash_cards`
 Tap-to-flip cards. User taps card to reveal back, taps Next to advance.
@@ -444,6 +569,12 @@ models where each step is a 10 s visual cue but breaths repeat every 2–12 s).
 **Rule of thumb:** heavier haptic = action cue (start inhaling / move to next
 zone). Lighter haptic = stop cue (hold, release). No haptic = passive phase.
 
+**New repeating inhale/exhale circle (`interactive_model`):** Register the model
+in `CIRCLE_BREATH_MODEL_CONFIG` in `mobile/app/lesson/[id].tsx` with `timing`
+(ms: inhale, hold-in, exhale, hold-out) and `wallDrive: true` so the bubble and
+Inhale/Exhale labels stay locked to wall time. Set `haptic_pattern.cycle_seconds`
+to the total cycle length in seconds (must match the sum of those ms phases).
+
 ---
 
 ## 4. Standard block order for library lessons
@@ -499,14 +630,23 @@ migrations land the same day.
 This is the total expected session time shown to the user. Set it to the
 realistic wall-clock time including any user-paced blocks.
 
-| Block type            | Contribution to duration_seconds     |
-|-----------------------|--------------------------------------|
-| `tap_through_text`    | ~10–15s per paragraph (estimate)     |
-| `timed_exercise`      | exact `duration_seconds` of block    |
-| `box_breathing`       | nearest 16s ceiling of block value   |
-| `flash_cards`         | ~15s per card (estimate)             |
-| `voiceover`           | exact `total_audio_seconds`          |
-| `journal_prompt`      | ~60s (estimate)                      |
+| Block type             | Contribution to duration_seconds              |
+|------------------------|-----------------------------------------------|
+| `tap_through_text`     | ~10–15s per paragraph (estimate)              |
+| `timed_exercise`       | exact `duration_seconds` of block             |
+|   ↳ user-paced (no `interactive_model`) | ~5s per step (tap-paced)     |
+| `box_breathing`        | nearest 16s ceiling of block value            |
+| `flash_cards`          | ~15s per card (estimate)                      |
+| `voiceover`            | exact `total_audio_seconds`                   |
+| `prompt_cards`         | ~25s per card (tap-paced estimate)            |
+| `multi_select`         | ~25s (tap-paced estimate)                     |
+| `examples_with_entry`  | ~45s (tap-paced estimate)                     |
+| `anchor_entry`         | ~45s (entry + hold, tap-paced estimate)       |
+| `list_builder`         | ~10s × `min_entries` (tap-paced estimate)     |
+| `bubble_sort`          | ~30s (tap-paced estimate)                     |
+| `two_column_sort`      | ~30s (tap-paced estimate)                     |
+| `countdown_timer`      | exact `duration_seconds` of block             |
+| `journal_prompt`       | ~60s (estimate)                               |
 
 For Box Breathing (M-01 Short): 5 paragraphs × 12s = 60s + 128s exercise +
 60s journal ≈ 248s → rounded to 180s displayed as `~3 min`.

@@ -96,6 +96,8 @@ export default function CategoryScreen() {
     const dayLabel = lesson.program_day ? `DAY ${lesson.program_day}` : null;
     const isLibrary =
       lesson.lesson_type === 'library' || lesson.lesson_type === 'library_long';
+    const macAccentDurationPill =
+      isLibrary || lesson.program_day != null;
 
     return (
       <TouchableOpacity
@@ -113,14 +115,14 @@ export default function CategoryScreen() {
           </View>
           <View style={[
             styles.cardDurationPill,
-            isLibrary && {
+            macAccentDurationPill && {
               backgroundColor: `${categoryColor}1e`,
               borderColor: `${categoryColor}55`,
             },
           ]}>
             <Text style={[
               styles.cardDurationText,
-              isLibrary && { color: categoryColor },
+              macAccentDurationPill && { color: categoryColor },
             ]}>~{mins} min</Text>
           </View>
         </View>

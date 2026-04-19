@@ -171,11 +171,14 @@ export default function BubbleSort({
           ))}
         </ScrollView>
         <View style={styles.discardActions}>
-          {canRestore && lastPopped !== null && (
+          {canRestore && lastPopped !== null ? (
             <TouchableOpacity style={styles.restoreBtn} onPress={restoreLast}>
               <Ionicons name="arrow-undo" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
+          ) : (
+            <View style={styles.restoreBtnSpacer} />
           )}
+          <View style={styles.discardActionsFlex} />
           <TouchableOpacity style={styles.btn} onPress={finishDiscard}>
             <Text style={styles.btnText}>Continue</Text>
           </TouchableOpacity>
@@ -298,8 +301,16 @@ const styles = StyleSheet.create({
   discardActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    width: '100%',
     marginTop: spacing.sm,
+  },
+  discardActionsFlex: {
+    flex: 1,
+    minWidth: spacing.md,
+  },
+  restoreBtnSpacer: {
+    width: 48,
+    height: 48,
   },
   restoreBtn: {
     width: 48,

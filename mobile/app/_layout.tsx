@@ -31,10 +31,16 @@ function RouteGuard() {
 
   useEffect(() => {
     if (loading) return;
+    // Avoid mis-routing while the root navigator hasn't reported a segment yet (common after refresh).
+    const rootSegment = (segments as string[])[0];
+    if (!rootSegment) {
+      setTimeout(hideSplash, 50);
+      return;
+    }
     initialLoadDone.current = true;
 
-    const inAuth = segments[0] === '(auth)';
-    const inOnboarding = segments[0] === '(onboarding)';
+    const inAuth = rootSegment === '(auth)';
+    const inOnboarding = rootSegment === '(onboarding)';
     const onPaywall = inOnboarding && segments[1] === 'paywall';
 
     if (!session && !inAuth && !inOnboarding) {
@@ -45,7 +51,9 @@ function RouteGuard() {
       } else if (onboardingComplete && !hasPremiumAccess) {
         router.replace('/(onboarding)/paywall');
       }
-    } else if (session && !onboardingComplete && !inOnboarding) {
+      // Do not redirect inAuth + !onboardingComplete → welcome: signed-in users may open
+      // login from welcome (e.g. dev replay). After sign-in, login.tsx replaces welcome.
+    } else if (session && !onboardingComplete && !inOnboarding && !inAuth) {
       router.replace('/(onboarding)/welcome');
     } else if (session && onboardingComplete && !hasPremiumAccess && !onPaywall && !inAuth) {
       router.replace('/(onboarding)/paywall');

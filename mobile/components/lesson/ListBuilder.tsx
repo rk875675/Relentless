@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Animated,
   KeyboardAvoidingView,
@@ -14,6 +14,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '@/lib/theme';
 import { pickMacColor } from '@/lib/mac-categories';
 
+// `minEntrySeconds` and `summaryHoldSeconds` remain in the prop shape so the
+// player keeps passing them, but the component no longer enforces dwell time —
+// the user paces themselves, matching the rest of the lesson UX.
 type Props = {
   prompts: string[];
   minEntries: number;
@@ -28,9 +31,7 @@ type Props = {
 export default function ListBuilder({
   prompts,
   minEntries,
-  minEntrySeconds,
   summaryHeader,
-  summaryHoldSeconds,
   catColor,
   accentColors,
   onComplete,
@@ -39,41 +40,15 @@ export default function ListBuilder({
   const [entries, setEntries] = useState<string[]>([]);
   const [text, setText] = useState('');
   const [promptIndex, setPromptIndex] = useState(0);
-  const [canSubmit, setCanSubmit] = useState(false);
-  const [continueEnabled, setContinueEnabled] = useState(false);
-  const submitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fade = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    return () => {
-      if (submitTimer.current) clearTimeout(submitTimer.current);
-    };
-  }, []);
-
-  // Enable Continue button after summaryHoldSeconds when summary is shown.
-  useEffect(() => {
-    if (phase !== 'summary') return;
-    setContinueEnabled(false);
-    const t = setTimeout(() => setContinueEnabled(true), summaryHoldSeconds * 1000);
-    return () => clearTimeout(t);
-  }, [phase, summaryHoldSeconds]);
-
-  const startSubmitTimer = useCallback(() => {
-    setCanSubmit(false);
-    if (submitTimer.current) clearTimeout(submitTimer.current);
-    submitTimer.current = setTimeout(() => setCanSubmit(true), minEntrySeconds * 1000);
-  }, [minEntrySeconds]);
-
-  useEffect(() => { startSubmitTimer(); }, [startSubmitTimer]);
 
   const addEntry = () => {
     const trimmed = text.trim();
-    if (!trimmed || !canSubmit) return;
+    if (!trimmed) return;
     const newEntries = [...entries, trimmed];
     setEntries(newEntries);
     setText('');
     setPromptIndex((i) => Math.min(i + 1, prompts.length - 1));
-    startSubmitTimer();
   };
 
   const finish = () => {
@@ -84,7 +59,6 @@ export default function ListBuilder({
   };
 
   const handleContinue = () => {
-    if (!continueEnabled) return;
     const collectedText = entries.map((e) => `• ${e}`).join('\n');
     onComplete(collectedText);
   };
@@ -110,11 +84,7 @@ export default function ListBuilder({
             </View>
           ))}
         </ScrollView>
-        <TouchableOpacity
-          style={[styles.btn, !continueEnabled && styles.btnDisabled]}
-          onPress={handleContinue}
-          disabled={!continueEnabled}
-        >
+        <TouchableOpacity style={styles.btn} onPress={handleContinue}>
           <Text style={styles.btnText}>Continue</Text>
         </TouchableOpacity>
       </Animated.View>
@@ -160,9 +130,8 @@ export default function ListBuilder({
             blurOnSubmit={false}
           />
           <TouchableOpacity
-            style={[styles.addBtn, { backgroundColor: catColor }, !canSubmit && { opacity: 0.35 }]}
+            style={[styles.addBtn, { backgroundColor: catColor }]}
             onPress={addEntry}
-            disabled={!canSubmit}
           >
             <Ionicons name="add" size={24} color={colors.white} />
           </TouchableOpacity>

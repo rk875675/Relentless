@@ -135,6 +135,16 @@ JOURNAL PROMPT  (optional — delete if none)
 [The exact question shown to the user.]
 ```
 
+#### Verbatim exercise copy
+
+When an **approved exercise script** is provided (interactive model description,
+step prompts, on-screen labels, multi-select options, and any timing or UX notes
+that belong to the exercise), put it in the `EXERCISE` section **word for word**.
+Do **not** paraphrase, shorten, merge steps, substitute synonyms, or “clean up”
+exercise copy. If something does not fit the app or template, flag it for revision
+instead of rewriting it yourself. The same rule applies to library lessons — see
+Section 4b and Section 5.
+
 ---
 
 ### 4b. Library lesson template
@@ -219,14 +229,45 @@ during a lesson. They appear between voiceover segments and give the
 athlete a structured activity to perform (breathing drills, body scans,
 visualization, focused attention, etc.).
 
+### Verbatim copy for exercise sections
+
+Anything that belongs to the **exercise** portion of an approved script —
+including the interactive model write-up, each step’s on-screen text, every
+multi-select option label, and any coach-specified strings tied to the exercise —
+must be reproduced **exactly** in your handoff. Do not paraphrase exercise content
+when authoring or pasting into the template. (Voiceover wording has its own
+“say exactly what you record” expectation; this rule calls out **exercise**
+sections specifically because they are easy to accidentally shorten when
+reformatting.)
+
+### Tap-to-advance pacing (no time-locks)
+
+Exercise content steps in the app are **tap-to-advance**. The athlete reads,
+thinks, types, or selects, then taps a button (Next, Save, Confirm, Continue)
+to move on. We do **not** implement:
+
+- Submit buttons that are locked for the first N seconds with a visible
+  countdown.
+- "Auto-advance after N seconds" for content steps (typed entry, multi-select,
+  reflection cards, scoring questions).
+- Hold-gates that prevent advancing until a minimum time has elapsed.
+
+If your script specifies any of those (lock timers, countdowns, auto-advance),
+write the copy verbatim and **call out the pacing intent in a note**, but
+expect the implementation to use tap-to-advance regardless. The only timed
+exercises are **rhythm/breath drills** (e.g. `box_breathing`, body-scan zone
+timers) where the timer *is* the exercise.
+
 ### How to write an exercise block
 
 Each exercise block needs:
 
-1. **A total duration** — the overall time the exercise runs.
-2. **Numbered steps** — each step has on-screen instruction text and a
-   per-step duration. Steps are displayed one at a time; the app advances
-   automatically when the timer for each step expires.
+1. **A total duration** — the overall time the exercise runs (for rhythm/breath
+   drills) or an estimated wall-clock duration (for tap-to-advance content
+   steps; used for the home-card "approx min" only).
+2. **Numbered steps** — each step has on-screen instruction text. For
+   rhythm/breath drills, steps advance automatically on a per-step timer.
+   For all other content steps, steps are tap-to-advance per the rule above.
 
 ### Writing clear step instructions
 

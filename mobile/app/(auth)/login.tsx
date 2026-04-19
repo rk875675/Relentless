@@ -18,13 +18,16 @@ export default function LoginScreen() {
     }
     setError('');
     setLoading(true);
-    const err = await signIn(email.trim(), password);
-    if (err) {
+    try {
+      const result = await signIn(email.trim(), password);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.replace(result.path as any);
+    } finally {
       setLoading(false);
-      setError(err);
-      return;
     }
-    router.replace('/(onboarding)/welcome' as any);
   };
 
   return (

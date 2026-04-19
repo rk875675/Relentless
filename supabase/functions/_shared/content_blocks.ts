@@ -37,6 +37,23 @@ const VoiceoverBlockSchema = z.object({
   timed_text: z.array(TimedTextCueSchema).default([]),
 }).strict();
 
+// Verbose phase labels for box_breathing. When set, the player shows these
+// instead of the bare step `text` (e.g. "Inhale through your nose. 4 seconds.").
+const BoxBreathingPhaseLabelsSchema = z.object({
+  inhale: z.string().min(1),
+  hold_in: z.string().min(1),
+  exhale: z.string().min(1),
+  hold_out: z.string().min(1),
+}).strict();
+
+// Mid-exercise overlay shown after a specific rep boundary in box_breathing
+// (e.g. after rep 3, "Mind drifted? Good. Bring it back." for 5 seconds).
+const BoxBreathingMidOverlaySchema = z.object({
+  after_rep: z.number().int().positive(),
+  text: z.string().min(1),
+  duration_seconds: z.number().int().positive(),
+}).strict();
+
 const TimedExerciseBlockSchema = z.object({
   type: z.literal("timed_exercise"),
   duration_seconds: z.number().int().positive(),
@@ -48,6 +65,13 @@ const TimedExerciseBlockSchema = z.object({
   // Motivational phrases cycled on screen during box_breathing exercises.
   // Each phrase displays for ~10 s. Ignored for other interactive models.
   visual_cues: z.array(z.string().min(1)).optional(),
+  // box_breathing only: total reps for the on-screen "Rep N of M" counter.
+  // When set, must match duration_seconds / sum(steps[].duration_seconds).
+  rep_count: z.number().int().positive().optional(),
+  // box_breathing only: verbose phase labels rendered in place of step `text`.
+  phase_labels: BoxBreathingPhaseLabelsSchema.optional(),
+  // box_breathing only: overlay shown after a specific rep boundary.
+  mid_overlay: BoxBreathingMidOverlaySchema.optional(),
   steps: z.array(ExerciseStepSchema).min(1),
 }).strict();
 
@@ -134,6 +158,41 @@ const CountdownTimerBlockSchema = z.object({
   completion_hold_seconds: z.number().min(0),
 }).strict();
 
+// Tap-to-toggle multi-choice list. User selects any number of options and
+// taps Confirm. No time-locks, no countdown. (Day 2 Step 2.)
+const MultiSelectBlockSchema = z.object({
+  type: z.literal("multi_select"),
+  ambient_audio: z.string().min(1).optional(),
+  prompt: z.string().min(1),
+  options: z.array(z.string().min(1)).min(2),
+  confirm_label: z.string().min(1).default("Confirm"),
+  // 0 means "Confirm always enabled". Gates only the Confirm button, never
+  // adds a time-based lock.
+  min_select: z.number().int().min(0).default(0),
+}).strict();
+
+// Examples shown above a multiline text input. Single Save button advances
+// the lesson. No time-locks, no countdown. (Day 4.)
+const ExamplesWithEntryBlockSchema = z.object({
+  type: z.literal("examples_with_entry"),
+  ambient_audio: z.string().min(1).optional(),
+  examples_header: z.string().default(""),
+  examples: z.array(z.string().min(1)).min(1),
+  input_prompt: z.string().min(1),
+  submit_label: z.string().min(1).default("Save"),
+}).strict();
+
+// Two-phase block: Phase 1 = single-line text entry; Phase 2 = the entered
+// value displayed large with a hold prompt. Tap-to-advance both phases. (Day 7.)
+const AnchorEntryBlockSchema = z.object({
+  type: z.literal("anchor_entry"),
+  ambient_audio: z.string().min(1).optional(),
+  entry_prompt: z.string().min(1),
+  save_label: z.string().min(1).default("Save"),
+  hold_prompt: z.string().min(1),
+  continue_label: z.string().min(1).default("Continue"),
+}).strict();
+
 const ContentBlockSchema = z.discriminatedUnion("type", [
   VoiceoverBlockSchema,
   TimedExerciseBlockSchema,
@@ -145,6 +204,9 @@ const ContentBlockSchema = z.discriminatedUnion("type", [
   TwoColumnSortBlockSchema,
   ListBuilderBlockSchema,
   CountdownTimerBlockSchema,
+  MultiSelectBlockSchema,
+  ExamplesWithEntryBlockSchema,
+  AnchorEntryBlockSchema,
 ]);
 
 export const ContentBlocksSchema = z.object({
