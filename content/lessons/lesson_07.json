@@ -3,25 +3,71 @@
   "title": "Focus Anchor — Find Yours",
   "program_version": "v1",
   "day_number": 7,
-  "mac_categories": ["mindfulness"],
+  "mac_categories": [
+    "mindfulness"
+  ],
   "coach": "Coach Grant",
-  "duration_seconds": 181,
+  "duration_seconds": 214,
   "blocks": [
     {
       "type": "voiceover",
       "audio_files": [
         "lesson_07/lesson_07_seg_01.mp3"
       ],
-      "total_audio_seconds": 71.0,
+      "total_audio_seconds": 69.88,
       "timed_text": [
-        { "start_s": 0.0, "text": "Day 7." },
-        { "start_s": 3.0, "text": "You've done your first week. Breathing. Body scan. Awareness." },
-        { "start_s": 12.0, "text": "Today we build the tool that ties all of it together." },
-        { "start_s": 20.0, "text": "It's called a focus anchor." },
-        { "start_s": 25.0, "text": "A word, a short phrase, or a physical sensation that your mind comes back to when it starts to drift." },
-        { "start_s": 38.0, "text": "It should be short — one or two words max. Process-focused, not outcome-focused." },
-        { "start_s": 50.0, "text": "Examples: next play, breathe, process, here, trust." },
-        { "start_s": 58.0, "text": "Before we start — take one box breath to settle in." }
+        {
+          "start_s": 0.5,
+          "text": "Day 7."
+        },
+        {
+          "start_s": 2.1,
+          "text": "You've done your first week."
+        },
+        {
+          "start_s": 4.44,
+          "text": "Breathing."
+        },
+        {
+          "start_s": 5.58,
+          "text": "Body scan."
+        },
+        {
+          "start_s": 6.78,
+          "text": "Awareness."
+        },
+        {
+          "start_s": 9.78,
+          "text": "Today we build the tool that ties all of it together."
+        },
+        {
+          "start_s": 13.0,
+          "text": "It's called a focus anchor."
+        },
+        {
+          "start_s": 18.88,
+          "text": "A word, a short phrase, or a physical sensation that your mind comes back to when it starts to drift."
+        },
+        {
+          "start_s": 31.76,
+          "text": "Today you choose yours on purpose."
+        },
+        {
+          "start_s": 37.74,
+          "text": "It should be short — one or two words max."
+        },
+        {
+          "start_s": 41.94,
+          "text": "Process-focused, not outcome-focused."
+        },
+        {
+          "start_s": 50.76,
+          "text": "Examples: next play, breathe, process, here, trust."
+        },
+        {
+          "start_s": 59.0,
+          "text": "Before we start — take one box breath to settle in."
+        }
       ]
     },
     {
@@ -33,10 +79,26 @@
         "Follow the circle."
       ],
       "steps": [
-        { "text": "Inhale", "duration_seconds": 4, "haptic": "heavy" },
-        { "text": "Hold", "duration_seconds": 4, "haptic": "light" },
-        { "text": "Exhale", "duration_seconds": 4, "haptic": "heavy" },
-        { "text": "Hold", "duration_seconds": 4, "haptic": "light" }
+        {
+          "text": "Inhale",
+          "duration_seconds": 4,
+          "haptic": "heavy"
+        },
+        {
+          "text": "Hold",
+          "duration_seconds": 4,
+          "haptic": "light"
+        },
+        {
+          "text": "Exhale",
+          "duration_seconds": 4,
+          "haptic": "heavy"
+        },
+        {
+          "text": "Hold",
+          "duration_seconds": 4,
+          "haptic": "light"
+        }
       ]
     },
     {
@@ -59,12 +121,28 @@
       "audio_files": [
         "lesson_07/lesson_07_seg_02.mp3"
       ],
-      "total_audio_seconds": 24.0,
+      "total_audio_seconds": 23.3,
       "timed_text": [
-        { "start_s": 0.0,  "text": "That word you just saved — that's your reset tool." },
-        { "start_s": 5.0,  "text": "In competition, when things get loud in your head, that's what you come back to." },
-        { "start_s": 12.0, "text": "We're going to use it throughout the rest of this program." },
-        { "start_s": 17.0, "text": "Go hit the journal. That's your first week of Relentless." }
+        {
+          "start_s": 1.78,
+          "text": "That word you just saved — that's your reset tool."
+        },
+        {
+          "start_s": 5.1,
+          "text": "In competition, when things get loud in your head, that's what you come back to."
+        },
+        {
+          "start_s": 13.88,
+          "text": "We're going to use it throughout the rest of this program."
+        },
+        {
+          "start_s": 16.82,
+          "text": "Go hit the journal."
+        },
+        {
+          "start_s": 21.18,
+          "text": "That's your first week of Relentless."
+        }
       ]
     },
     {

@@ -1,0 +1,1339 @@
+{
+  "max_gap_s": 18.0,
+  "max_chars": 130,
+  "lessons": {
+    "1": {
+      "voiceovers": [
+        {
+          "seg_index": 1,
+          "audio_files": [
+            "lesson_01/lesson_01_seg_01.mp3",
+            "lesson_01/lesson_01_seg_02.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSON 1\\L1S1.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 107.55,
+          "current_cue_count": 7,
+          "audit": {
+            "issue_count": 2,
+            "issues": [
+              {
+                "kind": "GAP",
+                "cue_idx": 2,
+                "start_s": 20.84,
+                "next_start_s": 56.46,
+                "gap_s": 35.62,
+                "text": "The framework is called MAC."
+              },
+              {
+                "kind": "GAP",
+                "cue_idx": 5,
+                "start_s": 79.51,
+                "next_start_s": 105.77,
+                "gap_s": 26.26,
+                "text": "Commitment — show up, regardless of how you feel."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 0.24,
+              "end_s": 2.56,
+              "text": "Hey, welcome to Relentless."
+            },
+            {
+              "start_s": 2.56,
+              "end_s": 7.04,
+              "text": "Before we do anything, I want to explain what you actually signed up for, because it's"
+            },
+            {
+              "start_s": 7.04,
+              "end_s": 9.24,
+              "text": "not what most people think."
+            },
+            {
+              "start_s": 9.24,
+              "end_s": 11.64,
+              "text": "This is not a meditation app."
+            },
+            {
+              "start_s": 11.64,
+              "end_s": 17.08,
+              "text": "This is not positive thinking, or visualization boards, or motivational quotes."
+            },
+            {
+              "start_s": 17.08,
+              "end_s": 21.04,
+              "text": "This is real mental performance training, and there's a huge difference."
+            }
+          ],
+          "whisper_segment_count": 6
+        },
+        {
+          "seg_index": 2,
+          "audio_files": [
+            "lesson_01/lesson_01_seg_03.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSON 1\\L1S2.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 26.0,
+          "current_cue_count": 4,
+          "audit": {
+            "issue_count": 2,
+            "issues": [
+              {
+                "kind": "MULTI",
+                "cue_idx": 0,
+                "start_s": 0.0,
+                "n_sentences": 2,
+                "text": "Got your answer? Remember it."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 2,
+                "start_s": 9.0,
+                "n_sentences": 3,
+                "text": "Go ahead and hit the journal. One question. Be honest."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 0.0,
+              "end_s": 4.8,
+              "text": "The framework behind every single lesson in this app is called M-A-C,"
+            },
+            {
+              "start_s": 5.52,
+              "end_s": 12.56,
+              "text": "mindfulness, acceptance, commitment. It was introduced in 2001 and is the most studied"
+            },
+            {
+              "start_s": 12.56,
+              "end_s": 18.64,
+              "text": "mental performance approach for athletes specifically, not just soldiers or executives, athletes."
+            },
+            {
+              "start_s": 20.08,
+              "end_s": 27.04,
+              "text": "And here's what each one means in plain terms. Mindfulness is the ability to notice what"
+            },
+            {
+              "start_s": 27.04,
+              "end_s": 33.84,
+              "text": "your mind is doing right now and redirect it. That's it. Not clearing your mind,"
+            },
+            {
+              "start_s": 33.84,
+              "end_s": 39.76,
+              "text": "not thinking about nothing, just noticing where your attention is and choosing where it goes."
+            },
+            {
+              "start_s": 41.84,
+              "end_s": 44.96,
+              "text": "Acceptance is the willingness to feel uncomfortable,"
+            },
+            {
+              "start_s": 45.68,
+              "end_s": 50.8,
+              "text": "like nervous, scared or doubtful, without treating it like an emergency."
+            },
+            {
+              "start_s": 51.92,
+              "end_s": 56.24,
+              "text": "You don't eliminate the feeling. You stop letting it run your decisions."
+            },
+            {
+              "start_s": 58.51,
+              "end_s": 64.59,
+              "text": "Commitment is showing up for who you said you are, regardless of how you feel on any given day."
+            },
+            {
+              "start_s": 65.39,
+              "end_s": 70.91,
+              "text": "Not motivation, motivation comes and goes, but commitment is a decision."
+            },
+            {
+              "start_s": 72.75,
+              "end_s": 79.07,
+              "text": "Together, those three things are what every elite performer is doing. Whether they have a name for"
+            },
+            {
+              "start_s": 79.07,
+              "end_s": 86.83,
+              "text": "it or not, but now you have the name. Take a second and think about which one you need most."
+            }
+          ],
+          "whisper_segment_count": 13
+        }
+      ]
+    },
+    "2": {
+      "voiceovers": [
+        {
+          "seg_index": 1,
+          "audio_files": [
+            "lesson_02/lesson_02_seg_01.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L2S1.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 114.01,
+          "current_cue_count": 9,
+          "audit": {
+            "issue_count": 5,
+            "issues": [
+              {
+                "kind": "MULTI",
+                "cue_idx": 4,
+                "start_s": 28.83,
+                "n_sentences": 3,
+                "text": "System 1 is fast. Automatic. Instinctive."
+              },
+              {
+                "kind": "GAP",
+                "cue_idx": 4,
+                "start_s": 28.83,
+                "next_start_s": 57.93,
+                "gap_s": 29.1,
+                "text": "System 1 is fast. Automatic. Instinctive."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 5,
+                "start_s": 57.93,
+                "n_sentences": 3,
+                "text": "System 2 is slow. Deliberate. Analytical."
+              },
+              {
+                "kind": "GAP",
+                "cue_idx": 5,
+                "start_s": 57.93,
+                "next_start_s": 82.57,
+                "gap_s": 24.64,
+                "text": "System 2 is slow. Deliberate. Analytical."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 7,
+                "start_s": 90.15,
+                "n_sentences": 2,
+                "text": "The fix isn't to think less. It's to train your mind to step back."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 1.07,
+              "end_s": 6.75,
+              "text": "Day 2. Yesterday I told you this training is built on science. Today I want to show you"
+            },
+            {
+              "start_s": 6.75,
+              "end_s": 11.15,
+              "text": "the exact science because once you understand what's actually happening in your brain"
+            },
+            {
+              "start_s": 11.15,
+              "end_s": 17.91,
+              "text": "when you choke, you can't unsee it. So in 2002 a psychologist named Daniel Keniman won"
+            },
+            {
+              "start_s": 17.91,
+              "end_s": 23.19,
+              "text": "the Nobel Prize and his research explains something that changes how you think about"
+            },
+            {
+              "start_s": 23.19,
+              "end_s": 30.11,
+              "text": "every high pressure moment you've ever had. He found that the brain runs on two systems."
+            },
+            {
+              "start_s": 30.11,
+              "end_s": 36.39,
+              "text": "System 1 is fast, automatic, instinctive. When you've done something thousands of times"
+            },
+            {
+              "start_s": 36.39,
+              "end_s": 42.59,
+              "text": "of free throw, a distance you've run a thousand times, a survey hit since you were 12. System"
+            },
+            {
+              "start_s": 42.59,
+              "end_s": 50.63,
+              "text": "1 handles it. It doesn't think. It just executes. And that's what flow state is. That's what"
+            },
+            {
+              "start_s": 50.63,
+              "end_s": 56.27,
+              "text": "people mean when they say something is in the zone or someone is in the zone. System 1"
+            },
+            {
+              "start_s": 56.27,
+              "end_s": 64.39,
+              "text": "is running the show. System 2 is slow, deliberate, analytical. System 2 is what kicks in when"
+            },
+            {
+              "start_s": 64.39,
+              "end_s": 70.43,
+              "text": "you're overthinking. When you're thinking about your form on a rep you've done 10,000"
+            },
+            {
+              "start_s": 70.43,
+              "end_s": 75.67,
+              "text": "times. When you're thinking about the split you just ran. When you're thinking about"
+            },
+            {
+              "start_s": 75.67,
+              "end_s": 80.99,
+              "text": "who's next to you, what your coach is going to say, whether you have enough left. But"
+            },
+            {
+              "start_s": 80.99,
+              "end_s": 87.59,
+              "text": "here's the glitch. Choking is what happens when System 2 tries to take control of something"
+            },
+            {
+              "start_s": 87.59,
+              "end_s": 95.91,
+              "text": "System 1 already owns. The fix isn't to think less. It's to train your mind to step back"
+            },
+            {
+              "start_s": 95.91,
+              "end_s": 103.47,
+              "text": "and let System 1 do its job. That's what every drill in this app is doing. Right now I want"
+            },
+            {
+              "start_s": 103.47,
+              "end_s": 109.51,
+              "text": "you to find your version of that moment. On your screen you're going to log it and"
+            },
+            {
+              "start_s": 109.51,
+              "end_s": 114.15,
+              "text": "that identify exactly what your brain was doing instead of competing."
+            }
+          ],
+          "whisper_segment_count": 18
+        },
+        {
+          "seg_index": 2,
+          "audio_files": [
+            "lesson_02/lesson_02_seg_02.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L2S2.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 22.93,
+          "current_cue_count": 4,
+          "audit": {
+            "issue_count": 1,
+            "issues": [
+              {
+                "kind": "MULTI",
+                "cue_idx": 2,
+                "start_s": 17.35,
+                "n_sentences": 2,
+                "text": "Go hit the journal. One question."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 1.71,
+              "end_s": 10.03,
+              "text": "What you just logged, that's your distraction profile. That's the exact pattern your brain defaults to when the pressure is on."
+            },
+            {
+              "start_s": 10.83,
+              "end_s": 16.07,
+              "text": "Every drill from here is training you to catch that pattern before it catches you."
+            },
+            {
+              "start_s": 16.87,
+              "end_s": 22.99,
+              "text": "Now go hit the journal, one question. After you finished, day two is complete."
+            }
+          ],
+          "whisper_segment_count": 3
+        }
+      ]
+    },
+    "3": {
+      "voiceovers": [
+        {
+          "seg_index": 1,
+          "audio_files": [
+            "lesson_03/lesson_03_seg_01.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L3S1.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 48.66,
+          "current_cue_count": 7,
+          "audit": {
+            "issue_count": 2,
+            "issues": [
+              {
+                "kind": "MULTI",
+                "cue_idx": 5,
+                "start_s": 28.86,
+                "n_sentences": 2,
+                "text": "1 means it's a major problem. 10 means you've got it locked in."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 6,
+                "start_s": 43.08,
+                "n_sentences": 2,
+                "text": "You'll have 30 seconds per question. Read it, sit with it, and be honest."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 1.26,
+              "end_s": 7.74,
+              "text": "Day three. Before we go any further, we need a starting point. Think of this like measuring"
+            },
+            {
+              "start_s": 7.74,
+              "end_s": 12.9,
+              "text": "your vertical before a training block. We're not judging where you are. We're creating"
+            },
+            {
+              "start_s": 12.9,
+              "end_s": 19.06,
+              "text": "a number we can compare against again on day 30. So I'm going to walk you through three"
+            },
+            {
+              "start_s": 19.06,
+              "end_s": 25.94,
+              "text": "questions. One for each pillar. Mindfulness, acceptance, commitment. Score yourself"
+            },
+            {
+              "start_s": 25.94,
+              "end_s": 33.02,
+              "text": "honestly from one to ten. One means it's a major problem for you right now and ten means"
+            },
+            {
+              "start_s": 33.02,
+              "end_s": 39.26,
+              "text": "you've got this locked in. There's no right answer. It's just where you are today."
+            },
+            {
+              "start_s": 39.26,
+              "end_s": 44.78,
+              "text": "So the screen is going to show you each question one at a time. You'll have 30 seconds per"
+            },
+            {
+              "start_s": 44.78,
+              "end_s": 48.74,
+              "text": "question. Read it, sit with it, and be honest."
+            }
+          ],
+          "whisper_segment_count": 8
+        },
+        {
+          "seg_index": 2,
+          "audio_files": [
+            "lesson_03/lesson_03_seg_02.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L3S2.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 25.02,
+          "current_cue_count": 4,
+          "audit": {
+            "issue_count": 1,
+            "issues": [
+              {
+                "kind": "MULTI",
+                "cue_idx": 2,
+                "start_s": 16.68,
+                "n_sentences": 2,
+                "text": "Hit the journal. Write your scores down and add one sentence explaining each one."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 0.66,
+              "end_s": 6.26,
+              "text": "So those three numbers are your baseline. They're saved in your profile automatically."
+            },
+            {
+              "start_s": 6.26,
+              "end_s": 11.98,
+              "text": "On day 30, you're going to answer those exact same questions again, and you're going to see"
+            },
+            {
+              "start_s": 11.98,
+              "end_s": 18.7,
+              "text": "exactly what 30 days of reps does to each one. So hit the journal, write your scores down,"
+            },
+            {
+              "start_s": 18.7,
+              "end_s": 25.1,
+              "text": "add one sentence explaining each one, and after you finish, day three is complete."
+            }
+          ],
+          "whisper_segment_count": 4
+        }
+      ]
+    },
+    "4": {
+      "voiceovers": [
+        {
+          "seg_index": 1,
+          "audio_files": [
+            "lesson_04/lesson_04_seg_01.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L4S1.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 80.64,
+          "current_cue_count": 8,
+          "audit": {
+            "issue_count": 5,
+            "issues": [
+              {
+                "kind": "MULTI",
+                "cue_idx": 1,
+                "start_s": 2.44,
+                "n_sentences": 2,
+                "text": "You've got your baseline. You know where you're starting."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 3,
+                "start_s": 13.28,
+                "n_sentences": 2,
+                "text": "Not what you want to achieve. Not what your stats say."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 6,
+                "start_s": 51.32,
+                "n_sentences": 4,
+                "text": "Today you're going to write your identity. Present tense. Specific. Behavioral."
+              },
+              {
+                "kind": "GAP",
+                "cue_idx": 6,
+                "start_s": 51.32,
+                "next_start_s": 70.18,
+                "gap_s": 18.86,
+                "text": "Today you're going to write your identity. Present tense. Specific. Behavioral."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 7,
+                "start_s": 70.18,
+                "n_sentences": 2,
+                "text": "On your screen you're going to see a few examples. Then write two or three of your own."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 1.04,
+              "end_s": 6.0,
+              "text": "Day four, you've got your baseline, you know where you're starting."
+            },
+            {
+              "start_s": 6.0,
+              "end_s": 13.5,
+              "text": "Now I want to ask you something most coaches never ask, who are you as a competitor?"
+            },
+            {
+              "start_s": 13.5,
+              "end_s": 19.16,
+              "text": "Now when you want to achieve, now what your stats say, who are you?"
+            },
+            {
+              "start_s": 19.16,
+              "end_s": 23.84,
+              "text": "Right now when you step onto the field, the court, the track."
+            },
+            {
+              "start_s": 23.84,
+              "end_s": 26.08,
+              "text": "Here's why this matters."
+            },
+            {
+              "start_s": 26.08,
+              "end_s": 32.36,
+              "text": "Research on identity-based motivation shows that athletes who compete from a clear sense"
+            },
+            {
+              "start_s": 32.36,
+              "end_s": 37.68,
+              "text": "of who they are, outperform athletes who compete from outcome."
+            },
+            {
+              "start_s": 37.68,
+              "end_s": 44.84,
+              "text": "The difference between I want to win and I am the kind of athlete who doesn't quit."
+            },
+            {
+              "start_s": 44.84,
+              "end_s": 51.32,
+              "text": "That's not just words, it's how your brain decides what to do when things get hard."
+            },
+            {
+              "start_s": 51.32,
+              "end_s": 55.92,
+              "text": "Today, you're going to write your identity."
+            },
+            {
+              "start_s": 55.92,
+              "end_s": 64.52,
+              "text": "Intense, specific, behavioral, not I want to be more confident, that's a wish."
+            },
+            {
+              "start_s": 64.52,
+              "end_s": 70.88,
+              "text": "I am an athlete who compete through discomfort, that's an identity."
+            },
+            {
+              "start_s": 70.88,
+              "end_s": 75.04,
+              "text": "On your screen, you're going to see a few examples to get you started."
+            },
+            {
+              "start_s": 75.04,
+              "end_s": 80.76,
+              "text": "Then I want you to write two or three of your own, take the full time, these matter."
+            }
+          ],
+          "whisper_segment_count": 14
+        },
+        {
+          "seg_index": 2,
+          "audio_files": [
+            "lesson_04/lesson_04_seg_02.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L4S2.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 16.47,
+          "current_cue_count": 4,
+          "audit": {
+            "issue_count": 2,
+            "issues": [
+              {
+                "kind": "MULTI",
+                "cue_idx": 1,
+                "start_s": 2.81,
+                "n_sentences": 2,
+                "text": "That's not a goal. That's a decision."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 3,
+                "start_s": 11.35,
+                "n_sentences": 2,
+                "text": "Go hit the journal. One question."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 0.69,
+              "end_s": 5.69,
+              "text": "Read what you just wrote. That's not a goal. That's a decision."
+            },
+            {
+              "start_s": 5.69,
+              "end_s": 10.69,
+              "text": "Every time you open this app from here on, that's who's showing up."
+            },
+            {
+              "start_s": 10.69,
+              "end_s": 13.69,
+              "text": "Go hit the journal one question."
+            },
+            {
+              "start_s": 13.69,
+              "end_s": 17.69,
+              "text": "After you finish, day four is complete."
+            }
+          ],
+          "whisper_segment_count": 4
+        }
+      ]
+    },
+    "5": {
+      "voiceovers": [
+        {
+          "seg_index": 1,
+          "audio_files": [
+            "lesson_05/lesson_05_seg_01.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L5S1.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 76.74,
+          "current_cue_count": 8,
+          "audit": {
+            "issue_count": 6,
+            "issues": [
+              {
+                "kind": "MULTI",
+                "cue_idx": 0,
+                "start_s": 1.1,
+                "n_sentences": 2,
+                "text": "Day 5. First physical tool."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 1,
+                "start_s": 5.22,
+                "n_sentences": 3,
+                "text": "It's called box breathing. Four sides. Four seconds each."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 3,
+                "start_s": 25.72,
+                "n_sentences": 2,
+                "text": "Your brain shifts into threat mode. None of that is useful for execution."
+              },
+              {
+                "kind": "GAP",
+                "cue_idx": 5,
+                "start_s": 36.34,
+                "next_start_s": 54.8,
+                "gap_s": 18.46,
+                "text": "When you control the breath, you directly activate the part of your nervous system that says calm down."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 6,
+                "start_s": 54.8,
+                "n_sentences": 2,
+                "text": "On your screen you're going to see a circle. Follow it."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 7,
+                "start_s": 71.46,
+                "n_sentences": 3,
+                "text": "If your mind drifts — bring it back. That is not failure. That is the drill."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 1.1,
+              "end_s": 10.1,
+              "text": "Day 5. First physical tool. It's called box breathing. Four sides, four seconds each."
+            },
+            {
+              "start_s": 10.1,
+              "end_s": 22.1,
+              "text": "Inhale. Hold. Exhale. Hold. Here's what it matters. When you're at a high pressure moment, your body runs hot."
+            },
+            {
+              "start_s": 22.1,
+              "end_s": 32.1,
+              "text": "Heart rate up. Cortisol up. Your brain shifts into threat mode. And none of that is useful for execution."
+            },
+            {
+              "start_s": 32.1,
+              "end_s": 43.1,
+              "text": "Box breathing is a reset switch. When you control the breath, you directly activate the part of your nervous system that says, hey calm down."
+            },
+            {
+              "start_s": 43.1,
+              "end_s": 54.1,
+              "text": "Not eventually within 60 seconds. And once it's trained, you can flip that switch in the middle of competition without anyone knowing you're doing it."
+            },
+            {
+              "start_s": 54.1,
+              "end_s": 66.1,
+              "text": "On your screen, you're going to see a circle. It expands on the inhale, holds at the top, contracts on the exhale, and holds at the bottom."
+            },
+            {
+              "start_s": 66.1,
+              "end_s": 77.1,
+              "text": "Each phase is four seconds. Follow it. If your mind drifts, bring it back. That's not failure. That's the drill."
+            }
+          ],
+          "whisper_segment_count": 7
+        },
+        {
+          "seg_index": 2,
+          "audio_files": [
+            "lesson_05/lesson_05_seg_02.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L5S2.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 14.82,
+          "current_cue_count": 4,
+          "audit": {
+            "issue_count": 1,
+            "issues": [
+              {
+                "kind": "MULTI",
+                "cue_idx": 1,
+                "start_s": 1.6,
+                "n_sentences": 2,
+                "text": "Do that before your next practice. Before your next competition."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 0.4,
+              "end_s": 7.26,
+              "text": "So that's box breathing do that before your next practice before your next competition in the parking lot"
+            },
+            {
+              "start_s": 7.26,
+              "end_s": 14.9,
+              "text": "If you have to the reps come compound now go hit the journal and after you finish day five is complete"
+            }
+          ],
+          "whisper_segment_count": 2
+        }
+      ]
+    },
+    "6": {
+      "voiceovers": [
+        {
+          "seg_index": 1,
+          "audio_files": [
+            "lesson_06/lesson_06_seg_01.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L6S1rev.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 58.76,
+          "current_cue_count": 11,
+          "audit": {
+            "issue_count": 0,
+            "issues": []
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 0.46,
+              "end_s": 5.7,
+              "text": "Hey, welcome to day six of Relentless. Here's something most athletes don't know"
+            },
+            {
+              "start_s": 6.66,
+              "end_s": 11.18,
+              "text": "Anxiety shows up in your body before it shows up in your thoughts a tight jaw"
+            },
+            {
+              "start_s": 11.9,
+              "end_s": 17.1,
+              "text": "Ray shoulders clinch fists shallow breathing look you felt it all"
+            },
+            {
+              "start_s": 17.78,
+              "end_s": 23.18,
+              "text": "Before a big competition and you probably had no idea what to do with it. So today we fixed that"
+            },
+            {
+              "start_s": 23.86,
+              "end_s": 26.22,
+              "text": "We're gonna scan your body from head to toe"
+            },
+            {
+              "start_s": 26.94,
+              "end_s": 32.1,
+              "text": "Find where your storing tension and release it on our exhales. Not force it out"
+            },
+            {
+              "start_s": 32.34,
+              "end_s": 34.34,
+              "text": "Just notice and release"
+            },
+            {
+              "start_s": 34.7,
+              "end_s": 38.22,
+              "text": "So this teaches you to read your own nervous system in real-time"
+            },
+            {
+              "start_s": 39.26,
+              "end_s": 42.5,
+              "text": "Aware athletes don't get blindsided by their own bodies"
+            },
+            {
+              "start_s": 43.34,
+              "end_s": 44.86,
+              "text": "Before we start"
+            },
+            {
+              "start_s": 44.86,
+              "end_s": 49.9,
+              "text": "Get into a very comfortable relaxed position and start that breath work with me"
+            },
+            {
+              "start_s": 50.54,
+              "end_s": 52.54,
+              "text": "Let's focus on the box breath"
+            },
+            {
+              "start_s": 52.54,
+              "end_s": 58.7,
+              "text": "In for four hold for four out for four hold for four do that now"
+            }
+          ],
+          "whisper_segment_count": 13
+        },
+        {
+          "seg_index": 2,
+          "audio_files": [
+            "lesson_06/lesson_06_seg_02.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L6S2rev.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 246.32,
+          "current_cue_count": 41,
+          "audit": {
+            "issue_count": 5,
+            "issues": [
+              {
+                "kind": "SPLIT",
+                "cue_idx": 8,
+                "start_s": 39.59,
+                "next_start_s": 48.03,
+                "this_text": "Give yourself nothing but pure focus and attention around your head, around your hair,",
+                "next_text": "your forehead, around your eyes."
+              },
+              {
+                "kind": "SPLIT",
+                "cue_idx": 19,
+                "start_s": 105.94,
+                "next_start_s": 119.5,
+                "this_text": "Take your attention to your chest, your lungs, breathe all the way in, release, relax and",
+                "next_text": "let go."
+              },
+              {
+                "kind": "SPLIT",
+                "cue_idx": 31,
+                "start_s": 180.1,
+                "next_start_s": 188.5,
+                "this_text": "Your total undivided attention, simply focusing on your lower extremities, all the way to the",
+                "next_text": "floor or wherever you are, laying down in a comfortable place."
+              },
+              {
+                "kind": "SPLIT",
+                "cue_idx": 37,
+                "start_s": 217.2,
+                "next_start_s": 227.02,
+                "this_text": "Take that full breath in, breathe in that good energy, that peace and with the breath",
+                "next_text": "as we release, we're letting go of all tension, all stressors, release out on your exhale and"
+              },
+              {
+                "kind": "SPLIT",
+                "cue_idx": 38,
+                "start_s": 227.02,
+                "next_start_s": 237.84,
+                "this_text": "as we release, we're letting go of all tension, all stressors, release out on your exhale and",
+                "next_text": "just feel the peace take over."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 0.46,
+              "end_s": 6.02,
+              "text": "Okay, so now that you're in a good relaxed position, let's close your eyes."
+            },
+            {
+              "start_s": 6.02,
+              "end_s": 10.38,
+              "text": "So we're moving from the top of your head down to your feet."
+            },
+            {
+              "start_s": 10.38,
+              "end_s": 17.62,
+              "text": "At each zone, we're going to breathe in and release whatever you find on the exhale."
+            },
+            {
+              "start_s": 17.62,
+              "end_s": 22.74,
+              "text": "Don't force anything, just notice and let go."
+            },
+            {
+              "start_s": 22.74,
+              "end_s": 28.31,
+              "text": "So right now, focus on the top of your head."
+            },
+            {
+              "start_s": 28.31,
+              "end_s": 33.91,
+              "text": "Keep that deep breathing going as you think about the sensations on your head."
+            },
+            {
+              "start_s": 33.91,
+              "end_s": 35.43,
+              "text": "Are you leaning against the chair?"
+            },
+            {
+              "start_s": 35.43,
+              "end_s": 39.59,
+              "text": "Are you laying down?"
+            },
+            {
+              "start_s": 39.59,
+              "end_s": 48.03,
+              "text": "Give yourself nothing but pure focus and attention around your head, around your hair,"
+            },
+            {
+              "start_s": 48.03,
+              "end_s": 50.71,
+              "text": "your forehead, around your eyes."
+            },
+            {
+              "start_s": 50.71,
+              "end_s": 54.79,
+              "text": "Do you notice any tension?"
+            },
+            {
+              "start_s": 54.79,
+              "end_s": 66.18,
+              "text": "As you focus on your head and only your head, take a deep breath in and just release."
+            },
+            {
+              "start_s": 66.18,
+              "end_s": 74.3,
+              "text": "Focus on your jaw, your neck, your throat, athletes carry a lot of tension here."
+            },
+            {
+              "start_s": 74.3,
+              "end_s": 86.8,
+              "text": "I need you to breathe in, slowly exhale and simply release, relax and let go."
+            },
+            {
+              "start_s": 86.8,
+              "end_s": 91.8,
+              "text": "Take your attention to your shoulders, your upper back."
+            },
+            {
+              "start_s": 91.8,
+              "end_s": 92.8,
+              "text": "Are they raised?"
+            },
+            {
+              "start_s": 92.8,
+              "end_s": 95.32,
+              "text": "Are they tense?"
+            },
+            {
+              "start_s": 95.32,
+              "end_s": 98.6,
+              "text": "Drop them and completely relax."
+            },
+            {
+              "start_s": 98.6,
+              "end_s": 105.94,
+              "text": "One slow breath in and slowly release."
+            },
+            {
+              "start_s": 105.94,
+              "end_s": 119.5,
+              "text": "Take your attention to your chest, your lungs, breathe all the way in, release, relax and"
+            },
+            {
+              "start_s": 119.5,
+              "end_s": 123.34,
+              "text": "let go."
+            },
+            {
+              "start_s": 123.34,
+              "end_s": 127.25,
+              "text": "Take your attention to your arms."
+            },
+            {
+              "start_s": 127.25,
+              "end_s": 132.57,
+              "text": "Focus on the nerves, going all the way down to your hands, your fingers."
+            },
+            {
+              "start_s": 132.57,
+              "end_s": 140.61,
+              "text": "Let your hands completely relax, unclench your fists and just completely rest heavy."
+            },
+            {
+              "start_s": 140.61,
+              "end_s": 147.95,
+              "text": "Keep working on that breath, release, relax and let go."
+            },
+            {
+              "start_s": 147.95,
+              "end_s": 152.43,
+              "text": "Take your attention to your core, your stomach."
+            },
+            {
+              "start_s": 152.43,
+              "end_s": 155.19,
+              "text": "This is where nerves live."
+            },
+            {
+              "start_s": 155.19,
+              "end_s": 159.31,
+              "text": "Just breathe into that core, breathe into that stomach."
+            },
+            {
+              "start_s": 159.31,
+              "end_s": 168.28,
+              "text": "Let it expand, then release, relax and let go."
+            },
+            {
+              "start_s": 168.28,
+              "end_s": 175.14,
+              "text": "Focus on your hips, your legs, your feet."
+            },
+            {
+              "start_s": 175.14,
+              "end_s": 180.1,
+              "text": "Every sensation you feel, everything is right where it needs to be."
+            },
+            {
+              "start_s": 180.1,
+              "end_s": 188.5,
+              "text": "Your total undivided attention, simply focusing on your lower extremities, all the way to the"
+            },
+            {
+              "start_s": 188.5,
+              "end_s": 192.82,
+              "text": "floor or wherever you are, laying down in a comfortable place."
+            },
+            {
+              "start_s": 192.82,
+              "end_s": 196.54,
+              "text": "Just feel the ground underneath you."
+            },
+            {
+              "start_s": 196.54,
+              "end_s": 204.6,
+              "text": "Keep working that breath and just release, relax and let go."
+            },
+            {
+              "start_s": 204.6,
+              "end_s": 209.76,
+              "text": "Now just zoom out for a second and see your whole body for what it is."
+            },
+            {
+              "start_s": 209.76,
+              "end_s": 217.2,
+              "text": "Your fully present where you are, you're in one place, one time, one moment."
+            },
+            {
+              "start_s": 217.2,
+              "end_s": 227.02,
+              "text": "Take that full breath in, breathe in that good energy, that peace and with the breath"
+            },
+            {
+              "start_s": 227.02,
+              "end_s": 237.84,
+              "text": "as we release, we're letting go of all tension, all stressors, release out on your exhale and"
+            },
+            {
+              "start_s": 237.84,
+              "end_s": 242.48,
+              "text": "just feel the peace take over."
+            },
+            {
+              "start_s": 242.48,
+              "end_s": 246.32,
+              "text": "Again, release, relax and let go."
+            }
+          ],
+          "whisper_segment_count": 41
+        },
+        {
+          "seg_index": 3,
+          "audio_files": [
+            "lesson_06/lesson_06_seg_03.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L6S3rev.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 24.32,
+          "current_cue_count": 4,
+          "audit": {
+            "issue_count": 0,
+            "issues": []
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 0.66,
+              "end_s": 3.26,
+              "text": "Now, you can open your eyes."
+            },
+            {
+              "start_s": 3.26,
+              "end_s": 9.18,
+              "text": "You just learned how to read your nervous system and reset it in under two minutes."
+            },
+            {
+              "start_s": 9.18,
+              "end_s": 11.5,
+              "text": "Do this before the next practice."
+            },
+            {
+              "start_s": 11.5,
+              "end_s": 14.42,
+              "text": "Do it in the morning of your next competition."
+            },
+            {
+              "start_s": 14.42,
+              "end_s": 18.34,
+              "text": "Aware athletes don't get blindsided by their own bodies."
+            },
+            {
+              "start_s": 18.34,
+              "end_s": 20.38,
+              "text": "You're becoming one of them."
+            },
+            {
+              "start_s": 20.38,
+              "end_s": 24.58,
+              "text": "Now go hit that journal and when you finish, day six in the books."
+            }
+          ],
+          "whisper_segment_count": 7
+        }
+      ]
+    },
+    "7": {
+      "voiceovers": [
+        {
+          "seg_index": 1,
+          "audio_files": [
+            "lesson_07/lesson_07_seg_01.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L7S1.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 69.88,
+          "current_cue_count": 9,
+          "audit": {
+            "issue_count": 2,
+            "issues": [
+              {
+                "kind": "MULTI",
+                "cue_idx": 1,
+                "start_s": 2.1,
+                "n_sentences": 4,
+                "text": "You've done your first week. Breathing. Body scan. Awareness."
+              },
+              {
+                "kind": "MULTI",
+                "cue_idx": 6,
+                "start_s": 37.74,
+                "n_sentences": 2,
+                "text": "It should be short — one or two words max. Process-focused, not outcome-focused."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 0.5,
+              "end_s": 8.4,
+              "text": "Day 7. You've done your first week, breathing, body scan, awareness of how your brain works"
+            },
+            {
+              "start_s": 8.4,
+              "end_s": 13.78,
+              "text": "under pressure, but today we build the tool that ties all of it together. It's called"
+            },
+            {
+              "start_s": 13.78,
+              "end_s": 22.98,
+              "text": "a focus anchor. Every elite performer has one. A word, a short phrase, or a physical sensation"
+            },
+            {
+              "start_s": 22.98,
+              "end_s": 30.14,
+              "text": "that their mind comes back to when it starts to drift. Some of them chose it deliberately."
+            },
+            {
+              "start_s": 30.14,
+              "end_s": 37.94,
+              "text": "Just stumbled onto it. Today, you choose yours on purpose. Here's what makes a good anchor."
+            },
+            {
+              "start_s": 37.94,
+              "end_s": 45.5,
+              "text": "It should be short, one or two words max. It should be process focused, not outcome focused."
+            },
+            {
+              "start_s": 45.5,
+              "end_s": 52.34,
+              "text": "It puts you in your body and in the moment, not in your head. Some examples are like next"
+            },
+            {
+              "start_s": 52.34,
+              "end_s": 60.78,
+              "text": "play, breathe, process, here, trust, but it has to be yours. Before we start, take one box"
+            },
+            {
+              "start_s": 60.78,
+              "end_s": 69.98,
+              "text": "breath to settle it. And for four, hold for four, out for four, hold for four. Then we find your anchor."
+            }
+          ],
+          "whisper_segment_count": 9
+        },
+        {
+          "seg_index": 2,
+          "audio_files": [
+            "lesson_07/lesson_07_seg_02.mp3"
+          ],
+          "mp3_path": "C:\\Users\\rkuma\\Downloads\\RELENTLESS\\CONTENT\\LESSONS 2-7\\L7S2.mp3",
+          "mp3_exists": true,
+          "current_total_audio_seconds": 23.3,
+          "current_cue_count": 4,
+          "audit": {
+            "issue_count": 1,
+            "issues": [
+              {
+                "kind": "MULTI",
+                "cue_idx": 3,
+                "start_s": 20.04,
+                "n_sentences": 2,
+                "text": "Go hit the journal. That's your first week of Relentless."
+              }
+            ]
+          },
+          "ffprobe_duration_s": null,
+          "whisper_segments": [
+            {
+              "start_s": 1.78,
+              "end_s": 8.58,
+              "text": "That word you just saved, that's your reset tool in competition when things get loud in your head"
+            },
+            {
+              "start_s": 9.1,
+              "end_s": 13.14,
+              "text": "That's what you come back to one word. That's it"
+            },
+            {
+              "start_s": 13.9,
+              "end_s": 16.3,
+              "text": "We're gonna use it throughout the rest of this program"
+            },
+            {
+              "start_s": 16.82,
+              "end_s": 23.44,
+              "text": "Go hit the journal and after you finish day seven is complete and that is your first week of relentless"
+            }
+          ],
+          "whisper_segment_count": 4
+        }
+      ]
+    }
+  }
+}

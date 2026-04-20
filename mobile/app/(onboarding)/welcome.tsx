@@ -27,14 +27,14 @@ export default function WelcomeScreen() {
             RELENTLESS
           </Animated.Text>
           <Animated.Text style={[styles.tagline, { opacity: fadeTagline }]}>
-            Train your mind like you train your body
+            Build a mind so tough it scares people.
           </Animated.Text>
         </View>
 
         <Animated.View style={[styles.bottom, { opacity: fadeCta }]}>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => router.push('/(onboarding)/question-effort')}
+            onPress={() => router.push('/(onboarding)/relentless-intro' as any)}
           >
             <Text style={styles.buttonText}>Get Started</Text>
           </TouchableOpacity>

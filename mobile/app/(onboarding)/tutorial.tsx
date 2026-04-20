@@ -15,9 +15,8 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { ProgressRing } from '@/components/ProgressRing';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
+import { ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
-
-const TOTAL_STEPS = 10;
 const SCREEN_W = Dimensions.get('window').width;
 
 // Tooltip visual constants — distinct from the mock UI surfaces
@@ -58,7 +57,7 @@ const STEPS: TutorialStep[] = [
       title: 'YOUR MAC SCORE',
       body: 'Three rings — Mindfulness, Acceptance, Commitment. Every lesson you complete fills them.',
     },
-    progressStep: 6,
+    progressStep: 15,
     caretPosition: 'center',
   },
   {
@@ -70,7 +69,7 @@ const STEPS: TutorialStep[] = [
       title: 'WORKOUT OF THE DAY',
       body: 'A short guided session, delivered daily. Finish any lesson to keep your streak alive.',
     },
-    progressStep: 7,
+    progressStep: 16,
     caretPosition: 'center',
   },
   {
@@ -82,7 +81,7 @@ const STEPS: TutorialStep[] = [
       title: 'STAY CONSISTENT',
       body: 'Miss a day and every ring drops −2 pts. Miss enough and your streak breaks — plus you owe a reflection.',
     },
-    progressStep: 7,
+    progressStep: 17,
     caretPosition: 'left',
   },
   {
@@ -94,7 +93,7 @@ const STEPS: TutorialStep[] = [
       title: 'THE LIBRARY',
       body: 'Browse exercises by MAC category — use them before practice, on game day, or as extra reps.',
     },
-    progressStep: 8,
+    progressStep: 18,
     caretPosition: 'left',
   },
   {
@@ -106,7 +105,7 @@ const STEPS: TutorialStep[] = [
       title: 'PICK AN EXERCISE',
       body: 'Each category has a set of exercises with estimated times. Tap any one — before practice, on game day, or whenever you need a reset.',
     },
-    progressStep: 8,
+    progressStep: 19,
     caretPosition: 'center',
   },
   {
@@ -118,7 +117,7 @@ const STEPS: TutorialStep[] = [
       title: 'YOUR PROGRESS',
       body: 'Track your streak, personal best, and total lessons. Set your competition countdown to stay locked in.',
     },
-    progressStep: 9,
+    progressStep: 20,
     caretPosition: 'center',
   },
 ];
@@ -592,7 +591,7 @@ export default function TutorialScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={step.progressStep} total={TOTAL_STEPS} onBack={handleBack} />
+      <ProgressBar step={step.progressStep} total={ONBOARDING_TOTAL_STEPS} onBack={handleBack} />
       <View style={styles.inner}>
         {/* Animated slide wrapper — responds to swipe gestures */}
         <Animated.View

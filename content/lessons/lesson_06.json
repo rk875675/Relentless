@@ -3,24 +3,64 @@
   "title": "Body Scan — Level 1",
   "program_version": "v1",
   "day_number": 6,
-  "mac_categories": ["mindfulness", "acceptance"],
+  "mac_categories": [
+    "mindfulness",
+    "acceptance"
+  ],
   "coach": "Coach Grant",
-  "duration_seconds": 412,
+  "duration_seconds": 405,
   "blocks": [
     {
       "type": "voiceover",
       "audio_files": [
         "lesson_06/lesson_06_seg_01.mp3"
       ],
-      "total_audio_seconds": 60.0,
+      "total_audio_seconds": 58.76,
       "timed_text": [
-        { "start_s": 0.0, "text": "Day 6." },
-        { "start_s": 3.0, "text": "Anxiety shows up in your body before it shows up in your thoughts." },
-        { "start_s": 12.0, "text": "Tight jaw. Raised shoulders. Clenched fists. Shallow breathing." },
-        { "start_s": 22.0, "text": "Today we fix that." },
-        { "start_s": 26.0, "text": "We're going to scan your body from head to toe." },
-        { "start_s": 34.0, "text": "This teaches you to read your own nervous system in real time." },
-        { "start_s": 45.0, "text": "Before we start — take one box breath with me." }
+        {
+          "start_s": 1.32,
+          "text": "Day 6."
+        },
+        {
+          "start_s": 6.58,
+          "text": "Anxiety shows up in your body before it shows up in your thoughts."
+        },
+        {
+          "start_s": 9.72,
+          "text": "Tight jaw."
+        },
+        {
+          "start_s": 11.7,
+          "text": "Raised shoulders."
+        },
+        {
+          "start_s": 12.48,
+          "text": "Clenched fists."
+        },
+        {
+          "start_s": 13.96,
+          "text": "Shallow breathing."
+        },
+        {
+          "start_s": 16.16,
+          "text": "You've felt all of it before a big competition."
+        },
+        {
+          "start_s": 21.96,
+          "text": "Today we fix that."
+        },
+        {
+          "start_s": 23.88,
+          "text": "We're going to scan your body from head to toe."
+        },
+        {
+          "start_s": 35.22,
+          "text": "This teaches you to read your own nervous system in real time."
+        },
+        {
+          "start_s": 48.46,
+          "text": "Before we start — take one box breath with me."
+        }
       ]
     },
     {
@@ -32,10 +72,26 @@
         "Follow the circle."
       ],
       "steps": [
-        { "text": "Inhale", "duration_seconds": 4, "haptic": "heavy" },
-        { "text": "Hold", "duration_seconds": 4, "haptic": "light" },
-        { "text": "Exhale", "duration_seconds": 4, "haptic": "heavy" },
-        { "text": "Hold", "duration_seconds": 4, "haptic": "light" }
+        {
+          "text": "Inhale",
+          "duration_seconds": 4,
+          "haptic": "heavy"
+        },
+        {
+          "text": "Hold",
+          "duration_seconds": 4,
+          "haptic": "light"
+        },
+        {
+          "text": "Exhale",
+          "duration_seconds": 4,
+          "haptic": "heavy"
+        },
+        {
+          "text": "Hold",
+          "duration_seconds": 4,
+          "haptic": "light"
+        }
       ]
     },
     {
@@ -43,23 +99,172 @@
       "audio_files": [
         "lesson_06/lesson_06_seg_02.mp3"
       ],
-      "total_audio_seconds": 249.0,
+      "total_audio_seconds": 246.32,
       "timed_text": [
-        { "start_s": 0.0,   "text": "Good. Close your eyes." },
-        { "start_s": 8.0,   "text": "We're moving from the top of your head down to your feet." },
-        { "start_s": 25.0,  "text": "Top of your head. Your forehead. Your eyes." },
-        { "start_s": 45.0,  "text": "Is there tension here? Breathe in — and release it on the exhale." },
-        { "start_s": 65.0,  "text": "Your jaw. Your neck. Your throat." },
-        { "start_s": 85.0,  "text": "Athletes carry a lot here. Breathe in — let it soften." },
-        { "start_s": 105.0, "text": "Your shoulders. Your upper back." },
-        { "start_s": 120.0, "text": "Are they raised right now? Drop them. One slow breath in — and release." },
-        { "start_s": 140.0, "text": "Your chest. Your lungs. Let the breath go all the way down." },
-        { "start_s": 155.0, "text": "Your arms. Your hands. Your fingers. Unclench." },
-        { "start_s": 170.0, "text": "Your core. Your stomach. This is where nerves live." },
-        { "start_s": 190.0, "text": "Breathe into it. Let it expand." },
-        { "start_s": 205.0, "text": "Your hips. Your legs. Your feet. All the way to the floor." },
-        { "start_s": 225.0, "text": "Now — whole body. One full breath in." },
-        { "start_s": 240.0, "text": "Feel everything you just released. And exhale. Let it all go." }
+        {
+          "start_s": 0.46,
+          "text": "Okay, so now that you're in a good relaxed position, let's close your eyes."
+        },
+        {
+          "start_s": 6.02,
+          "text": "So we're moving from the top of your head down to your feet."
+        },
+        {
+          "start_s": 10.38,
+          "text": "At each zone, we're going to breathe in and release whatever you find on the exhale."
+        },
+        {
+          "start_s": 17.62,
+          "text": "Don't force anything, just notice and let go."
+        },
+        {
+          "start_s": 22.74,
+          "text": "So right now, focus on the top of your head."
+        },
+        {
+          "start_s": 28.31,
+          "text": "Keep that deep breathing going as you think about the sensations on your head."
+        },
+        {
+          "start_s": 33.91,
+          "text": "Are you leaning against the chair?"
+        },
+        {
+          "start_s": 35.43,
+          "text": "Are you laying down?"
+        },
+        {
+          "start_s": 39.59,
+          "text": "Give yourself nothing but pure focus and attention around your head, around your hair,"
+        },
+        {
+          "start_s": 48.03,
+          "text": "your forehead, around your eyes."
+        },
+        {
+          "start_s": 50.71,
+          "text": "Do you notice any tension?"
+        },
+        {
+          "start_s": 54.79,
+          "text": "As you focus on your head and only your head, take a deep breath in and just release."
+        },
+        {
+          "start_s": 66.18,
+          "text": "Focus on your jaw, your neck, your throat, athletes carry a lot of tension here."
+        },
+        {
+          "start_s": 74.3,
+          "text": "I need you to breathe in, slowly exhale and simply release, relax and let go."
+        },
+        {
+          "start_s": 86.8,
+          "text": "Take your attention to your shoulders, your upper back."
+        },
+        {
+          "start_s": 91.8,
+          "text": "Are they raised?"
+        },
+        {
+          "start_s": 92.8,
+          "text": "Are they tense?"
+        },
+        {
+          "start_s": 95.32,
+          "text": "Drop them and completely relax."
+        },
+        {
+          "start_s": 98.6,
+          "text": "One slow breath in and slowly release."
+        },
+        {
+          "start_s": 105.94,
+          "text": "Take your attention to your chest, your lungs, breathe all the way in, release, relax and"
+        },
+        {
+          "start_s": 119.5,
+          "text": "let go."
+        },
+        {
+          "start_s": 123.34,
+          "text": "Take your attention to your arms."
+        },
+        {
+          "start_s": 127.25,
+          "text": "Focus on the nerves, going all the way down to your hands, your fingers."
+        },
+        {
+          "start_s": 132.57,
+          "text": "Let your hands completely relax, unclench your fists and just completely rest heavy."
+        },
+        {
+          "start_s": 140.61,
+          "text": "Keep working on that breath, release, relax and let go."
+        },
+        {
+          "start_s": 147.95,
+          "text": "Take your attention to your core, your stomach."
+        },
+        {
+          "start_s": 152.43,
+          "text": "This is where nerves live."
+        },
+        {
+          "start_s": 155.19,
+          "text": "Just breathe into that core, breathe into that stomach."
+        },
+        {
+          "start_s": 159.31,
+          "text": "Let it expand, then release, relax and let go."
+        },
+        {
+          "start_s": 168.28,
+          "text": "Focus on your hips, your legs, your feet."
+        },
+        {
+          "start_s": 175.14,
+          "text": "Every sensation you feel, everything is right where it needs to be."
+        },
+        {
+          "start_s": 180.1,
+          "text": "Your total undivided attention, simply focusing on your lower extremities, all the way to the"
+        },
+        {
+          "start_s": 188.5,
+          "text": "floor or wherever you are, laying down in a comfortable place."
+        },
+        {
+          "start_s": 192.82,
+          "text": "Just feel the ground underneath you."
+        },
+        {
+          "start_s": 196.54,
+          "text": "Keep working that breath and just release, relax and let go."
+        },
+        {
+          "start_s": 204.6,
+          "text": "Now just zoom out for a second and see your whole body for what it is."
+        },
+        {
+          "start_s": 209.76,
+          "text": "Your fully present where you are, you're in one place, one time, one moment."
+        },
+        {
+          "start_s": 217.2,
+          "text": "Take that full breath in, breathe in that good energy, that peace and with the breath"
+        },
+        {
+          "start_s": 227.02,
+          "text": "as we release, we're letting go of all tension, all stressors, release out on your exhale and"
+        },
+        {
+          "start_s": 237.84,
+          "text": "just feel the peace take over."
+        },
+        {
+          "start_s": 242.48,
+          "text": "Again, release, relax and let go."
+        }
       ]
     },
     {
@@ -67,12 +272,24 @@
       "audio_files": [
         "lesson_06/lesson_06_seg_03.mp3"
       ],
-      "total_audio_seconds": 25.0,
+      "total_audio_seconds": 24.32,
       "timed_text": [
-        { "start_s": 0.0,  "text": "Open your eyes." },
-        { "start_s": 3.0,  "text": "You just learned how to read your nervous system and reset it in under two minutes." },
-        { "start_s": 10.0, "text": "Aware athletes don't get blindsided by their own bodies." },
-        { "start_s": 17.0, "text": "Go hit the journal." }
+        {
+          "start_s": 0.66,
+          "text": "Open your eyes."
+        },
+        {
+          "start_s": 3.02,
+          "text": "You just learned how to read your nervous system and reset it in under two minutes."
+        },
+        {
+          "start_s": 14.26,
+          "text": "Aware athletes don't get blindsided by their own bodies."
+        },
+        {
+          "start_s": 20.44,
+          "text": "Go hit the journal."
+        }
       ]
     },
     {

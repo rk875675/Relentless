@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
@@ -216,6 +217,9 @@ type Phase =
   | 'streak'
   | 'error'
   | 'terminated';
+
+/** Shown on the ready screen for program (standard) WODs only; same copy as former home card subtitle. */
+const STANDARD_WOD_READY_TAGLINE = "focuses on the 'why' and teaching through the 'what'";
 
 // ---------------------------------------------------------------------------
 // Helper: fire a haptic at the specified intensity
@@ -517,25 +521,35 @@ export default function LessonPlayerScreen() {
   }, []);
 
   // -----------------------------------------------------------------------
-  // Load lesson
+  // Load lesson — refetch every time this screen gains focus (same lesson id
+  // still gets new content_blocks when timings change in the DB). Skip while
+  // an in-flight session is active so we do not swap JSON mid-playback.
   // -----------------------------------------------------------------------
-  useEffect(() => {
-    if (!id) return;
-    (async () => {
-      const { data, error } = await apiFetch<LessonDetail>(`/lessons/${id}`);
-      if (error || !data) {
-        setErrorMsg(error ?? 'Failed to load lesson');
-        setPhase('error');
-        return;
-      }
-      journalPromptRef.current = '';
-      journalPartsRef.current = [];
-      setJournalText('');
-      setJournalExerciseContext('');
-      setLesson(data);
-      setPhase('ready');
-    })();
-  }, [id]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!id || typeof id !== 'string') return;
+      if (sessionActive.current) return;
+      let cancelled = false;
+      (async () => {
+        const { data, error } = await apiFetch<LessonDetail>(`/lessons/${id}`);
+        if (cancelled) return;
+        if (error || !data) {
+          setErrorMsg(error ?? 'Failed to load lesson');
+          setPhase('error');
+          return;
+        }
+        journalPromptRef.current = '';
+        journalPartsRef.current = [];
+        setJournalText('');
+        setJournalExerciseContext('');
+        setLesson(data);
+        setPhase('ready');
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [id]),
+  );
 
   // -----------------------------------------------------------------------
   // Lock-in mode: background kills session
@@ -706,8 +720,8 @@ export default function LessonPlayerScreen() {
       if (audioFallbackTimerRef.current) { clearInterval(audioFallbackTimerRef.current); audioFallbackTimerRef.current = null; }
       if (audioFallbackTimeoutRef.current) { clearTimeout(audioFallbackTimeoutRef.current); audioFallbackTimeoutRef.current = null; }
       setAudioFallbackElapsed(0);
-      // Start fallback timeout: if audio hasn't loaded in 600ms, drive voiceover via timer.
-      // (Reduced from 1.5s to avoid a perceptible silent gap after component blocks.)
+      // Start fallback timeout: if audio hasn't loaded in time, drive voiceover via timer.
+      // If load completes after this, the isLoaded effect recovers (starts real playback).
       audioFallbackTimeoutRef.current = setTimeout(() => {
         if (!voiceoverStartPending.current) return;
         voiceoverStartPending.current = false;
@@ -717,7 +731,7 @@ export default function LessonPlayerScreen() {
           const el = (Date.now() - audioFallbackStartRef.current) / 1000;
           setAudioFallbackElapsed(el);
         }, 100);
-      }, 600);
+      }, 2500);
     } else if (block.type === 'timed_exercise') {
       wallDrivenBreathTimingRef.current = null;
       if (circleBreathRafRef.current != null) {
@@ -943,16 +957,45 @@ export default function LessonPlayerScreen() {
   }, [player, ambientPlayer, advanceBlock, textFade, pulseBars]);
 
   // -----------------------------------------------------------------------
-  // Audio: auto-play when loaded
+  // Audio: auto-play when loaded (and recover if slow load started fallback)
   // -----------------------------------------------------------------------
   useEffect(() => {
-    if (phase !== 'playing' || !voiceoverStartPending.current) return;
+    if (phase !== 'playing' || !hasBlocks) return;
     if (!audioStatus.isLoaded) return;
+
+    const currentBlocks = lessonRef.current?.content_blocks?.blocks ?? [];
+    const block = currentBlocks[blockIndexRef.current];
+    if (!block || block.type !== 'voiceover') return;
+
+    const pending = voiceoverStartPending.current;
+    const fallback = audioFallbackActive.current;
+    if (!pending && !fallback) return;
+
+    if (audioFallbackTimeoutRef.current) {
+      clearTimeout(audioFallbackTimeoutRef.current);
+      audioFallbackTimeoutRef.current = null;
+    }
+
+    let seekPos = 0;
+    if (fallback) {
+      if (audioFallbackTimerRef.current) {
+        clearInterval(audioFallbackTimerRef.current);
+        audioFallbackTimerRef.current = null;
+      }
+      audioFallbackActive.current = false;
+      const dur = audioStatus.duration;
+      const eps = 0.05;
+      const fbEl = audioFallbackElapsed;
+      if (audioFileIndexRef.current === 0 && dur > 0) {
+        seekPos = Math.min(Math.max(0, fbEl), Math.max(0, dur - eps));
+      }
+      setAudioFallbackElapsed(0);
+    }
+
     voiceoverStartPending.current = false;
-    // Audio loaded successfully — cancel fallback timeout
-    if (audioFallbackTimeoutRef.current) { clearTimeout(audioFallbackTimeoutRef.current); audioFallbackTimeoutRef.current = null; }
-    void player.seekTo(0).then(() => { player.play(); });
-  }, [phase, audioStatus.isLoaded, player]);
+
+    void player.seekTo(seekPos).then(() => { player.play(); });
+  }, [phase, hasBlocks, audioStatus.isLoaded, audioStatus.duration, audioFallbackElapsed, player]);
 
   // -----------------------------------------------------------------------
   // Audio finished: advance to next file or next block
@@ -1123,6 +1166,10 @@ export default function LessonPlayerScreen() {
     if (audioFallbackTimerRef.current) { clearInterval(audioFallbackTimerRef.current); audioFallbackTimerRef.current = null; }
     if (audioFallbackTimeoutRef.current) { clearTimeout(audioFallbackTimeoutRef.current); audioFallbackTimeoutRef.current = null; }
     setAudioFallbackElapsed(0);
+    textFade.stopAnimation();
+    textFade.setValue(0);
+    cardScale.stopAnimation();
+    cardScale.setValue(1);
     try { player.pause(); void player.seekTo(0); } catch { /* noop */ }
     try { ambientPlayer.pause(); void ambientPlayer.seekTo(0); } catch { /* noop */ }
     setPhase('ready');
@@ -1361,7 +1408,9 @@ export default function LessonPlayerScreen() {
       const w = blockWeightSeconds(currentBlock);
       let withinSec = 0;
       if (currentBlock.type === 'voiceover') {
-        withinSec = Math.max(audioStatus.currentTime, audioFallbackElapsed);
+        withinSec = audioFallbackActive.current
+          ? audioFallbackElapsed
+          : cumulativeOffsetRef.current + audioStatus.currentTime;
       } else if (currentBlock.type === 'timed_exercise') {
         withinSec = isTextStepExercise(currentBlock)
           ? (exerciseStepIndex / Math.max(1, currentBlock.steps.length)) * w
@@ -1379,8 +1428,8 @@ export default function LessonPlayerScreen() {
     return Math.min(1, elapsedWeight / lessonTotalWeight);
   }, [
     hasBlocks, blocks, lessonTotalWeight, phase, blockIndex,
-    audioStatus.currentTime, audioFallbackElapsed, exerciseElapsed,
-    exerciseStepIndex, tapThroughIndex, flashCardIndex, promptCardsIndex,
+    audioFileIndex, audioStatus.currentTime, audioStatus.isLoaded, audioFallbackElapsed,
+    exerciseElapsed, exerciseStepIndex, tapThroughIndex, flashCardIndex, promptCardsIndex,
   ]);
 
   useEffect(() => {
@@ -1596,17 +1645,32 @@ export default function LessonPlayerScreen() {
         )}
 
         {phase === 'ready' && lesson && (
-          <View style={styles.centered}>
-            <Text style={styles.readyTitle}>{lesson.title}</Text>
-            <Text style={styles.readyDuration}>
-              ~{approxLessonMinutes(lesson.duration_seconds)} min
-            </Text>
-            {!hasBlocks && lesson.on_screen_text && (
-              <Text style={styles.readyDesc}>{lesson.on_screen_text}</Text>
-            )}
-            <TouchableOpacity style={styles.primaryBtn} onPress={startLesson}>
-              <Text style={styles.primaryBtnText}>Begin</Text>
-            </TouchableOpacity>
+          <View style={styles.readyRoot}>
+            <View style={styles.readyCard}>
+              <Text style={styles.readyTitle}>{lesson.title}</Text>
+              <View style={styles.readyMetaRow}>
+                <View style={styles.readyDurationPill}>
+                  <Text style={styles.readyDurationPillText}>
+                    ~{approxLessonMinutes(lesson.duration_seconds)} min
+                  </Text>
+                </View>
+              </View>
+              {lesson.lesson_type === 'standard' && (
+                <Text style={styles.readyTagline}>{STANDARD_WOD_READY_TAGLINE}</Text>
+              )}
+              {!hasBlocks && lesson.on_screen_text ? (
+                <View style={styles.readyDescWrap}>
+                  <Text style={styles.readyDesc}>{lesson.on_screen_text}</Text>
+                </View>
+              ) : null}
+              <TouchableOpacity
+                style={[styles.primaryBtn, styles.readyBeginBtn]}
+                onPress={startLesson}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.primaryBtnText}>Begin</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -2567,26 +2631,75 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
   },
+  readyRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
+  readyCard: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+  },
   readyTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: colors.textPrimary,
     textAlign: 'center',
-    marginBottom: spacing.xs,
+    lineHeight: 28,
+    marginBottom: spacing.md,
   },
-  readyDuration: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.textMuted,
-    marginBottom: spacing.lg,
+  readyMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  readyDurationPill: {
+    backgroundColor: colors.accentSubtle,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  readyDurationPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.accent,
+    letterSpacing: 0.2,
+  },
+  readyTagline: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 21,
+    marginTop: spacing.sm,
+    marginBottom: 0,
+    paddingHorizontal: spacing.xs,
+  },
+  readyDescWrap: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   readyDesc: {
     fontSize: 15,
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: spacing.xl,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.xs,
+  },
+  readyBeginBtn: {
+    width: '100%',
+    marginTop: spacing.xl,
+    alignSelf: 'stretch',
   },
   blockText: {
     fontSize: 22,

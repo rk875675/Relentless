@@ -14,9 +14,8 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
+import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
-
-const TOTAL_STEPS = 10;
 const AUTO_SWIPE_MS = 4000;
 const CARD_WIDTH = Dimensions.get('window').width - spacing.xl * 2;
 
@@ -93,7 +92,7 @@ export default function UnlockedPotentialScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={2} total={TOTAL_STEPS} />
+      <ProgressBar step={ONBOARDING_PROGRESS.unlockedPotential} total={ONBOARDING_TOTAL_STEPS} />
       <Animated.View style={[styles.inner, { opacity: fade }]}>
         {/* Top half — message */}
         <View style={styles.topHalf}>
@@ -152,7 +151,7 @@ export default function UnlockedPotentialScreen() {
             style={styles.button}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/(onboarding)/mac-question');
+              router.push('/(onboarding)/mac-framework' as any);
             }}
           >
             <Text style={styles.buttonText}>Continue</Text>

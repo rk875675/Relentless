@@ -24,8 +24,15 @@ export async function apiFetch<T = unknown>(
     return { data: null, error: 'Not authenticated', errorCode: null };
   }
 
-  const url = `${BASE_URL}/functions/v1${path}`;
   const method = options?.method ?? 'GET';
+  // Lesson JSON (especially content_blocks / timed_text) must never be served
+  // from an HTTP cache after DB updates — same URL would otherwise stay stale on iOS.
+  let pathForUrl = path;
+  if (method === 'GET' && path.startsWith('/lessons')) {
+    const join = path.includes('?') ? '&' : '?';
+    pathForUrl = `${path}${join}_=${Date.now()}`;
+  }
+  const url = `${BASE_URL}/functions/v1${pathForUrl}`;
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
@@ -39,6 +46,7 @@ export async function apiFetch<T = unknown>(
       method,
       headers,
       body: options?.body ? JSON.stringify(options.body) : undefined,
+      cache: method === 'GET' && path.startsWith('/lessons') ? 'no-store' : 'default',
     });
 
     const json = await res.json();

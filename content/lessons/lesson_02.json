@@ -3,26 +3,75 @@
   "title": "The Science of Choking (And How to Stop It)",
   "program_version": "v1",
   "day_number": 2,
-  "mac_categories": ["mindfulness"],
+  "mac_categories": [
+    "mindfulness"
+  ],
   "coach": "Coach Grant",
-  "duration_seconds": 210,
+  "duration_seconds": 247,
   "blocks": [
     {
       "type": "voiceover",
       "audio_files": [
         "lesson_02/lesson_02_seg_01.mp3"
       ],
-      "total_audio_seconds": 116.0,
+      "total_audio_seconds": 114.01,
       "timed_text": [
-        { "start_s": 0.0,   "text": "Day 2." },
-        { "start_s": 3.0,   "text": "Today I want to show you the exact science." },
-        { "start_s": 15.0,  "text": "Daniel Kahneman won the Nobel Prize in 2002." },
-        { "start_s": 27.0,  "text": "The brain runs on two systems." },
-        { "start_s": 31.0,  "text": "System 1 is fast. Automatic. Instinctive." },
-        { "start_s": 55.0,  "text": "System 2 is slow. Deliberate. Analytical." },
-        { "start_s": 75.0,  "text": "Choking is what happens when System 2 tries to take control of something System 1 already owns." },
-        { "start_s": 88.0,  "text": "The fix isn't to think less. It's to train your mind to step back." },
-        { "start_s": 103.0, "text": "Right now I want you to find your version of that moment." }
+        {
+          "start_s": 1.07,
+          "text": "Day 2."
+        },
+        {
+          "start_s": 5.81,
+          "text": "Today I want to show you the exact science."
+        },
+        {
+          "start_s": 16.51,
+          "text": "Daniel Kahneman won the Nobel Prize in 2002."
+        },
+        {
+          "start_s": 27.13,
+          "text": "The brain runs on two systems."
+        },
+        {
+          "start_s": 28.83,
+          "text": "System 1 is fast."
+        },
+        {
+          "start_s": 31.41,
+          "text": "Automatic."
+        },
+        {
+          "start_s": 32.25,
+          "text": "Instinctive."
+        },
+        {
+          "start_s": 55.27,
+          "text": "System 2 is slow."
+        },
+        {
+          "start_s": 58.53,
+          "text": "Deliberate."
+        },
+        {
+          "start_s": 61.49,
+          "text": "Analytical."
+        },
+        {
+          "start_s": 82.57,
+          "text": "Choking is what happens when System 2 tries to take control of something System 1 already owns."
+        },
+        {
+          "start_s": 90.15,
+          "text": "The fix isn't to think less."
+        },
+        {
+          "start_s": 93.03,
+          "text": "It's to train your mind to step back."
+        },
+        {
+          "start_s": 102.41,
+          "text": "Right now I want you to find your version of that moment."
+        }
       ]
     },
     {
@@ -45,12 +94,28 @@
       "audio_files": [
         "lesson_02/lesson_02_seg_02.mp3"
       ],
-      "total_audio_seconds": 24.0,
+      "total_audio_seconds": 22.93,
       "timed_text": [
-        { "start_s": 0.0,  "text": "What you just logged — that's your distraction profile." },
-        { "start_s": 7.0,  "text": "Every drill from here is training you to catch that pattern before it catches you." },
-        { "start_s": 15.0, "text": "Go hit the journal. One question." },
-        { "start_s": 20.0, "text": "After you finish — Day 2 is complete." }
+        {
+          "start_s": 1.71,
+          "text": "What you just logged — that's your distraction profile."
+        },
+        {
+          "start_s": 10.91,
+          "text": "Every drill from here is training you to catch that pattern before it catches you."
+        },
+        {
+          "start_s": 17.03,
+          "text": "Go hit the journal."
+        },
+        {
+          "start_s": 18.57,
+          "text": "One question."
+        },
+        {
+          "start_s": 20.21,
+          "text": "After you finish — Day 2 is complete."
+        }
       ]
     },
     {

@@ -3,25 +3,76 @@
   "title": "Identity Statement",
   "program_version": "v1",
   "day_number": 4,
-  "mac_categories": ["mindfulness", "commitment"],
+  "mac_categories": [
+    "mindfulness",
+    "commitment"
+  ],
   "coach": "Coach Grant",
-  "duration_seconds": 180,
+  "duration_seconds": 202,
   "blocks": [
     {
       "type": "voiceover",
       "audio_files": [
         "lesson_04/lesson_04_seg_01.mp3"
       ],
-      "total_audio_seconds": 83.0,
+      "total_audio_seconds": 80.64,
       "timed_text": [
-        { "start_s": 0.0, "text": "Day 4." },
-        { "start_s": 3.0, "text": "You've got your baseline. You know where you're starting." },
-        { "start_s": 10.0, "text": "Who are you as a competitor?" },
-        { "start_s": 18.0, "text": "Not what you want to achieve. Not what your stats say." },
-        { "start_s": 25.0, "text": "Athletes who compete from a clear sense of who they are outperform athletes who compete from outcome." },
-        { "start_s": 40.0, "text": "The difference between 'I want to win' and 'I am the kind of athlete who doesn't quit.'" },
-        { "start_s": 55.0, "text": "Today you're going to write your identity. Present tense. Specific. Behavioral." },
-        { "start_s": 68.0, "text": "On your screen you're going to see a few examples. Then write two or three of your own." }
+        {
+          "start_s": 1.04,
+          "text": "Day 4."
+        },
+        {
+          "start_s": 2.44,
+          "text": "You've got your baseline."
+        },
+        {
+          "start_s": 3.98,
+          "text": "You know where you're starting."
+        },
+        {
+          "start_s": 9.42,
+          "text": "Who are you as a competitor?"
+        },
+        {
+          "start_s": 13.28,
+          "text": "Not what you want to achieve."
+        },
+        {
+          "start_s": 15.22,
+          "text": "Not what your stats say."
+        },
+        {
+          "start_s": 29.62,
+          "text": "Athletes who compete from identity outperform athletes who compete from outcome."
+        },
+        {
+          "start_s": 37.0,
+          "text": "The difference between 'I want to win' and 'I am the kind of athlete who doesn't quit.'"
+        },
+        {
+          "start_s": 51.32,
+          "text": "Today you're going to write your identity."
+        },
+        {
+          "start_s": 54.86,
+          "text": "Present tense."
+        },
+        {
+          "start_s": 56.76,
+          "text": "Specific."
+        },
+        {
+          "start_s": 58.14,
+          "text": "Behavioral."
+        },
+        {
+          "start_s": 70.18,
+          "text": "On your screen you're going to see a few examples."
+        },
+        {
+          "start_s": 75.48,
+          "text": "Then write two or three of your own."
+        }
       ]
     },
     {
@@ -52,12 +103,32 @@
       "audio_files": [
         "lesson_04/lesson_04_seg_02.mp3"
       ],
-      "total_audio_seconds": 17.0,
+      "total_audio_seconds": 16.47,
       "timed_text": [
-        { "start_s": 0.0,  "text": "Read what you just wrote." },
-        { "start_s": 3.0,  "text": "That's not a goal. That's a decision." },
-        { "start_s": 7.0,  "text": "Every time you open this app from here on — that's who's showing up." },
-        { "start_s": 12.0, "text": "Go hit the journal. One question." }
+        {
+          "start_s": 0.69,
+          "text": "Read what you just wrote."
+        },
+        {
+          "start_s": 2.81,
+          "text": "That's not a goal."
+        },
+        {
+          "start_s": 4.29,
+          "text": "That's a decision."
+        },
+        {
+          "start_s": 5.89,
+          "text": "Every time you open this app from here on — that's who's showing up."
+        },
+        {
+          "start_s": 11.35,
+          "text": "Go hit the journal."
+        },
+        {
+          "start_s": 12.09,
+          "text": "One question."
+        }
       ]
     },
     {

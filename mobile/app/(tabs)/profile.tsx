@@ -63,6 +63,7 @@ export default function ProfileScreen() {
   const [pendingDate, setPendingDate] = useState<Date>(new Date());
   const [dateSaving, setDateSaving] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [devToolsVisible, setDevToolsVisible] = useState(false);
 
   useEffect(() => {
@@ -140,6 +141,37 @@ export default function ProfileScreen() {
 
   const handleManageSubscription = () => {
     Linking.openURL('https://apps.apple.com/account/subscriptions');
+  };
+
+  const performAccountDeletion = async () => {
+    if (deleteBusy) return;
+    setDeleteBusy(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    try {
+      const { error } = await apiFetch('/account', { method: 'DELETE' });
+      if (error) {
+        Alert.alert('Could not delete account', error);
+        return;
+      }
+      // Auth row is gone; clear local session. RouteGuard sends user to welcome.
+      await signOut();
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    if (deleteBusy) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert(
+      'Delete your account?',
+      'This will permanently delete all your data and cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => { void performAccountDeletion(); } },
+      ],
+      { cancelable: true },
+    );
   };
 
   const handleDevSetDay = async (day: number) => {
@@ -410,10 +442,24 @@ export default function ProfileScreen() {
         </>
       )}
 
-      {/* Sign Out */}
+      {/* Sign Out — neutral secondary (session end, not “danger”) */}
       <TouchableOpacity style={styles.signOutBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); signOut(); }}>
-        <Ionicons name="log-out-outline" size={16} color={colors.error} style={{ marginRight: 8 }} />
+        <Ionicons name="log-out-outline" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
         <Text style={styles.signOutText}>Sign Out</Text>
+      </TouchableOpacity>
+
+      {/* Delete account — slightly stronger than sign out; confirmation stays in Alert */}
+      <TouchableOpacity
+        style={[styles.deleteAccountBtn, deleteBusy && styles.deleteAccountBtnBusy]}
+        onPress={handleDeleteAccount}
+        disabled={deleteBusy}
+        accessibilityRole="button"
+        accessibilityLabel="Delete account"
+      >
+        <Ionicons name="trash-outline" size={16} color={colors.error} style={{ marginRight: 8 }} />
+        <Text style={styles.deleteAccountText}>
+          {deleteBusy ? 'Deleting…' : 'Delete Account'}
+        </Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -750,7 +796,7 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
 
-  // Sign out
+  // Sign out — same chrome as settings rows, muted label
   signOutBtn: {
     marginTop: 48,
     flexDirection: 'row',
@@ -759,11 +805,34 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.15)',
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   signOutText: {
-    color: colors.error,
+    color: colors.textSecondary,
     fontSize: 14,
     fontWeight: '600',
+  },
+
+  // Delete account — full-width destructive hint (tint + border), stronger than sign out
+  deleteAccountBtn: {
+    marginTop: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.28)',
+    backgroundColor: 'rgba(239, 68, 68, 0.07)',
+  },
+  deleteAccountBtnBusy: {
+    opacity: 0.55,
+  },
+  deleteAccountText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.error,
+    letterSpacing: 0.2,
   },
 });

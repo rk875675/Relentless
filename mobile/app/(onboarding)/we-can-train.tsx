@@ -4,9 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
+import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
-
-const TOTAL_STEPS = 10;
 
 export default function WeCanTrainScreen() {
   const router = useRouter();
@@ -18,7 +17,7 @@ export default function WeCanTrainScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={5} total={TOTAL_STEPS} />
+      <ProgressBar step={ONBOARDING_PROGRESS.weCanTrain} total={ONBOARDING_TOTAL_STEPS} />
       <Animated.View style={[styles.inner, { opacity: fade }]}>
         <View style={styles.topSection}>
           <Text style={styles.headline}>We can train this.</Text>

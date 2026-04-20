@@ -4,33 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
+import { getMacPillarForTag } from '@/lib/mac-pillar-onboarding';
+import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
-
-const TOTAL_STEPS = 10;
-
-const DETAIL: Record<string, { letter: string; name: string; color: string; tagline: string; body: string }> = {
-  M: {
-    letter: 'M',
-    name: 'Mindfulness',
-    color: colors.ringMindfulness,
-    tagline: 'Stay present when it matters most.',
-    body: 'Notice where your attention is — and choose where it goes. Instead of spiraling before competition, you learn to stay locked in on what matters right now.',
-  },
-  A: {
-    letter: 'A',
-    name: 'Acceptance',
-    color: colors.ringAcceptance,
-    tagline: 'Feel it. Don\u2019t fight it.',
-    body: "Discomfort is part of competing. The skill isn\u2019t avoiding it — it\u2019s learning to keep going when doubt, pain, or frustration show up.",
-  },
-  C: {
-    letter: 'C',
-    name: 'Commitment',
-    color: colors.ringCommitment,
-    tagline: 'Know why you show up.',
-    body: "Connect to the reasons you compete. When you know who you want to become, it\u2019s easier to show up — even when you don\u2019t feel like it.",
-  },
-};
 
 export default function MacDetailScreen() {
   const router = useRouter();
@@ -38,7 +14,7 @@ export default function MacDetailScreen() {
   const fade = useRef(new Animated.Value(0)).current;
   const scaleCard = useRef(new Animated.Value(0.95)).current;
 
-  const content = DETAIL[tag ?? ''] ?? DETAIL.M;
+  const content = getMacPillarForTag(tag);
 
   useEffect(() => {
     Animated.parallel([
@@ -49,7 +25,7 @@ export default function MacDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={4} total={TOTAL_STEPS} />
+      <ProgressBar step={ONBOARDING_PROGRESS.macDetail} total={ONBOARDING_TOTAL_STEPS} />
       <Animated.View style={[styles.inner, { opacity: fade }]}>
         <View style={styles.topSection}>
           {/* Glowing badge */}

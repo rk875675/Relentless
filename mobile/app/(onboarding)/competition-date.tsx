@@ -4,9 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
+import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
-
-const TOTAL_STEPS = 10;
 
 function formatDate(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -48,7 +47,7 @@ export default function CompetitionDateScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={9} total={TOTAL_STEPS} />
+      <ProgressBar step={ONBOARDING_PROGRESS.competitionDate} total={ONBOARDING_TOTAL_STEPS} />
       <View style={styles.inner}>
         <View style={styles.topSection}>
           <Text style={styles.title}>{"When's your next competition?"}</Text>

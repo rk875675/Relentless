@@ -4,9 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
+import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
-
-const TOTAL_STEPS = 10;
 
 const OPTIONS = [
   { label: 'Getting in your head', tag: 'M' },
@@ -25,7 +24,7 @@ export default function MacQuestionScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={3} total={TOTAL_STEPS} />
+      <ProgressBar step={ONBOARDING_PROGRESS.macQuestion} total={ONBOARDING_TOTAL_STEPS} />
 
       <Animated.View style={[styles.inner, { opacity: fade }]}>
         <View style={styles.topSection}>

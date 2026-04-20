@@ -508,42 +508,45 @@ export default function HomeScreen() {
         </View>
       ) : (
         <TouchableOpacity
-          style={styles.workoutCard}
+          style={styles.workoutCardOuter}
           activeOpacity={0.8}
           onPress={lesson ? () => void handleStartWorkout() : lastWod ? () => void handleStartWorkout(lastWod.id) : undefined}
           disabled={loading || (!lesson && !lastWod)}
         >
-          <Text style={styles.workoutLabel}>WORKOUT OF THE DAY</Text>
-          {loading ? (
-            <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.lg }} />
-          ) : lesson ? (
-            <>
-              {typeof lesson.program_day === 'number' && (
-                <Text style={styles.workoutDayBadge}>
-                  Day {lesson.program_day} of 30
-                </Text>
-              )}
-              <Text style={styles.workoutTitle}>{lesson.title}</Text>
-              <Text style={styles.workoutDesc}>
-                focuses on the 'why' and teaching{'\n'}through the 'what'
-              </Text>
-              <View style={styles.workoutMetaPill}>
-                <Text style={styles.workoutMeta}>~{mins} min</Text>
-              </View>
-            </>
-          ) : (
-            <>
-              <Ionicons name="checkmark-circle" size={36} color={colors.success} style={{ marginBottom: 12 }} />
-              <Text style={styles.workoutTitle}>All caught up!</Text>
-              <Text style={styles.workoutDesc}>Come back tomorrow for the next workout</Text>
-              {lastWod && (
-                <View style={styles.repeatBtn}>
-                  <Ionicons name="refresh" size={14} color={colors.accent} style={{ marginRight: 6 }} />
-                  <Text style={styles.repeatBtnText}>Repeat Today's Workout</Text>
+          <View style={styles.workoutCardInner}>
+            <View style={styles.workoutLabelPill}>
+              <Text style={styles.workoutLabelText}>WORKOUT OF THE DAY</Text>
+            </View>
+            {loading ? (
+              <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.lg }} />
+            ) : lesson ? (
+              <View style={styles.workoutLessonBody}>
+                <Text style={styles.workoutTitle}>{lesson.title}</Text>
+                <View style={styles.workoutMetaRow}>
+                  {typeof lesson.program_day === 'number' && (
+                    <Text style={styles.workoutDayBadge}>
+                      Day {lesson.program_day} of 30
+                    </Text>
+                  )}
+                  <View style={styles.workoutMetaPill}>
+                    <Text style={styles.workoutMeta}>~{mins} min</Text>
+                  </View>
                 </View>
-              )}
-            </>
-          )}
+              </View>
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle" size={36} color={colors.success} style={{ marginBottom: 12 }} />
+                <Text style={styles.workoutTitleDone}>All caught up!</Text>
+                <Text style={styles.workoutDesc}>Come back tomorrow for the next workout</Text>
+                {lastWod && (
+                  <View style={styles.repeatBtn}>
+                    <Ionicons name="refresh" size={14} color={colors.accent} style={{ marginRight: 6 }} />
+                    <Text style={styles.repeatBtnText}>Repeat Today's Workout</Text>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
         </TouchableOpacity>
       )}
 
@@ -639,16 +642,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 64,
-    paddingBottom: TAB_BAR_CLEARANCE,
+    /** Tight clearance above floating tab bar; avoid flexGrow so short content does not leave a tall empty gap. */
+    paddingBottom: TAB_BAR_CLEARANCE - 48,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 20,
   },
   brand: {
     fontSize: 24,
@@ -707,37 +710,74 @@ const styles = StyleSheet.create({
   ringsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 28,
+    marginBottom: 36,
   },
-  workoutCard: {
-    backgroundColor: colors.surface,
+  workoutCardOuter: {
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 44,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    marginBottom: spacing.md,
+    borderColor: 'rgba(167, 139, 250, 0.35)',
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+    marginBottom: spacing.sm,
   },
-  workoutLabel: {
+  workoutCardInner: {
+    flexDirection: 'column',
+    paddingTop: 24,
+    paddingBottom: 20,
+    paddingHorizontal: spacing.xl,
+    alignItems: 'center',
+  },
+  workoutLessonBody: {
+    width: '100%',
+    /** Mid size between compact (84) and roomy (148); meta stays toward bottom via space-between. */
+    minHeight: 116,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexDirection: 'column',
+  },
+  workoutLabelPill: {
+    backgroundColor: colors.accentSubtle,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.28)',
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 17,
+    marginBottom: 9,
+  },
+  workoutLabelText: {
     fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    letterSpacing: 2,
-    marginBottom: 14,
+    fontWeight: '800',
+    color: colors.accentLight,
+    letterSpacing: 1.2,
+    textAlign: 'center',
   },
   workoutDayBadge: {
     fontSize: 13,
     fontWeight: '700',
     color: colors.accentLight,
-    marginBottom: 8,
   },
   workoutTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    lineHeight: 26,
+  },
+  workoutTitleDone: {
     fontSize: 17,
     fontWeight: '600',
     color: colors.textPrimary,
     textAlign: 'center',
     lineHeight: 24,
+  },
+  workoutMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+    alignSelf: 'stretch',
+    paddingBottom: 2,
   },
   workoutDesc: {
     fontSize: 14,
@@ -751,7 +791,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 6,
-    marginTop: 16,
   },
   workoutMeta: {
     fontSize: 12,
@@ -780,8 +819,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    marginBottom: spacing.md,
+    paddingVertical: 8,
+    marginBottom: spacing.sm,
   },
   streakPillBroken: {
     borderColor: 'rgba(239,68,68,0.4)',
@@ -901,21 +940,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
+    borderColor: 'rgba(167, 139, 250, 0.22)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
   journalLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    letterSpacing: 2,
-    marginBottom: 12,
+    fontSize: 9,
+    fontWeight: '600',
+    color: 'rgba(167, 139, 250, 0.72)',
+    letterSpacing: 1.2,
+    marginBottom: 8,
   },
   journalInput: {
     backgroundColor: colors.surfaceLight,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(167, 139, 250, 0.12)',
     padding: spacing.md,
     color: colors.textPrimary,
     fontSize: 14,

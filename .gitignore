@@ -2,8 +2,13 @@
 .env.*
 !.env.example
 node_modules/
+__pycache__/
+*.pyc
 .expo/
 get-jwt.mjs
 
 # Audio assets — uploaded to Supabase Storage, not committed
 content/audio/
+
+# Local scratch paths for audio concat / deploy experiments
+tmp_audio_deployed/
