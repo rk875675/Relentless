@@ -196,11 +196,10 @@ This is separate from normal session journaling for clarity.
 The contents and logic of the miss reflection journal remain abstract for now.
 Do not invent AI interpretation, coaching generation, or complex journaling behavior.
 
-8.5. Lock-in mode
+8.5. Session pause on background
 The app is intended to be a low-friction, high-focus environment.
-If the user backgrounds, minimizes, or leaves the app during an active session, the session is terminated.
-Terminated sessions give 0 credit.
-The user must fully restart the session.
+If the user backgrounds, minimizes, or switches away during an active in-lesson session (while the lesson is in progress), the session **pauses** (audio and timers stop). When they return, they can **continue** from the same position without restarting the whole lesson.
+A force-quit, OS process reclaim, or cold start is a new app launch: the client does not restore mid-lesson progress unless a future release adds explicit persisted session state (not required for V1).
 
 9. Coach / partner model
 V1 includes one content partner / coach.

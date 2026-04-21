@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Linking,
@@ -74,6 +75,8 @@ export default function ProfileScreen() {
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [devToolsVisible, setDevToolsVisible] = useState(false);
+  const [profileStatsError, setProfileStatsError] = useState('');
+  const [profileStatsLoading, setProfileStatsLoading] = useState(false);
 
   useEffect(() => {
     if (isDevAccount) setDevToolsVisible(true);
@@ -139,31 +142,42 @@ export default function ProfileScreen() {
     }
   };
 
-  const fetchData = async () => {
+  const loadProfileStats = useCallback(async () => {
+    setProfileStatsError('');
     const cachedStreak = getCached<Streak>('/streak');
     const cachedProgress = getCached<ProgressSummary>('/progress');
-    if (cachedStreak && cachedProgress) {
-      setStreak(cachedStreak);
-      setTotalCompletions(cachedProgress.total_completions ?? 0);
-      return;
-    }
+    if (cachedStreak) setStreak(cachedStreak);
+    if (cachedProgress) setTotalCompletions(cachedProgress.total_completions ?? 0);
+
+    setProfileStatsLoading(true);
     const [sRes, pRes] = await Promise.all([
       apiFetch<Streak>('/streak'),
       apiFetch<ProgressSummary>('/progress'),
     ]);
-    if (sRes.data) { setStreak(sRes.data); setCached('/streak', sRes.data); }
-    if (pRes.data) { setTotalCompletions(pRes.data.total_completions ?? 0); setCached('/progress', pRes.data); }
-  };
+    setProfileStatsLoading(false);
+
+    if (sRes.data) {
+      setStreak(sRes.data);
+      setCached('/streak', sRes.data);
+    }
+    if (pRes.data) {
+      setTotalCompletions(pRes.data.total_completions ?? 0);
+      setCached('/progress', pRes.data);
+    }
+
+    const errs = [sRes.error, pRes.error].filter(Boolean) as string[];
+    setProfileStatsError(errs.length > 0 ? errs.join(' · ') : '');
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void refreshUserState();
-      fetchData();
+      void refreshUserState().catch(() => {});
+      void loadProfileStats();
       if (__DEV__ || isDevAccount) {
         supabase.rpc('dev_get_program_day')
           .then(({ data }) => { if (typeof data === 'number') setDevDay(data); });
       }
-    }, [isDevAccount, refreshUserState]),
+    }, [isDevAccount, refreshUserState, loadProfileStats]),
   );
 
   const handleRestore = async () => {
@@ -289,6 +303,24 @@ export default function ProfileScreen() {
         )}
       </View>
 
+      {profileStatsError ? (
+        <View style={styles.statsErrorBanner}>
+          <Ionicons name="cloud-offline-outline" size={18} color={colors.error} style={{ marginRight: 8 }} />
+          <Text style={styles.statsErrorText} numberOfLines={3}>{profileStatsError}</Text>
+          <TouchableOpacity
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); void loadProfileStats(); }}
+            style={styles.statsRetryBtn}
+            disabled={profileStatsLoading}
+          >
+            {profileStatsLoading ? (
+              <ActivityIndicator color={colors.accentLight} size="small" />
+            ) : (
+              <Text style={styles.statsRetryText}>Retry</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {/* Stats Card */}
       <View style={styles.statsCard}>
         <View style={styles.statsColumns}>
@@ -397,6 +429,10 @@ export default function ProfileScreen() {
       {isDevAccount && devToolsVisible && (
         <>
           <Text style={styles.sectionLabel}>DEV TOOLS</Text>
+          <Text style={styles.devStreakHint}>
+            Streak uses your device calendar day (X-Local-Date), not program day alone. Advance the
+            simulator date between completions to test multi-day streaks.
+          </Text>
           <View style={styles.rowsContainer}>
             <View style={[styles.profileRow, { justifyContent: 'space-between' }]}>
               <View style={styles.rowLeft}>
@@ -768,6 +804,43 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     letterSpacing: 0.3,
     fontStyle: 'italic',
+  },
+
+  statsErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+  },
+  statsErrorText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  statsRetryBtn: {
+    marginLeft: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    minWidth: 64,
+    alignItems: 'center',
+  },
+  statsRetryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.accentLight,
+  },
+  devStreakHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 17,
+    marginBottom: 10,
+    paddingHorizontal: 4,
   },
 
   // Stats Card

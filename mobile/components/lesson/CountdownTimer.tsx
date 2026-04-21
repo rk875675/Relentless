@@ -20,6 +20,8 @@ type Props = {
   completionHoldSeconds: number;
   catColor: string;
   accentColors?: string[];
+  /** When true (e.g. app backgrounded), freeze countdown until parent clears it. */
+  suspendForBackground?: boolean;
   onComplete: (collectedText: string) => void;
 };
 
@@ -27,8 +29,10 @@ export default function CountdownTimer({
   durationSeconds,
   taskList,
   completionMessage,
+  completionHoldSeconds: _completionHoldSeconds,
   catColor,
   accentColors,
+  suspendForBackground = false,
   onComplete,
 }: Props) {
   const [phase, setPhase] = useState<'select' | 'running' | 'done'>('select');
@@ -37,6 +41,12 @@ export default function CountdownTimer({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const fade = useRef(new Animated.Value(0)).current;
+  const elapsedRef = useRef(0);
+  const needsOsResumeRestartRef = useRef(false);
+
+  useEffect(() => {
+    elapsedRef.current = elapsed;
+  }, [elapsed]);
 
   useEffect(() => {
     return () => {
@@ -44,7 +54,47 @@ export default function CountdownTimer({
     };
   }, []);
 
+  useEffect(() => {
+    if (phase !== 'running') return;
+    if (suspendForBackground) {
+      needsOsResumeRestartRef.current = true;
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      progressAnim.stopAnimation();
+      return;
+    }
+    if (!needsOsResumeRestartRef.current) return;
+    needsOsResumeRestartRef.current = false;
+    const anchorMs = Date.now() - elapsedRef.current * 1000;
+    progressAnim.setValue(Math.min(1, elapsedRef.current / Math.max(1, durationSeconds)));
+    Animated.timing(progressAnim, {
+      toValue: 1,
+      duration: Math.max(0, (durationSeconds - elapsedRef.current) * 1000),
+      useNativeDriver: false,
+    }).start();
+
+    timerRef.current = setInterval(() => {
+      const secs = Math.floor((Date.now() - anchorMs) / 1000);
+      setElapsed(secs);
+      if (secs >= durationSeconds) {
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+        setPhase('done');
+        fade.setValue(0);
+        Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+      }
+    }, 250);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [suspendForBackground, phase, durationSeconds, progressAnim, fade]);
+
   const startTimer = () => {
+    needsOsResumeRestartRef.current = false;
     setPhase('running');
     setElapsed(0);
     progressAnim.setValue(0);

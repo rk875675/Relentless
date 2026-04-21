@@ -239,7 +239,11 @@ export default function TwoColumnSort({
           value={actionText}
           onChangeText={setActionText}
           multiline
+          scrollEnabled={false}
           onFocus={() =>
+            scheduleScrollFooterAboveKeyboard(actionScrollRef, actionFooterRef, actionScrollYRef)
+          }
+          onContentSizeChange={() =>
             scheduleScrollFooterAboveKeyboard(actionScrollRef, actionFooterRef, actionScrollYRef)
           }
         />

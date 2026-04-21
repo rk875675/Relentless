@@ -88,9 +88,13 @@ export default function ExamplesWithEntry({
           value={text}
           onChangeText={setText}
           multiline
+          scrollEnabled={false}
           autoCorrect
           spellCheck
           onFocus={() => scheduleScrollFooterAboveKeyboard(scrollRef, footerRef, scrollYRef)}
+          onContentSizeChange={() =>
+            scheduleScrollFooterAboveKeyboard(scrollRef, footerRef, scrollYRef)
+          }
         />
         <View ref={footerRef} collapsable={false}>
           <TouchableOpacity style={styles.btn} onPress={handleSubmit}>

@@ -25,6 +25,7 @@ import { getPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
+import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 
 type Lesson = {
   id: string;
@@ -140,6 +141,9 @@ export default function HomeScreen() {
   const freebieOpacity = useRef(new Animated.Value(0)).current;
   const deltaDateRef = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
+  const homeScrollYRef = useRef(0);
+  const preWorkoutJournalFooterRef = useRef<View>(null);
+  const missReflectionFooterRef = useRef<View>(null);
   const journalCardY = useRef(0);
   const lastSavedJournalRef = useRef('');
   const initialLoadDone = useRef(false);
@@ -346,6 +350,10 @@ export default function HomeScreen() {
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
+      onScroll={(e) => {
+        homeScrollYRef.current = e.nativeEvent.contentOffset.y;
+      }}
+      scrollEventThrottle={16}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -453,12 +461,27 @@ export default function HomeScreen() {
                 if (missJournalSaveError) setMissJournalSaveError('');
               }}
               multiline
+              scrollEnabled={false}
               editable={!missJournalSaving}
+              onFocus={() =>
+                scheduleScrollFooterAboveKeyboard(
+                  scrollRef,
+                  missReflectionFooterRef,
+                  homeScrollYRef,
+                )
+              }
+              onContentSizeChange={() =>
+                scheduleScrollFooterAboveKeyboard(
+                  scrollRef,
+                  missReflectionFooterRef,
+                  homeScrollYRef,
+                )
+              }
             />
             {missJournalSaveError ? (
               <Text style={styles.missJournalError}>{missJournalSaveError}</Text>
             ) : null}
-            <View style={styles.missBtnRow}>
+            <View ref={missReflectionFooterRef} collapsable={false} style={styles.missBtnRow}>
               <TouchableOpacity
                 style={styles.missSkipBtn}
                 onPress={() => {
@@ -581,16 +604,26 @@ export default function HomeScreen() {
             setJournalSavedHint(false);
           }}
           multiline
+          scrollEnabled={false}
           autoCorrect
           spellCheck
           editable={!journalSaving}
-          onFocus={() => {
-            setTimeout(() => {
-              scrollRef.current?.scrollToEnd({ animated: true });
-            }, 300);
-          }}
+          onFocus={() =>
+            scheduleScrollFooterAboveKeyboard(
+              scrollRef,
+              preWorkoutJournalFooterRef,
+              homeScrollYRef,
+            )
+          }
+          onContentSizeChange={() =>
+            scheduleScrollFooterAboveKeyboard(
+              scrollRef,
+              preWorkoutJournalFooterRef,
+              homeScrollYRef,
+            )
+          }
         />
-        <View style={styles.journalFooter}>
+        <View ref={preWorkoutJournalFooterRef} collapsable={false} style={styles.journalFooter}>
           {journalSaving ? (
             <Text style={styles.journalHint}>Saving…</Text>
           ) : journalSaveError ? (

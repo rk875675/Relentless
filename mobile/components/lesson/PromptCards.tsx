@@ -191,10 +191,14 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
               value={text}
               onChangeText={setText}
               multiline
+              scrollEnabled={false}
               autoCorrect
               spellCheck
               autoFocus
               onFocus={() =>
+                scheduleScrollFooterAboveKeyboard(entryScrollRef, entryFooterRef, entryScrollYRef)
+              }
+              onContentSizeChange={() =>
                 scheduleScrollFooterAboveKeyboard(entryScrollRef, entryFooterRef, entryScrollYRef)
               }
             />

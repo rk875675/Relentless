@@ -30,7 +30,9 @@ export function scheduleScrollFooterAboveKeyboard(
     });
   };
 
+  // Keyboard + layout often settle after the first frame; second pass avoids a no-op measure.
   requestAnimationFrame(() => {
     setTimeout(run, 200);
+    setTimeout(run, 480);
   });
 }

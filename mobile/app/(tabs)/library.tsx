@@ -89,8 +89,8 @@ export default function LibraryScreen() {
       apiFetch<Progress>('/progress'),
       apiFetch<Streak>('/streak'),
     ]);
-    if (progressRes.error) {
-      setError(progressRes.error);
+    if (progressRes.error || streakRes.error) {
+      setError([progressRes.error, streakRes.error].filter(Boolean).join(' · '));
     }
     const prog = progressRes.data ?? null;
     if (prog) setProgress(prog);
@@ -205,10 +205,8 @@ export default function LibraryScreen() {
           Linking.openURL('https://grantchiasson.com/home');
         }}
       >
-        <Text style={styles.ctaLabel}>1 ON 1</Text>
-        <Text style={styles.ctaTitle}>
-          Sessions with Grant
-        </Text>
+        <Text style={styles.ctaTitle}>Want to go deeper?</Text>
+        <Text style={styles.ctaByline}>Sessions with Grant</Text>
         <Text style={styles.ctaSub}>
           Personalized coaching for your specific goals
         </Text>
@@ -282,7 +280,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 26,
+    paddingVertical: 32,
     paddingHorizontal: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
@@ -293,7 +291,7 @@ const styles = StyleSheet.create({
   },
   categoryAccent: {
     width: 4,
-    height: 24,
+    height: 28,
     borderRadius: 2,
     marginRight: 16,
   },
@@ -313,25 +311,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: spacing.sm,
   },
-  ctaLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.accent,
-    letterSpacing: 2,
-    marginBottom: 6,
-  },
   ctaTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     color: colors.textPrimary,
     textAlign: 'center',
+    lineHeight: 22,
+  },
+  ctaByline: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.accent,
+    textAlign: 'center',
+    marginTop: 10,
   },
   ctaSub: {
     fontSize: 13,
-    color: colors.textSecondary,
+    color: colors.textMuted,
     marginTop: 6,
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 19,
+    maxWidth: 280,
   },
   inlineError: {
     alignItems: 'center',

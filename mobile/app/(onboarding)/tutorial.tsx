@@ -310,9 +310,11 @@ function LibraryScreen({ variant, rings, streak }: { variant: string; rings: Rin
 
       {variant !== 'overview' && (
         <View style={styles.ctaCard}>
-          <Text style={styles.ctaLabel}>1 ON 1</Text>
-          <Text style={styles.ctaTitle}>Sessions with Grant</Text>
-          <Text style={styles.ctaSub}>Personalized coaching for your specific goals</Text>
+          <Text style={styles.ctaTitle}>Want to go deeper?</Text>
+          <Text style={styles.ctaByline}>Sessions with Grant</Text>
+          <Text style={styles.ctaSub}>
+            Personalized coaching for your specific goals
+          </Text>
         </View>
       )}
     </ScrollView>
@@ -778,8 +780,15 @@ const styles = StyleSheet.create({
 
   // Library overview
   categoryBtn: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,
-    borderRadius: 14, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 32,
+    paddingHorizontal: spacing.lg,
+    marginBottom: 12,
   },
   categoryBtnHighlight: {
     borderColor: colors.accent,
@@ -790,15 +799,25 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 5,
   },
-  categoryAccent: { width: 4, height: 28, borderRadius: 2, marginRight: 14 },
-  categoryLabel: { flex: 1, fontSize: 16, fontWeight: '600', color: colors.textPrimary },
+  categoryAccent: { width: 4, height: 28, borderRadius: 2, marginRight: 16 },
+  categoryLabel: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    letterSpacing: 0.3,
+  },
   ctaCard: {
     backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1,
     borderColor: colors.border, padding: 20, marginTop: 4,
   },
-  ctaLabel: { fontSize: 10, fontWeight: '700', color: colors.accentLight, letterSpacing: 1.5, marginBottom: 4 },
-  ctaTitle: { fontSize: 17, fontWeight: '700', color: colors.white, marginBottom: 4 },
-  ctaSub: { fontSize: 13, color: colors.textSecondary, lineHeight: 19 },
+  ctaTitle: { fontSize: 18, fontWeight: '700', color: colors.white, textAlign: 'center', lineHeight: 24 },
+  ctaByline: {
+    fontSize: 15, fontWeight: '600', color: colors.accentLight, textAlign: 'center', marginTop: 10,
+  },
+  ctaSub: {
+    fontSize: 13, color: colors.textSecondary, lineHeight: 19, textAlign: 'center', marginTop: 6, maxWidth: 280, alignSelf: 'center',
+  },
 
   // Library category detail
   catDetailHeader: {

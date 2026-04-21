@@ -210,16 +210,21 @@ type Phase =
   | 'loading'
   | 'ready'
   | 'playing'
+  | 'paused_background'
   | 'block_journal'
   | 'reflection'
   | 'completing'
   | 'done'
   | 'streak'
-  | 'error'
-  | 'terminated';
+  | 'error';
 
 /** Shown on the ready screen for program (standard) WODs only; same copy as former home card subtitle. */
 const STANDARD_WOD_READY_TAGLINE = "focuses on the 'why' and teaching through the 'what'";
+
+/** WOD Day 3 — baseline gut-check: flash cards + required 1–10 score before each advance (saved with journal). */
+const LESSON_DAY3_BASELINE_ID = 'd0000000-0000-0000-0000-000000000003';
+
+const BASELINE_SCORE_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 // ---------------------------------------------------------------------------
 // Helper: fire a haptic at the specified intensity
@@ -360,6 +365,10 @@ export default function LessonPlayerScreen() {
 
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
   const [phase, setPhase] = useState<Phase>('loading');
+  const phaseRef = useRef<Phase>('loading');
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
   const [errorMsg, setErrorMsg] = useState('');
   const [journalText, setJournalText] = useState('');
   const [journalExerciseContext, setJournalExerciseContext] = useState('');
@@ -411,6 +420,8 @@ export default function LessonPlayerScreen() {
   const [flashCardIndex, setFlashCardIndex] = useState(0);
   const [flashCardFlipped, setFlashCardFlipped] = useState(false);
   const flipAnim = useRef(new Animated.Value(0)).current;
+  /** Day 3 baseline only: selected score (1–10) for the current card before Next / Finish. */
+  const [baselineFlashScore, setBaselineFlashScore] = useState<number | null>(null);
 
   // Tap-through text state
   const [tapThroughIndex, setTapThroughIndex] = useState(0);
@@ -454,6 +465,10 @@ export default function LessonPlayerScreen() {
   ).current;
 
   const sessionActive = useRef(false);
+  /** When set, lesson was interrupted by OS background; skew wall clocks by this duration on resume. */
+  const backgroundPauseBeganMsRef = useRef<number | null>(null);
+  /** Legacy flat mode (no voiceover): anchor for elapsed timer; shifted on OS pause/resume. */
+  const legacyFlatTimerAnchorMsRef = useRef<number | null>(null);
   const voiceoverStartPending = useRef(false);
   const audioFileIndexRef = useRef(0);
   const blockIndexRef = useRef(0);
@@ -563,31 +578,9 @@ export default function LessonPlayerScreen() {
   );
 
   // -----------------------------------------------------------------------
-  // Lock-in mode: background kills session
-  // -----------------------------------------------------------------------
-  useEffect(() => {
-    const handleAppState = (next: AppStateStatus) => {
-      if (next !== 'active' && sessionActive.current) {
-        sessionActive.current = false;
-        voiceoverStartPending.current = false;
-        try { player.pause(); } catch { /* noop */ }
-        try { ambientPlayer.pause(); } catch { /* noop */ }
-        stopAllTimers();
-        setPhase('terminated');
-      }
-    };
-    const sub = AppState.addEventListener('change', handleAppState);
-    return () => sub.remove();
-  }, [player]);
-
-  useEffect(() => {
-    return () => stopAllTimers();
-  }, []);
-
-  // -----------------------------------------------------------------------
   // Timer helpers
   // -----------------------------------------------------------------------
-  const stopAllTimers = useCallback(() => {
+  const stopAllTimers = useCallback((opts?: { preserveAudioFallbackForOsPause?: boolean }) => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (exerciseTimerRef.current) { clearInterval(exerciseTimerRef.current); exerciseTimerRef.current = null; }
     wallDrivenBreathTimingRef.current = null;
@@ -598,9 +591,32 @@ export default function LessonPlayerScreen() {
     if (breathAnimRef.current) { breathAnimRef.current.stop(); breathAnimRef.current = null; }
     if (audioFallbackTimerRef.current) { clearInterval(audioFallbackTimerRef.current); audioFallbackTimerRef.current = null; }
     if (audioFallbackTimeoutRef.current) { clearTimeout(audioFallbackTimeoutRef.current); audioFallbackTimeoutRef.current = null; }
-    audioFallbackActive.current = false;
+    if (!opts?.preserveAudioFallbackForOsPause) {
+      audioFallbackActive.current = false;
+    }
     progressAnim.stopAnimation();
   }, []);
+
+  useEffect(() => {
+    return () => stopAllTimers();
+  }, [stopAllTimers]);
+
+  // -----------------------------------------------------------------------
+  // OS background: pause audio/timers; resume from same position (PRD §8.5).
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    const handleAppState = (next: AppStateStatus) => {
+      if (next !== 'active' && sessionActive.current && phaseRef.current === 'playing') {
+        backgroundPauseBeganMsRef.current = Date.now();
+        try { player.pause(); } catch { /* noop */ }
+        try { ambientPlayer.pause(); } catch { /* noop */ }
+        stopAllTimers({ preserveAudioFallbackForOsPause: true });
+        setPhase('paused_background');
+      }
+    };
+    const sub = AppState.addEventListener('change', handleAppState);
+    return () => sub.remove();
+  }, [player, ambientPlayer, stopAllTimers]);
 
   // -----------------------------------------------------------------------
   // Audio cue bars — each bar independently oscillates scaleY to random
@@ -834,7 +850,7 @@ export default function LessonPlayerScreen() {
 
       exerciseTimerRef.current = setInterval(() => {
         const now = Date.now();
-        const wallMs = now - exerciseWallClockStart;
+        const wallMs = now - exerciseWallClockStartRef.current;
         const secs = Math.floor(wallMs / 1000);
         setExerciseElapsed(secs);
         if (!exerciseUsesWallDriveBreath) {
@@ -928,6 +944,7 @@ export default function LessonPlayerScreen() {
       setFlashCardIndex(0);
       setFlashCardFlipped(false);
       flipAnim.setValue(0);
+      setBaselineFlashScore(null);
       setCurrentAudioUrl(null);
       try { ambientPlayer.seekTo(0).then(() => ambientPlayer.play()).catch(() => {}); } catch { /* noop */ }
     } else if (block.type === 'tap_through_text') {
@@ -944,6 +961,8 @@ export default function LessonPlayerScreen() {
       journalPromptRef.current = block.prompt;
       setCurrentAudioUrl(null);
       setOnScreenText(block.prompt);
+      const accumulated = journalPartsRef.current.join('\n\n---\n\n').trim();
+      setJournalExerciseContext(accumulated);
       setPhase('block_journal');
     } else if (
       block.type === 'prompt_cards' ||
@@ -1109,6 +1128,7 @@ export default function LessonPlayerScreen() {
       lessonProgressStartMsRef.current = Date.now();
       blockIndexRef.current = 0;
       setBlockIndex(0);
+      setBaselineFlashScore(null);
       void setAudioModeAsync({
         playsInSilentMode: true,
         interruptionMode: 'doNotMix',
@@ -1131,9 +1151,11 @@ export default function LessonPlayerScreen() {
       return;
     }
 
-    const start = Date.now();
+    legacyFlatTimerAnchorMsRef.current = Date.now();
     timerRef.current = setInterval(() => {
-      const secs = Math.floor((Date.now() - start) / 1000);
+      const anchor = legacyFlatTimerAnchorMsRef.current;
+      if (anchor == null) return;
+      const secs = Math.floor((Date.now() - anchor) / 1000);
       setElapsed(secs);
       if (secs >= lesson.duration_seconds) finishLegacyPlayback();
     }, 250);
@@ -1144,6 +1166,7 @@ export default function LessonPlayerScreen() {
   // -----------------------------------------------------------------------
   const finishLegacyPlayback = useCallback(() => {
     sessionActive.current = false;
+    backgroundPauseBeganMsRef.current = null;
     voiceoverStartPending.current = false;
     stopAllTimers();
     try { player.pause(); } catch { /* noop */ }
@@ -1164,9 +1187,202 @@ export default function LessonPlayerScreen() {
   }, [completeLesson, stopAllTimers]);
 
   // -----------------------------------------------------------------------
-  // Restart after termination
+  // Resume after OS background pause (timers + breath drivers only; state kept)
+  // -----------------------------------------------------------------------
+  const resumeFromOsBackgroundPause = useCallback(() => {
+    if (phaseRef.current !== 'paused_background') return;
+    const began = backgroundPauseBeganMsRef.current;
+    if (began == null) return;
+    const pauseMs = Date.now() - began;
+    backgroundPauseBeganMsRef.current = null;
+
+    exerciseWallClockStartRef.current += pauseMs;
+    audioFallbackStartRef.current += pauseMs;
+    if (lessonProgressStartMsRef.current != null) {
+      lessonProgressStartMsRef.current += pauseMs;
+    }
+    if (legacyFlatTimerAnchorMsRef.current != null) {
+      legacyFlatTimerAnchorMsRef.current += pauseMs;
+    }
+
+    setPhase('playing');
+
+    const l = lessonRef.current;
+    const hasB = Boolean(l?.content_blocks?.blocks?.length);
+    if (!hasB) {
+      try { void player.play(); } catch { /* noop */ }
+      if (l && !l.voiceover_url && legacyFlatTimerAnchorMsRef.current != null) {
+        timerRef.current = setInterval(() => {
+          const anchor = legacyFlatTimerAnchorMsRef.current;
+          if (anchor == null) return;
+          const secs = Math.floor((Date.now() - anchor) / 1000);
+          setElapsed(secs);
+          if (secs >= l.duration_seconds) finishLegacyPlayback();
+        }, 250);
+      }
+      return;
+    }
+
+    const blocks = l!.content_blocks!.blocks!;
+    const block = blocks[blockIndexRef.current];
+    if (!block) return;
+
+    if (block.type === 'voiceover') {
+      if (audioFallbackActive.current) {
+        audioFallbackTimerRef.current = setInterval(() => {
+          const el = (Date.now() - audioFallbackStartRef.current) / 1000;
+          setAudioFallbackElapsed(el);
+        }, 100);
+      } else {
+        try { void player.play(); } catch { /* noop */ }
+      }
+      return;
+    }
+
+    if (block.type === 'timed_exercise') {
+      try {
+        if (!ambientPlayer.playing) void ambientPlayer.play();
+      } catch { /* noop */ }
+
+      if (isTextStepExercise(block)) {
+        return;
+      }
+
+      const effectiveDuration = exerciseEffectiveDurationSeconds(block);
+      const model = block.interactive_model;
+      const circleCfg = getCircleBreathModelConfig(model);
+      const timing = circleCfg?.timing;
+      const exerciseUsesWallDriveBreath = Boolean(circleCfg?.wallDrive);
+
+      if (timing) {
+        const [inhaleMs, holdInMs, exhaleMs, holdOutMs] = timing;
+        if (exerciseUsesWallDriveBreath) {
+          wallDrivenBreathTimingRef.current = [inhaleMs, holdInMs, exhaleMs, holdOutMs];
+          const pump = () => {
+            const spec = wallDrivenBreathTimingRef.current;
+            if (!spec) return;
+            const [i0, hi0, e0, ho0] = spec;
+            const w = Date.now() - exerciseWallClockStartRef.current;
+            breathCircleAnim.setValue(breathAnimScalarFromWallMs(w, i0, hi0, e0, ho0));
+            if (w - lastBreathWallMsUiRef.current >= 32) {
+              lastBreathWallMsUiRef.current = w;
+              setExerciseWallMs(w);
+            }
+            if (!wallDrivenBreathTimingRef.current) return;
+            circleBreathRafRef.current = requestAnimationFrame(pump);
+          };
+          circleBreathRafRef.current = requestAnimationFrame(pump);
+        } else {
+          const parts: Animated.CompositeAnimation[] = [
+            Animated.timing(breathCircleAnim, { toValue: 1, duration: inhaleMs, useNativeDriver: true }),
+          ];
+          if (holdInMs > 0) parts.push(Animated.delay(holdInMs));
+          parts.push(Animated.timing(breathCircleAnim, { toValue: 0, duration: exhaleMs, useNativeDriver: true }));
+          if (holdOutMs > 0) parts.push(Animated.delay(holdOutMs));
+          breathAnimRef.current = Animated.loop(Animated.sequence(parts));
+          breathAnimRef.current.start();
+        }
+      }
+
+      exerciseTimerRef.current = setInterval(() => {
+        const now = Date.now();
+        const wallMs = now - exerciseWallClockStartRef.current;
+        const secs = Math.floor(wallMs / 1000);
+        setExerciseElapsed(secs);
+        if (!exerciseUsesWallDriveBreath) {
+          setExerciseWallMs(wallMs);
+        }
+
+        if (block.interactive_model === 'box_breathing') {
+          const phaseIdx = Math.floor((secs % 16) / 4);
+          if (phaseIdx !== lastBoxPhaseRef.current) {
+            lastBoxPhaseRef.current = phaseIdx;
+            const step = block.steps[phaseIdx];
+            if (step?.haptic) fireHaptic(step.haptic);
+          }
+        }
+
+        if (block.haptic_pattern && secs !== lastHapticSecRef.current) {
+          const { cycle_seconds, cues } = block.haptic_pattern;
+          const cyclePos = secs % cycle_seconds;
+          for (const cue of cues) {
+            if (Math.floor(cue.at_offset_seconds) === cyclePos) {
+              lastHapticSecRef.current = secs;
+              fireHaptic(cue.intensity);
+              break;
+            }
+          }
+        }
+
+        if (block.interactive_model !== 'box_breathing') {
+          let cumulative = 0;
+          for (let i = 0; i < block.steps.length; i++) {
+            const prevCumulative = cumulative;
+            cumulative += block.steps[i].duration_seconds;
+            if (secs >= prevCumulative && secs < cumulative) {
+              const target = block.steps[i].text;
+              if (target !== lastCueRef.current) {
+                lastCueRef.current = target;
+                exerciseStepIndexRef.current = i;
+                setExerciseStepIndex(i);
+                if (block.steps[i].haptic) fireHaptic(block.steps[i].haptic!);
+                pulseBars();
+                Animated.parallel([
+                  Animated.timing(textFade, { toValue: 0, duration: 120, useNativeDriver: true }),
+                  Animated.timing(cardScale, { toValue: 0.96, duration: 120, useNativeDriver: true }),
+                ]).start(() => {
+                  setOnScreenText(target);
+                  Animated.parallel([
+                    Animated.timing(textFade, { toValue: 1, duration: 280, useNativeDriver: true }),
+                    Animated.spring(cardScale, { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }),
+                  ]).start();
+                });
+              }
+              break;
+            }
+          }
+        }
+
+        if (block.interactive_model === 'box_breathing' && block.visual_cues?.length) {
+          const cueIdx = Math.min(Math.floor(secs / 10), block.visual_cues.length - 1);
+          if (cueIdx !== lastBoxCueSecRef.current) {
+            lastBoxCueSecRef.current = cueIdx;
+            setBoxCueIndex(cueIdx);
+            boxCueFade.setValue(0);
+            Animated.timing(boxCueFade, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+          }
+        }
+
+        const done = block.interactive_model === 'box_breathing'
+          ? secs >= effectiveDuration
+          : secs >= block.duration_seconds;
+
+        if (done) {
+          if (exerciseTimerRef.current) { clearInterval(exerciseTimerRef.current); exerciseTimerRef.current = null; }
+          wallDrivenBreathTimingRef.current = null;
+          if (circleBreathRafRef.current != null) {
+            cancelAnimationFrame(circleBreathRafRef.current);
+            circleBreathRafRef.current = null;
+          }
+          if (breathAnimRef.current) { breathAnimRef.current.stop(); breathAnimRef.current = null; }
+          try { ambientPlayer.pause(); } catch { /* noop */ }
+          advanceBlock();
+        }
+      }, 250);
+      return;
+    }
+
+    try {
+      if (!ambientPlayer.playing) void ambientPlayer.play();
+    } catch { /* noop */ }
+  }, [advanceBlock, player, ambientPlayer, pulseBars, textFade, cardScale, breathCircleAnim, boxCueFade, finishLegacyPlayback]);
+
+  // -----------------------------------------------------------------------
+  // Restart from ready screen (user explicitly restarts prep)
   // -----------------------------------------------------------------------
   const handleRestart = () => {
+    backgroundPauseBeganMsRef.current = null;
+    legacyFlatTimerAnchorMsRef.current = null;
     voiceoverStartPending.current = false;
     audioFallbackActive.current = false;
     wallDrivenBreathTimingRef.current = null;
@@ -1200,6 +1416,7 @@ export default function LessonPlayerScreen() {
     setFlashCardIndex(0);
     setFlashCardFlipped(false);
     flipAnim.setValue(0);
+    setBaselineFlashScore(null);
     tapThroughIndexRef.current = 0;
     setTapThroughIndex(0);
     tapThroughSlideX.setValue(0);
@@ -1376,6 +1593,8 @@ export default function LessonPlayerScreen() {
     }),
   ).current;
 
+  const showPlayingChrome = phase === 'playing' || phase === 'paused_background';
+
   const hasLegacyVoiceover = !hasBlocks && Boolean(lesson?.voiceover_url);
   const legacyAudioElapsed = Math.floor(audioStatus.currentTime);
   const legacyTotal =
@@ -1383,7 +1602,7 @@ export default function LessonPlayerScreen() {
       ? audioStatus.duration
       : (lesson?.duration_seconds ?? 0);
   const legacyDisplayElapsed =
-    hasLegacyVoiceover && phase === 'playing' ? legacyAudioElapsed : elapsed;
+    hasLegacyVoiceover && showPlayingChrome ? legacyAudioElapsed : elapsed;
   const legacyProgress = legacyTotal > 0 ? Math.min(legacyDisplayElapsed / legacyTotal, 1) : 0;
 
   const sortedMacCats = useMemo(() => sortMacCategories(lesson?.categories), [lesson?.categories]);
@@ -1409,7 +1628,7 @@ export default function LessonPlayerScreen() {
 
   const overallLessonProgress = useMemo(() => {
     if (!hasBlocks || lessonTotalWeight <= 0) return 0;
-    if (phase !== 'playing' && phase !== 'block_journal') return 0;
+    if (!showPlayingChrome && phase !== 'block_journal') return 0;
 
     let elapsedWeight = 0;
     for (let i = 0; i < blockIndex; i++) elapsedWeight += blockWeightSeconds(blocks[i]);
@@ -1429,7 +1648,11 @@ export default function LessonPlayerScreen() {
       } else if (currentBlock.type === 'tap_through_text') {
         withinSec = (tapThroughIndex / Math.max(1, currentBlock.paragraphs.length)) * w;
       } else if (currentBlock.type === 'flash_cards') {
-        withinSec = (flashCardIndex / Math.max(1, currentBlock.cards.length)) * w;
+        const base = (flashCardIndex / Math.max(1, currentBlock.cards.length)) * w;
+        const day3 =
+          lessonRef.current?.id === LESSON_DAY3_BASELINE_ID &&
+          baselineFlashScore !== null;
+        withinSec = base + (day3 ? (0.35 * w) / Math.max(1, currentBlock.cards.length) : 0);
       } else if (currentBlock.type === 'prompt_cards') {
         withinSec = (promptCardsIndex / Math.max(1, currentBlock.cards.length)) * w;
       }
@@ -1438,28 +1661,29 @@ export default function LessonPlayerScreen() {
 
     return Math.min(1, elapsedWeight / lessonTotalWeight);
   }, [
-    hasBlocks, blocks, lessonTotalWeight, phase, blockIndex,
+    hasBlocks, blocks, lessonTotalWeight, phase, showPlayingChrome, blockIndex,
     audioFileIndex, audioStatus.currentTime, audioStatus.isLoaded, audioFallbackElapsed,
     exerciseElapsed, exerciseStepIndex, tapThroughIndex, flashCardIndex, promptCardsIndex,
+    baselineFlashScore,
   ]);
 
   useEffect(() => {
     if (hasBlocks) {
-      if (phase !== 'playing' && phase !== 'block_journal') return;
+      if (!showPlayingChrome && phase !== 'block_journal') return;
       Animated.timing(progressAnim, {
         toValue: overallLessonProgress,
         duration: 90,
         useNativeDriver: false,
       }).start();
     } else {
-      if (phase !== 'playing') return;
+      if (!showPlayingChrome) return;
       Animated.timing(progressAnim, {
         toValue: legacyProgress,
         duration: 90,
         useNativeDriver: false,
       }).start();
     }
-  }, [phase, hasBlocks, overallLessonProgress, legacyProgress]);
+  }, [phase, showPlayingChrome, hasBlocks, overallLessonProgress, legacyProgress]);
 
   useEffect(() => {
     if (phase !== 'done') return;
@@ -1519,7 +1743,7 @@ export default function LessonPlayerScreen() {
   });
 
   const barBaseHeights = [10, 20, 28, 16, 22];
-  const audioBars = phase === 'playing' ? (
+  const audioBars = showPlayingChrome ? (
     <View style={styles.audioCue}>
       {barScales.map((scaleAnim, i) => (
         <Animated.View
@@ -1553,14 +1777,31 @@ export default function LessonPlayerScreen() {
   const nextFlashCard = () => {
     if (!isFlashCardsBlock) return;
     const fcBlock = currentBlock as FlashCardsBlock;
+    const isDay3Baseline = lessonRef.current?.id === LESSON_DAY3_BASELINE_ID;
+    const card = fcBlock.cards[flashCardIndex];
+
+    if (isDay3Baseline) {
+      if (baselineFlashScore === null) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        return;
+      }
+      if (card) {
+        journalPartsRef.current.push(
+          `Score (1–10): ${baselineFlashScore}\n\n${card.front}`,
+        );
+      }
+    }
+
     const nextIdx = flashCardIndex + 1;
     if (nextIdx >= fcBlock.cards.length) {
       try { ambientPlayer.pause(); } catch { /* noop */ }
+      setBaselineFlashScore(null);
       advanceBlock();
       return;
     }
     setFlashCardFlipped(false);
     flipAnim.setValue(0);
+    setBaselineFlashScore(null);
     setFlashCardIndex(nextIdx);
   };
 
@@ -1578,10 +1819,10 @@ export default function LessonPlayerScreen() {
   // -----------------------------------------------------------------------
   return (
     <>
-      <Stack.Screen options={{ headerShown: false, gestureEnabled: phase !== 'playing' }} />
+      <Stack.Screen options={{ headerShown: false, gestureEnabled: !showPlayingChrome }} />
       <SafeAreaView style={styles.container}>
         <View style={styles.topBar}>
-          {phase !== 'playing' ? (
+          {!showPlayingChrome ? (
             <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
               <Ionicons name="close" size={28} color={colors.textSecondary} />
             </TouchableOpacity>
@@ -1639,22 +1880,6 @@ export default function LessonPlayerScreen() {
           </View>
         )}
 
-        {phase === 'terminated' && (
-          <View style={styles.centered}>
-            <Ionicons name="pause-circle-outline" size={48} color={colors.textMuted} />
-            <Text style={styles.terminatedTitle}>Session ended</Text>
-            <Text style={styles.terminatedSub}>
-              Leaving the app during a session gives 0 credit. Stay locked in next time.
-            </Text>
-            <TouchableOpacity style={styles.primaryBtn} onPress={handleRestart}>
-              <Text style={styles.primaryBtnText}>Restart</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.back()}>
-              <Text style={styles.secondaryBtnText}>Leave</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {phase === 'ready' && lesson && (
           <View style={styles.readyRoot}>
             <View style={styles.readyCard}>
@@ -1686,7 +1911,7 @@ export default function LessonPlayerScreen() {
         )}
 
         {/* Block-mode: voiceover — text-centric, no timer */}
-        {phase === 'playing' && lesson && hasBlocks && isVoiceoverBlock && (
+        {showPlayingChrome && lesson && hasBlocks && isVoiceoverBlock && (
           <View style={styles.centered}>
             <Animated.Text style={[styles.blockText, { opacity: textFade }]}>
               {onScreenText}
@@ -1704,7 +1929,7 @@ export default function LessonPlayerScreen() {
         )}
 
         {/* Block-mode: timed exercise */}
-        {phase === 'playing' && lesson && hasBlocks && isExerciseBlock && (() => {
+        {showPlayingChrome && lesson && hasBlocks && isExerciseBlock && (() => {
           const exBlock = currentBlock as TimedExerciseBlock;
 
           // Shared interpolation for the breath circle (used by multiple models)
@@ -2052,40 +2277,243 @@ export default function LessonPlayerScreen() {
           );
         })()}
 
-        {/* Block-mode: flash cards — interactive flip cards */}
-        {phase === 'playing' && lesson && hasBlocks && isFlashCardsBlock && (() => {
+        {/* Block-mode: flash cards — interactive flip cards (Day 3 baseline: scroll + 1–10 score) */}
+        {showPlayingChrome && lesson && hasBlocks && isFlashCardsBlock && (() => {
           const fcBlock = currentBlock as FlashCardsBlock;
           const card = fcBlock.cards[flashCardIndex];
           if (!card) return null;
-          return (
-            <View style={styles.centered}>
-              <View style={styles.exerciseStepDots}>
-                {fcBlock.cards.map((_, i) => {
-                  const stripe = pickMacColor(
-                    isMultiMac ? macAccentColorsRaw : undefined,
-                    catColor,
-                    i,
-                  );
+          const isDay3BaselineFlash = lesson.id === LESSON_DAY3_BASELINE_ID;
+          const scoreReady = !isDay3BaselineFlash || baselineFlashScore !== null;
+          const isLastFlash = flashCardIndex >= fcBlock.cards.length - 1;
+
+          const dots = (
+            <View style={styles.exerciseStepDots}>
+              {fcBlock.cards.map((_, i) => {
+                const stripe = pickMacColor(
+                  isMultiMac ? macAccentColorsRaw : undefined,
+                  catColor,
+                  i,
+                );
+                return (
+                  <View
+                    key={i}
+                    style={[
+                      styles.stepDot,
+                      i === flashCardIndex
+                        ? { backgroundColor: stripe, width: 18 }
+                        : i < flashCardIndex
+                          ? { backgroundColor: stripe }
+                          : { backgroundColor: colors.ringTrack },
+                    ]}
+                  />
+                );
+              })}
+            </View>
+          );
+
+          const baselineMacTabs =
+            isDay3BaselineFlash && sortedMacCats.length >= fcBlock.cards.length ? (
+              <View style={styles.flashBaselineMacTabs}>
+                {sortedMacCats.slice(0, fcBlock.cards.length).map((pillar, i) => {
+                  const pc = MAC_COLORS[pillar];
+                  const active = i === flashCardIndex;
+                  const done = i < flashCardIndex;
                   return (
                     <View
-                      key={i}
+                      key={pillar}
+                      accessibilityRole="text"
+                      accessibilityLabel={`${MAC_A11Y_NAME[pillar]}${active ? ', current' : done ? ', completed' : ''}`}
                       style={[
-                        styles.stepDot,
-                        i === flashCardIndex
-                          ? { backgroundColor: stripe, width: 18 }
-                          : i < flashCardIndex
-                            ? { backgroundColor: stripe }
-                            : { backgroundColor: colors.ringTrack },
+                        styles.flashBaselineMacTab,
+                        active && { borderColor: pc, backgroundColor: pc + '1e' },
+                        !active && done && { borderColor: pc + '99', backgroundColor: pc + '12' },
                       ]}
-                    />
+                    >
+                      <Text
+                        style={[
+                          styles.flashBaselineMacTabLetter,
+                          { color: active || done ? pc : colors.textMuted },
+                        ]}
+                      >
+                        {MAC_LETTER[pillar]}
+                      </Text>
+                    </View>
                   );
                 })}
               </View>
+            ) : null;
 
-              <Text style={styles.flashTapHint}>
-                {flashCardFlipped ? '' : 'Tap to flip'}
-              </Text>
+          const baselinePillar: MacCategory | undefined =
+            isDay3BaselineFlash && sortedMacCats.length > 0
+              ? sortedMacCats[Math.min(flashCardIndex, sortedMacCats.length - 1)]
+              : undefined;
+          const baselinePillarColor = baselinePillar ? MAC_COLORS[baselinePillar] : progressBarColor;
 
+          const progressNode = (
+            <View style={styles.progressBarTrack}>
+              <Animated.View
+                style={[
+                  styles.progressBarFill,
+                  {
+                    width: progressBarWidth,
+                    backgroundColor: isDay3BaselineFlash ? baselinePillarColor : progressBarColor,
+                  },
+                ]}
+              />
+            </View>
+          );
+
+          const nextBtn = (
+            <TouchableOpacity
+              style={[styles.primaryBtn, !scoreReady && styles.primaryBtnDisabled]}
+              onPress={nextFlashCard}
+              disabled={!scoreReady}
+            >
+              <Text style={styles.primaryBtnText}>{isLastFlash ? 'Finish' : 'Next'}</Text>
+            </TouchableOpacity>
+          );
+
+          if (isDay3BaselineFlash) {
+            return (
+              <View
+                style={[
+                  styles.flashBaselineOuter,
+                  { paddingBottom: Math.max(spacing.md, insets.bottom + spacing.xs) },
+                ]}
+              >
+                <View style={styles.flashBaselineTopBlock}>
+                  <View style={styles.flashBaselineHeader}>
+                    {baselineMacTabs ?? dots}
+                  </View>
+                  <View
+                    style={[
+                      styles.flashCardBaselineShell,
+                      {
+                        borderColor: baselinePillarColor,
+                        borderTopColor: baselinePillarColor,
+                        shadowColor: baselinePillarColor,
+                        shadowOffset: { width: 0, height: 0 },
+                        shadowOpacity: 0.2,
+                        shadowRadius: 16,
+                        elevation: 6,
+                      },
+                    ]}
+                  >
+                    <ScrollView
+                      style={styles.flashCardBaselineScroll}
+                      contentContainerStyle={styles.flashCardBaselineScrollContent}
+                      showsVerticalScrollIndicator
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      <Text style={styles.flashCardBaselineBody}>{card.front}</Text>
+                    </ScrollView>
+                  </View>
+                </View>
+                <View style={styles.flashBaselineUpper}>
+                  <View style={styles.flashBaselineScores}>
+                    <View style={styles.baselineScoreRows}>
+                      <View style={styles.baselineScoreRow}>
+                        {BASELINE_SCORE_VALUES.slice(0, 5).map((n) => {
+                          const selected = baselineFlashScore === n;
+                          return (
+                            <TouchableOpacity
+                              key={n}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected }}
+                              accessibilityLabel={`Score ${n}`}
+                              onPress={() => {
+                                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                setBaselineFlashScore(n);
+                              }}
+                              style={[
+                                styles.baselineScoreChip,
+                                selected && {
+                                  borderColor: baselinePillarColor,
+                                  backgroundColor: baselinePillarColor + '22',
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.baselineScoreChipText,
+                                  selected && { color: baselinePillarColor, fontWeight: '800' },
+                                ]}
+                              >
+                                {n}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      <View style={styles.baselineScoreRow}>
+                        {BASELINE_SCORE_VALUES.slice(5, 10).map((n) => {
+                          const selected = baselineFlashScore === n;
+                          return (
+                            <TouchableOpacity
+                              key={n}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected }}
+                              accessibilityLabel={`Score ${n}`}
+                              onPress={() => {
+                                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                setBaselineFlashScore(n);
+                              }}
+                              style={[
+                                styles.baselineScoreChip,
+                                selected && {
+                                  borderColor: baselinePillarColor,
+                                  backgroundColor: baselinePillarColor + '22',
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.baselineScoreChipText,
+                                  selected && { color: baselinePillarColor, fontWeight: '800' },
+                                ]}
+                              >
+                                {n}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.flashBaselineSpacer} />
+                </View>
+                <View style={styles.flashBaselineBottomBar}>
+                  <View style={[styles.progressBarTrack, styles.flashBaselineProgressTrack]}>
+                    <Animated.View
+                      style={[
+                        styles.progressBarFill,
+                        {
+                          width: progressBarWidth,
+                          backgroundColor: baselinePillarColor,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.primaryBtn,
+                      styles.flashBaselineNextBtn,
+                      !scoreReady && styles.primaryBtnDisabled,
+                    ]}
+                    onPress={nextFlashCard}
+                    disabled={!scoreReady}
+                  >
+                    <Text style={styles.primaryBtnText}>{isLastFlash ? 'Finish' : 'Next'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          }
+
+          return (
+            <View style={styles.centered}>
+              {dots}
+              <Text style={styles.flashTapHint}>{flashCardFlipped ? '' : 'Tap to flip'}</Text>
               <TouchableOpacity activeOpacity={0.9} onPress={flipCard} style={styles.flashCardWrapper}>
                 <Animated.View
                   style={[
@@ -2127,26 +2555,14 @@ export default function LessonPlayerScreen() {
                 </Animated.View>
               </TouchableOpacity>
 
-              <View style={styles.progressBarTrack}>
-                <Animated.View
-                  style={[
-                    styles.progressBarFill,
-                    { width: progressBarWidth, backgroundColor: progressBarColor },
-                  ]}
-                />
-              </View>
-
-              <TouchableOpacity style={styles.primaryBtn} onPress={nextFlashCard}>
-                <Text style={styles.primaryBtnText}>
-                  {flashCardIndex >= fcBlock.cards.length - 1 ? 'Finish' : 'Next'}
-                </Text>
-              </TouchableOpacity>
+              {progressNode}
+              {nextBtn}
             </View>
           );
         })()}
 
         {/* Block-mode: tap-through text — Duolingo-style tap/swipe to advance */}
-        {phase === 'playing' && lesson && hasBlocks && isTapThroughBlock && (() => {
+        {showPlayingChrome && lesson && hasBlocks && isTapThroughBlock && (() => {
           const ttBlock = currentBlock as TapThroughTextBlock;
           const paragraph = ttBlock.paragraphs[tapThroughIndex] ?? '';
           const isLast = tapThroughIndex >= ttBlock.paragraphs.length - 1;
@@ -2212,7 +2628,7 @@ export default function LessonPlayerScreen() {
         })()}
 
         {/* Component-based interactive blocks */}
-        {phase === 'playing' && lesson && hasBlocks && isComponentBlock && (() => {
+        {showPlayingChrome && lesson && hasBlocks && isComponentBlock && (() => {
           const block = currentBlock!;
           // Inline the advance logic here rather than delegating through
           // advanceBlock → startBlock, which captures a stale startBlock
@@ -2317,6 +2733,7 @@ export default function LessonPlayerScreen() {
                 completionHoldSeconds={block.completion_hold_seconds}
                 catColor={catColor}
                 accentColors={isMultiMac ? macAccentColorsRaw : undefined}
+                suspendForBackground={phase === 'paused_background'}
                 onComplete={handleComplete}
               />
             );
@@ -2367,7 +2784,7 @@ export default function LessonPlayerScreen() {
         })()}
 
         {/* Progress bar for component-based blocks (they have no internal bar) */}
-        {phase === 'playing' && lesson && hasBlocks && isComponentBlock && (
+        {showPlayingChrome && lesson && hasBlocks && isComponentBlock && (
           <View style={styles.componentProgressWrap}>
             <View style={styles.progressBarTrack}>
               <Animated.View
@@ -2381,7 +2798,7 @@ export default function LessonPlayerScreen() {
         )}
 
         {/* Legacy flat-mode playing */}
-        {phase === 'playing' && lesson && !hasBlocks && (
+        {showPlayingChrome && lesson && !hasBlocks && (
           <View style={styles.centered}>
             <View style={styles.timerContainer}>
               <Text style={styles.timerText}>{formatTime(legacyDisplayElapsed)}</Text>
@@ -2440,12 +2857,20 @@ export default function LessonPlayerScreen() {
                 value={journalText}
                 onChangeText={setJournalText}
                 multiline
+                scrollEnabled={false}
                 enterKeyHint="enter"
                 returnKeyLabel={Platform.OS === 'android' ? 'Enter' : undefined}
                 autoCorrect
                 spellCheck
                 autoFocus
                 onFocus={() =>
+                  scheduleScrollFooterAboveKeyboard(
+                    lessonJournalScrollRef,
+                    lessonJournalFooterRef,
+                    lessonJournalScrollYRef,
+                  )
+                }
+                onContentSizeChange={() =>
                   scheduleScrollFooterAboveKeyboard(
                     lessonJournalScrollRef,
                     lessonJournalFooterRef,
@@ -2501,12 +2926,20 @@ export default function LessonPlayerScreen() {
                     value={journalText}
                     onChangeText={setJournalText}
                     multiline
+                    scrollEnabled={false}
                     enterKeyHint="enter"
                     returnKeyLabel={Platform.OS === 'android' ? 'Enter' : undefined}
                     autoCorrect
                     spellCheck
                     autoFocus
                     onFocus={() =>
+                      scheduleScrollFooterAboveKeyboard(
+                        lessonJournalScrollRef,
+                        lessonJournalFooterRef,
+                        lessonJournalScrollYRef,
+                      )
+                    }
+                    onContentSizeChange={() =>
                       scheduleScrollFooterAboveKeyboard(
                         lessonJournalScrollRef,
                         lessonJournalFooterRef,
@@ -2615,6 +3048,21 @@ export default function LessonPlayerScreen() {
                 <Text style={styles.primaryBtnText}>Done</Text>
               </TouchableOpacity>
             </Animated.View>
+          </View>
+        )}
+
+        {phase === 'paused_background' && (
+          <View style={styles.osPauseOverlay} pointerEvents="auto">
+            <View style={styles.osPauseCard}>
+              <Ionicons name="pause-circle-outline" size={48} color={colors.textMuted} />
+              <Text style={styles.osPauseTitle}>Paused</Text>
+              <Text style={styles.osPauseSub}>
+                You left the app briefly. Tap Continue to pick up where you left off.
+              </Text>
+              <TouchableOpacity style={styles.primaryBtn} onPress={resumeFromOsBackgroundPause}>
+                <Text style={styles.primaryBtnText}>Continue</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </SafeAreaView>
@@ -2995,13 +3443,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700' as const,
   },
-  terminatedTitle: {
+  osPauseOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  osPauseCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: spacing.xl,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  osPauseTitle: {
     fontSize: 22,
     fontWeight: '700',
     color: colors.textPrimary,
     marginTop: spacing.lg,
+    textAlign: 'center',
   },
-  terminatedSub: {
+  osPauseSub: {
     fontSize: 14,
     color: colors.textSecondary,
     textAlign: 'center',
@@ -3034,6 +3500,9 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: '700',
+  },
+  primaryBtnDisabled: {
+    opacity: 0.42,
   },
   secondaryBtn: {
     marginTop: spacing.md,
@@ -3112,6 +3581,147 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginBottom: spacing.sm,
     height: 18,
+  },
+  /** Day 3 baseline: full-height column — do not reuse `flashCard` (it uses `position: 'absolute'` and breaks layout). */
+  flashBaselineOuter: {
+    flex: 1,
+    width: '100%',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+  },
+  flashBaselineHeader: {
+    flexShrink: 0,
+    width: '100%',
+    alignItems: 'center',
+  },
+  /** Tabs + prompt card (shrink-wrap height); spacer below pushes footer to bottom. */
+  flashBaselineTopBlock: {
+    flexShrink: 0,
+    width: '100%',
+    alignItems: 'stretch',
+  },
+  /**
+   * Fills space between the prompt card and the bottom bar; paddingTop separates card from
+   * scores. Spacer inside is capped so scores sit closer to the progress bar than to the card.
+   */
+  flashBaselineUpper: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+    paddingTop: spacing.xl + spacing.md,
+  },
+  /**
+   * Between scores and progress+Next. Capped so gap (scores → bar) stays smaller than
+   * gap (description card → scores), while flex slack stays inside flashBaselineUpper.
+   */
+  flashBaselineSpacer: {
+    flex: 1,
+    minHeight: 0,
+    maxHeight: 28,
+    width: '100%',
+  },
+  flashBaselineScores: {
+    flexShrink: 0,
+    width: '100%',
+  },
+  flashBaselineBottomBar: {
+    flexShrink: 0,
+    width: '100%',
+    alignItems: 'center',
+  },
+  flashBaselineMacTabs: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    marginBottom: spacing.lg,
+    paddingHorizontal: 2,
+  },
+  flashBaselineMacTab: {
+    flex: 1,
+    maxWidth: 120,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flashBaselineMacTabLetter: {
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  flashCardBaselineShell: {
+    alignSelf: 'stretch',
+    width: '100%',
+    marginTop: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderTopWidth: 2,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+    overflow: 'hidden',
+  },
+  /** Caps height so long prompts scroll; shell wraps this instead of filling the screen. */
+  flashCardBaselineScroll: {
+    width: '100%',
+    maxHeight: 236,
+    flexGrow: 0,
+  },
+  flashCardBaselineScrollContent: {
+    paddingBottom: spacing.md,
+  },
+  flashCardBaselineBody: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'left',
+    lineHeight: 25,
+  },
+  flashBaselineProgressTrack: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
+    alignSelf: 'center',
+  },
+  flashBaselineNextBtn: {
+    marginTop: spacing.sm,
+    alignSelf: 'center',
+  },
+  baselineScoreRows: {
+    width: '100%',
+    marginBottom: 0,
+    gap: 8,
+  },
+  baselineScoreRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    paddingHorizontal: 2,
+    gap: 6,
+  },
+  baselineScoreChip: {
+    flex: 1,
+    maxWidth: 52,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  baselineScoreChipText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
   streakGlow: {
     width: 130,

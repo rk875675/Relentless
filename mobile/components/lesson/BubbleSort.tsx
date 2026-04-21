@@ -260,7 +260,11 @@ export default function BubbleSort({
             value={actionText}
             onChangeText={setActionText}
             multiline
+            scrollEnabled={false}
             onFocus={() =>
+              scheduleScrollFooterAboveKeyboard(actionScrollRef, actionFooterRef, actionScrollYRef)
+            }
+            onContentSizeChange={() =>
               scheduleScrollFooterAboveKeyboard(actionScrollRef, actionFooterRef, actionScrollYRef)
             }
           />

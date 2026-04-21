@@ -57,20 +57,20 @@
       ]
     },
     {
-      "type": "timed_exercise",
-      "duration_seconds": 90,
-      "steps": [
+      "type": "flash_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
         {
-          "text": "Mindfulness — During competition, how often does your mind drift to outcomes, mistakes, or what people think — instead of staying on the task in front of you? 1 = constantly, 10 = never.",
-          "duration_seconds": 30
+          "front": "Mindfulness — During competition, how often does your mind drift to outcomes, mistakes, or what people think — instead of staying on the task in front of you? 1 = constantly, 10 = never.",
+          "back": "Mindfulness — During competition, how often does your mind drift to outcomes, mistakes, or what people think — instead of staying on the task in front of you? 1 = constantly, 10 = never."
         },
         {
-          "text": "Acceptance — How much do nerves, fear, or self-doubt affect your performance — even when you know physically you're ready? 1 = they control me, 10 = I use them.",
-          "duration_seconds": 30
+          "front": "Acceptance — How much do nerves, fear, or self-doubt affect your performance — even when you know physically you're ready? 1 = they control me, 10 = I use them.",
+          "back": "Acceptance — How much do nerves, fear, or self-doubt affect your performance — even when you know physically you're ready? 1 = they control me, 10 = I use them."
         },
         {
-          "text": "Commitment — How consistent are your mental habits right now — visualization, reflection, intentional prep? 1 = nonexistent, 10 = locked in daily.",
-          "duration_seconds": 30
+          "front": "Commitment — How consistent are your mental habits right now — visualization, reflection, intentional prep? 1 = nonexistent, 10 = locked in daily.",
+          "back": "Commitment — How consistent are your mental habits right now — visualization, reflection, intentional prep? 1 = nonexistent, 10 = locked in daily."
         }
       ]
     },
