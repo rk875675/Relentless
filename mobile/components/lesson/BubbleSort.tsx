@@ -1,8 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '@/lib/theme';
+import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import { pickMacColor } from '@/lib/mac-categories';
 
 type Props = {
@@ -46,6 +45,19 @@ export default function BubbleSort({
   const [actionEntries, setActionEntries] = useState<string[]>([]);
   const nextId = useRef(0);
   const fade = useRef(new Animated.Value(1)).current;
+  const entryScrollRef = useRef<ScrollView>(null);
+  const entryScrollYRef = useRef(0);
+  const entryFooterRef = useRef<View>(null);
+  const actionScrollRef = useRef<ScrollView>(null);
+  const actionScrollYRef = useRef(0);
+  const actionFooterRef = useRef<View>(null);
+
+  useEffect(() => {
+    if (phase === 'entry') entryScrollYRef.current = 0;
+  }, [phase]);
+  useEffect(() => {
+    if (phase === 'action') actionScrollYRef.current = 0;
+  }, [phase]);
 
   const addBubble = () => {
     const trimmed = text.trim();
@@ -108,17 +120,27 @@ export default function BubbleSort({
 
   if (phase === 'entry') {
     return (
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={60}
-      >
-        <View style={styles.container}>
+      <View style={styles.keyboardRoot}>
+        <ScrollView
+          ref={entryScrollRef}
+          style={{ flex: 1, width: '100%' }}
+          contentContainerStyle={styles.entryOuterScrollContent}
+          onScroll={(e) => {
+            entryScrollYRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
           <Text style={[styles.instruction, { color: catColor }]}>{entryInstruction}</Text>
           <ScrollView
             style={styles.bubbleArea}
             contentContainerStyle={styles.bubbleWrap}
             showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
           >
             {bubbles.map((b) => (
               <View key={b.id} style={[styles.bubble, { borderColor: catColor }]}>
@@ -136,20 +158,25 @@ export default function BubbleSort({
               onSubmitEditing={addBubble}
               returnKeyType="done"
               blurOnSubmit={false}
+              onFocus={() =>
+                scheduleScrollFooterAboveKeyboard(entryScrollRef, entryFooterRef, entryScrollYRef)
+              }
             />
             <TouchableOpacity style={[styles.addBtn, { backgroundColor: catColor }]} onPress={addBubble}>
               <Ionicons name="add" size={24} color={colors.white} />
             </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={[styles.btn, bubbles.length === 0 && styles.btnDisabled]}
-            onPress={finishEntry}
-            disabled={bubbles.length === 0}
-          >
-            <Text style={styles.btnText}>{entryDoneLabel}</Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+          <View ref={entryFooterRef} collapsable={false}>
+            <TouchableOpacity
+              style={[styles.btn, bubbles.length === 0 && styles.btnDisabled]}
+              onPress={finishEntry}
+              disabled={bubbles.length === 0}
+            >
+              <Text style={styles.btnText}>{entryDoneLabel}</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </View>
     );
   }
 
@@ -189,53 +216,87 @@ export default function BubbleSort({
 
   const currentBubble = activeBubbles[actionIndex];
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={60}
-    >
-      <Animated.View style={[styles.container, { opacity: fade }]}>
-        <View style={styles.dots}>
-          {activeBubbles.map((_, i) => {
-            const stripe = pickMacColor(accentColors, catColor, i);
-            return (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  i === actionIndex
-                    ? { backgroundColor: stripe, width: 18 }
-                    : i < actionIndex
-                      ? { backgroundColor: stripe + '60' }
-                      : { backgroundColor: colors.ringTrack },
-                ]}
-              />
-            );
-          })}
-        </View>
-        <View style={[styles.card, { borderColor: catColor, borderTopWidth: 2 }]}>
-          <Text style={styles.cardLabel}>{currentBubble?.text}</Text>
-        </View>
-        <Text style={styles.actionPromptText}>{actionPrompt}</Text>
-        <TextInput
-          style={styles.textInput}
-          placeholder="Write your next step..."
-          placeholderTextColor={colors.textMuted}
-          value={actionText}
-          onChangeText={setActionText}
-          multiline
-        />
-        <TouchableOpacity style={styles.btn} onPress={submitAction}>
-          <Text style={styles.btnText}>
-            {actionIndex >= activeBubbles.length - 1 ? 'Finish' : 'Next'}
-          </Text>
-        </TouchableOpacity>
+    <View style={styles.keyboardRoot}>
+      <Animated.View style={{ flex: 1, width: '100%', opacity: fade }}>
+        <ScrollView
+          ref={actionScrollRef}
+          style={{ flex: 1, width: '100%' }}
+          contentContainerStyle={styles.actionScrollContent}
+          onScroll={(e) => {
+            actionScrollYRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.dots}>
+            {activeBubbles.map((_, i) => {
+              const stripe = pickMacColor(accentColors, catColor, i);
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.dot,
+                    i === actionIndex
+                      ? { backgroundColor: stripe, width: 18 }
+                      : i < actionIndex
+                        ? { backgroundColor: stripe + '60' }
+                        : { backgroundColor: colors.ringTrack },
+                  ]}
+                />
+              );
+            })}
+          </View>
+          <View style={[styles.card, { borderColor: catColor, borderTopWidth: 2 }]}>
+            <Text style={styles.cardLabel}>{currentBubble?.text}</Text>
+          </View>
+          <Text style={styles.actionPromptText}>{actionPrompt}</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Write your next step..."
+            placeholderTextColor={colors.textMuted}
+            value={actionText}
+            onChangeText={setActionText}
+            multiline
+            onFocus={() =>
+              scheduleScrollFooterAboveKeyboard(actionScrollRef, actionFooterRef, actionScrollYRef)
+            }
+          />
+          <View ref={actionFooterRef} collapsable={false}>
+            <TouchableOpacity style={styles.btn} onPress={submitAction}>
+              <Text style={styles.btnText}>
+                {actionIndex >= activeBubbles.length - 1 ? 'Finish' : 'Next'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </Animated.View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardRoot: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: colors.background,
+  },
+  entryOuterScrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.sm,
+  },
+  actionScrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.sm,
+  },
   container: {
     flex: 1,
     alignItems: 'center',

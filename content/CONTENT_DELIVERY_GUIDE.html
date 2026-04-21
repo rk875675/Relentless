@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Relentless — Content Authoring Kit</title>
+<style>
+body { font-family: system-ui, "Segoe UI", sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.55; color: #1a1a1a; }
+h1, h2, h3, h4 { line-height: 1.25; margin-top: 1.5em; }
+code, pre { background: #f2f2f2; font-size: 0.9em; }
+code { padding: 0.1em 0.35em; border-radius: 3px; }
+pre { padding: 0.9rem; overflow-x: auto; border-radius: 4px; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.95em; }
+th, td { border: 1px solid #ccc; padding: 0.4rem 0.5rem; text-align: left; }
+a { color: #0b57d0; }
+@media print { body { max-width: 100%; } }
+</style>
+</head>
+<body>
+<h1>Relentless — Content Authoring Kit (V2) — Daily Workout (WOD) Guide</h1>
+<blockquote>
+<p><strong>IMPORTANT — PLEASE ACTUALLY READ THIS</strong><br />
+If anything else in this file disagrees with <strong>§0 Relentless — Quick Content Guide</strong> below, <strong>follow §0</strong>.</p>
+</blockquote>
+<hr />
+<h2>0. Relentless — Quick Content Guide (source of truth)</h2>
+<h3>IMPORTANT! PLEASE ACTUALLY READ THIS</h3>
+<h4>What to deliver (per lesson)</h4>
+<p>Put into <strong>Google Drive</strong>:</p>
+<ol>
+<li><strong>Script doc (PDF)</strong> — <strong>verbatim</strong> to the script template in this section (export or save the filled template as PDF).  </li>
+<li><strong>Audio (mp3)</strong> — <strong>clear, high-quality</strong> voice recordings for every voiceover segment.</li>
+</ol>
+<h4>Lesson components</h4>
+<p>A lesson is broken down into <strong>modules</strong> the user works through.</p>
+<p><strong>Typical:</strong> voiceover → exercise → voiceover → journal  </p>
+<p><strong>You may mix and match</strong> these in any order (still subject to integration rules in §4):</p>
+<ul>
+<li><strong>Voiceover</strong>  </li>
+<li><strong>On-screen phrases</strong> (during voiceover — your script lines; one line ≈ one on-screen phrase)  </li>
+<li><strong>Exercise</strong>  </li>
+<li><strong>Journal prompt</strong></li>
+</ul>
+<p><strong>Requirement:</strong> <strong>At least 1 voiceover + 1 exercise</strong> for every Daily Workout.</p>
+<h4>Example script template</h4>
+<pre><code>LESSON TITLE, NUMBER (Day _), MAC TAG
+
+VOICEOVER
+[filename.mp3] (approximate duration)
+
+Full spoken script goes here
+
+
+EXERCISE
+[EXERCISE NAME — total duration]
+
+Specific exercise description (types included below in Exercise Types)
+
+
+VOICEOVER
+[filename.mp3] (approximate duration)
+
+Full spoken script goes here
+
+
+JOURNAL PROMPT
+
+Exact question for the user here.
+</code></pre>
+<h4>Exercise types</h4>
+<p>These are <strong>frameworks</strong> for common exercises we have used. <strong>Goal:</strong> make it <strong>interactive</strong>. If you have a <strong>new</strong> exercise suggestion, describe it in detail and send it to <strong>admin@relentlessmentaltoughness.com</strong>.</p>
+<ul>
+<li><strong>Breath circle</strong> — Animated circle with haptics for the user to follow a specific breathing pattern. <strong>IMPORTANT:</strong> define the pattern for the user to follow (e.g. <strong>box breathing</strong> — 4s in, 4s hold, 4s out, 4s hold).  </li>
+<li><strong>Flash cards</strong> — Cards that highlight key phrases or questions so the user can fully understand. Works best when followed by a <strong>text entry</strong>.  </li>
+<li><strong>Text entry</strong> — Entry for the user to respond to a question you either asked verbally or via a flash card.  </li>
+<li><strong>Journal prompt</strong> — A special text entry that is saved to the user’s <strong>journal</strong> in their profile.  </li>
+<li><strong>Other interactive tools</strong> — If your exercise type does not fall into one of these categories, include a <strong>DETAILED</strong> description of what it includes. How does it progress? What does the screen say? Are there haptics? Does it require user entry? Etc. <strong>Be specific.</strong></li>
+</ul>
+<hr />
+<h2>1. What this is (full guide)</h2>
+<p>Relentless is a <strong>mobile</strong> mental performance training app for <strong>competitive</strong> athletes. Each day the user opens the app, completes a short <strong>guided</strong> session (the <strong>WOD</strong>), and moves through the <strong>30-day</strong> program. <strong>Library</strong> lessons exist separately; they are <strong>not</strong> part of this coach handoff (see product spec).</p>
+<p><strong>MAC framework</strong> — tag each lesson with at least one of <strong>M</strong> (Mindfulness), <strong>A</strong> (Acceptance), <strong>C</strong> (Commitment), or a combination.</p>
+<p><strong>Engineering / integration:</strong> <a href="DEVELOPER_IMPL_GUIDE.md"><code>content/DEVELOPER_IMPL_GUIDE.md</code></a>.</p>
+<hr />
+<h2>2. What you are building</h2>
+<table>
+<thead>
+<tr>
+<th>Content</th>
+<th>Amount</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Daily Workouts</strong></td>
+<td><strong>30</strong></td>
+<td>Day 1–30.</td>
+</tr>
+<tr>
+<td><strong>Deliverable</strong></td>
+<td><strong>30 × (script PDF + mp3s)</strong></td>
+<td>Upload to <strong>Google Drive</strong> per §0.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Library</strong> content is <strong>not</strong> included in this pipeline.</p>
+<p>You choose <strong>day order topics</strong>, <strong>difficulty</strong>, and <strong>flow</strong>; the product enforces <strong>which</strong> calendar day unlocks next.</p>
+<hr />
+<h2>3. Deliverables (per lesson) — detail</h2>
+<p>Per §0, each lesson in Drive is:</p>
+<ol>
+<li><strong>Script as PDF</strong> — matches the <strong>template</strong> (§0 or §4 extended copy); <strong>verbatim</strong> exercise / journal strings when a spec exists.  </li>
+<li><strong>mp3</strong> voiceover files — <strong>clear</strong>, <strong>quiet</strong>, <strong>high-quality</strong>; naming in <strong>§7</strong>.</li>
+</ol>
+<p>Working in <strong>Google Docs</strong> first is fine; <strong>submit</strong> the <strong>PDF</strong> export for the handoff.</p>
+<p>Line breaks in <strong>VOICEOVER</strong> = on-screen phrase boundaries; <strong>~duration</strong> next to each filename helps integration.</p>
+<hr />
+<h2>4. Script template (extended, matches §0)</h2>
+<p>Use <strong>§0</strong> as the canonical layout. This section adds <strong>field labels</strong> and integration notes you can paste into Docs before exporting to PDF.</p>
+<pre><code>LESSON TITLE: [short title]
+LESSON NUMBER: Day [1–30]
+MAC TAG(S): [M, A, C, or combination, e.g. MA, MAC]
+
+========================================
+VOICEOVER
+========================================
+
+[filename.mp3]  (~approximate duration, e.g. ~45s)
+
+[Full spoken script. One line = one on-screen phrase while this file plays.]
+
+[Add more [filename.mp3] + script blocks as needed.]
+
+========================================
+EXERCISE  (required — at least one per lesson)
+========================================
+
+[EXERCISE NAME — total duration in seconds]
+
+[Specific exercise description. Name the exercise type from §0 / §5 where it applies
+ (Breath circle, Flash cards, Text entry, Journal-style prompt inside exercise, or Other).]
+
+[Steps, on-screen lines, timings — verbatim if an approved script exists.]
+
+Step 1: &quot;[text]&quot; — [duration in seconds]
+Step 2: &quot;[text]&quot; — [duration in seconds]
+(add steps as needed)
+
+========================================
+VOICEOVER  (continued — if any)
+========================================
+
+[filename.mp3]  (~duration)
+
+[Full spoken script, one line = one on-screen phrase.]
+
+========================================
+JOURNAL PROMPT  (optional unless your day design requires it)
+========================================
+
+[Exact question(s) for the user. If multiple questions, one block with a short lead-in + numbered items unless the team specifies otherwise.]
+</code></pre>
+<h3>On-screen text: voiceover</h3>
+<p>The <strong>VOICEOVER</strong> text must <strong>match</strong> what you <strong>record</strong> on each <strong>mp3</strong>. Integration aligns on-screen lines to the audio (internal tools such as Whisper may be used). <strong>Clean</strong> voice track, <strong>no</strong> loud music on the coach file; exercises often use <strong>separate</strong> ambient in the app.</p>
+<h3>On-screen text: exercise</h3>
+<p><strong>Step</strong> lines and the <strong>description</strong> are what the athlete sees during the exercise module. <strong>Separate</strong> from the voiceover phrase list. <strong>Verbatim</strong> when an approved spec exists.</p>
+<h3>Block order (when §0 says “mix and match”)</h3>
+<ul>
+<li><strong>Minimum:</strong> <strong>≥1</strong> voiceover <strong>and</strong> <strong>≥1</strong> exercise (§0).  </li>
+<li><strong>Typical:</strong> voiceover → exercise → voiceover → journal.  </li>
+<li>You may <strong>reorder</strong> modules (e.g. exercise between two voiceovers); <strong>if you include a journal</strong>, put it <strong>last</strong> after all other voice and exercise unless the <strong>product team</strong> approves a different map.  </li>
+<li><strong>Multiple</strong> exercises: <strong>OK</strong> — each gets its own <code>EXERCISE</code> section in script order.</li>
+</ul>
+<hr />
+<h2>5. Exercises (rules + §0 exercise types)</h2>
+<h3>Coach rules (still in effect)</h3>
+<ol>
+<li><strong>Verbatim</strong> — Approved exercise copy is pasted <strong>word for word</strong> (see project guardrails).  </li>
+<li><strong>Tap-to-advance</strong> — Default for content steps (read → tap). <strong>Do not</strong> rely on time-locks, forced countdowns, or auto-advance for reflection / typed / multi-select style steps. <strong>Exception:</strong> real <strong>breath / rhythm</strong> patterns where timing <strong>is</strong> the exercise (e.g. box breathing phases). If a script asks for disallowed pacing, include the copy <strong>verbatim</strong> and <strong>note</strong> the intent; implementation follows product rules.  </li>
+<li><strong>Structure</strong> — Each exercise block: <strong>name</strong>, <strong>total duration</strong>, <strong>specific description</strong> (see §0 types), then <strong>steps</strong> / on-screen copy as needed.  </li>
+<li><strong>Clarity</strong> — Short, actionable lines; second person, present tense for visualizations when used.  </li>
+<li><strong>Ambient</strong> — Default exists; say if you need silence or a different treatment above the block.</li>
+</ol>
+<h3>Exercise types (from Quick Content Guide)</h3>
+<p>Repeat of §0 for coaches who start here:</p>
+<ul>
+<li><strong>Breath circle</strong> — Animated circle + haptics; <strong>define</strong> inhale/hold/exhale <strong>timings</strong> (e.g. box 4-4-4-4).  </li>
+<li><strong>Flash cards</strong> — Key phrases/questions; pairs well with <strong>text entry</strong> after.  </li>
+<li><strong>Text entry</strong> — Response to something said in voiceover or shown on a card.  </li>
+<li><strong>Journal prompt</strong> (as an exercise <em>type</em> in §0) — The in-app “save to profile journal” pattern when we build that interaction. The <strong>closing</strong> <strong>JOURNAL PROMPT</strong> section of your script (§4) is where you write the <strong>exact end-of-lesson question</strong>; keep wording consistent with what you want saved or shown.  </li>
+<li><strong>Other</strong> — <strong>Detailed</strong> spec: flow, screen copy, haptics yes/no, entry required yes/no.</li>
+</ul>
+<p><strong>New ideas:</strong> email <strong>admin@relentlessmentaltoughness.com</strong> with a full written spec.</p>
+<hr />
+<h2>6. Audio requirements</h2>
+<ul>
+<li><strong>Format:</strong> mp3.  </li>
+<li><strong>Quality:</strong> Clear, quiet environment; <strong>no</strong> background <strong>music</strong> on the <strong>voice</strong> track; <strong>~1 s</strong> silence at start and end of each segment.  </li>
+<li><strong>Segments:</strong> Flexible count; app stitches in order; avoid <strong>long</strong> empty gaps <strong>inside</strong> a single file.  </li>
+<li><strong>Timing:</strong> Approximate duration next to each filename is fine; exact length comes from the files; voiceover line timing is refined in integration.</li>
+</ul>
+<hr />
+<h2>7. File naming</h2>
+<pre><code>lesson_[NN]_seg_[SS].mp3
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Meaning</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NN</code></td>
+<td>Day, zero-padded</td>
+<td><code>01</code> … <code>30</code></td>
+</tr>
+<tr>
+<td><code>SS</code></td>
+<td>Segment index</td>
+<td><code>01</code>, <code>02</code></td>
+</tr>
+</tbody>
+</table>
+<p>If files are <strong>merged</strong> for shipping, say so explicitly in the script.</p>
+<hr />
+<h2>8. Delivery checklist</h2>
+<ul>
+<li>[ ] <strong>Google Drive</strong> folder (or agreed location) with <strong>script PDF</strong> + <strong>mp3s</strong>.  </li>
+<li>[ ] Script <strong>PDF</strong> is <strong>verbatim</strong> with the template; <strong>all</strong> voiceover words; <strong>one line per on-screen phrase</strong> in voiceover.  </li>
+<li>[ ] <strong>≥1</strong> voiceover + <strong>≥1</strong> exercise (§0).  </li>
+<li>[ ] <strong>mp3s</strong> named per §7; <strong>~duration</strong> per file in the script.  </li>
+<li>[ ] <strong>MAC</strong> tags on the lesson header.  </li>
+<li>[ ] Each <strong>EXERCISE</strong>: name, total duration, <strong>type</strong> (§5), description, steps as needed; <strong>verbatim</strong> if spec’d.  </li>
+<li>[ ] <strong>Journal</strong> (if used): last in script unless team-approved otherwise; exact question text.  </li>
+</ul>
+<hr />
+<h2>9. Reference example — Day 1</h2>
+<p>Tone and density reference. UI may add cards or merge audio; <strong>spoken</strong>, <strong>exercise</strong>, and <strong>journal</strong> copy stay the contract.</p>
+<pre><code class="language-text">LESSON TITLE: What MAC Training Actually Is
+LESSON NUMBER: Day 1
+MAC TAG(S): M
+
+========================================
+VOICEOVER
+========================================
+
+lesson_01_seg_01.mp3  (~19s)
+
+Welcome to Relentless.
+Before we do anything — I want to explain what you actually signed up
+for. Because it's not what most people think.
+This is not a meditation app.
+This is not positive thinking. It's not visualization boards. It's not
+motivational quotes.
+This is mental performance training. And there's a difference.
+
+
+lesson_01_seg_02.mp3  (~89s)
+
+The framework behind every lesson in this app is called MAC. Mindfulness.
+Acceptance. Commitment. It was introduced in 2001 and it is the most
+studied mental performance approach for athletes specifically. Not
+soldiers. Not executives. Athletes.
+
+Here's what each one means — in plain terms.
+
+Mindfulness is the ability to notice what your mind is doing right now —
+and redirect it. Not clearing your mind. Not thinking about nothing. Just
+noticing where your attention is and choosing where it goes.
+
+Acceptance is the willingness to feel uncomfortable — nervous, scared,
+doubtful — without treating it like an emergency. You don't eliminate the
+feeling. You stop letting it run your decisions.
+
+Commitment is showing up for who you said you are, regardless of how you
+feel on any given day. Not motivation. Motivation comes and goes.
+Commitment is a decision.
+
+Together, those three things are what every elite performer is doing —
+whether they have a name for it or not.
+
+Now you have the name.
+
+Take a second and think about which one you need most.
+
+========================================
+EXERCISE
+========================================
+
+[MAC recap — 60 seconds]
+
+Three short recall lines (flash-card style content; integration maps block type).
+
+Step 1: &quot;M — Mindfulness. Notice where your attention goes. Choose where
+         it goes.&quot; — 20 seconds
+Step 2: &quot;A — Acceptance. Feel the discomfort. Don't react to it.&quot;
+         — 20 seconds
+Step 3: &quot;C — Commitment. Show up. Regardless of how you feel.&quot;
+         — 20 seconds
+
+
+========================================
+VOICEOVER
+========================================
+
+lesson_01_seg_03.mp3  (~19s)
+
+Remember your answer.
+On Day 30 — I'm going to ask you again.
+Journal's on the next screen. One question. Be honest.
+
+
+========================================
+JOURNAL PROMPT
+========================================
+
+[JOURNAL PROMPT]
+Which of the three — Mindfulness, Acceptance, or Commitment — is your
+biggest weakness right now? Why?
+</code></pre>
+<hr />
+<h2>10. FAQ</h2>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Minimum</strong> per lesson?</td>
+<td><strong>≥1 voiceover + ≥1 exercise</strong> (§0).</td>
+</tr>
+<tr>
+<td><strong>No journal</strong>?</td>
+<td><strong>OK</strong> — journal section is optional unless your design requires it.</td>
+</tr>
+<tr>
+<td><strong>No exercise</strong>?</td>
+<td><strong>Not OK</strong> for a standard handoff — every WOD needs an exercise module.</td>
+</tr>
+<tr>
+<td><strong>Multiple exercises</strong>?</td>
+<td><strong>OK</strong> — keep script order clear.</td>
+</tr>
+<tr>
+<td><strong>Library</strong>?</td>
+<td><strong>Out of scope</strong> for this coach pipeline.</td>
+</tr>
+<tr>
+<td><strong>Multiple journal questions</strong>?</td>
+<td>Prefer <strong>one</strong> <code>JOURNAL PROMPT</code> block with lead-in + numbered items unless the team says otherwise.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>11. Quick start</h2>
+<ol>
+<li>Read <strong>§0</strong> (Quick Content Guide).  </li>
+<li>Pick day <strong>1–30</strong>.  </li>
+<li>Fill the <strong>template</strong> in Docs → <strong>export PDF</strong>; record <strong>mp3s</strong> (§7).  </li>
+<li>Upload <strong>PDF + audio</strong> to <strong>Google Drive</strong>.  </li>
+<li>Run <strong>§8</strong> checklist.  </li>
+</ol>
+<hr />
+<p><em>Google Docs tips: use headings for sections, 1.15–1.3 line spacing, 8–12pt space after major headings before export.</em></p>
+</body>
+</html>

@@ -1,8 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '@/lib/theme';
+import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import { pickMacColor } from '@/lib/mac-categories';
 
 type ColDef = { id: string; label: string };
@@ -47,6 +46,16 @@ export default function TwoColumnSort({
 
   const closeFade = useRef(new Animated.Value(1)).current;
   const fade = useRef(new Animated.Value(0)).current;
+  const entryScrollRef = useRef<ScrollView>(null);
+  const entryScrollYRef = useRef(0);
+  const entryFooterRef = useRef<View>(null);
+  const actionScrollRef = useRef<ScrollView>(null);
+  const actionScrollYRef = useRef(0);
+  const actionFooterRef = useRef<View>(null);
+
+  useEffect(() => {
+    if (phase === 'action') actionScrollYRef.current = 0;
+  }, [phase]);
 
   const openColumnId = columns.find((c) => c.id !== closeColumnId)?.id ?? '';
   const openItems = colEntries[openColumnId] ?? [];
@@ -92,11 +101,21 @@ export default function TwoColumnSort({
 
   if (phase === 'entry' || phase === 'close') {
     return (
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={60}
-      >
+      <View style={styles.keyboardRoot}>
+        <ScrollView
+          ref={entryScrollRef}
+          style={{ flex: 1, width: '100%' }}
+          contentContainerStyle={styles.entryOuterScroll}
+          onScroll={(e) => {
+            entryScrollYRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
         <View style={styles.container}>
           <View style={styles.columnsRow}>
             {columns.map((col) => {
@@ -149,33 +168,48 @@ export default function TwoColumnSort({
                   onSubmitEditing={addEntry}
                   returnKeyType="done"
                   blurOnSubmit={false}
+                  onFocus={() =>
+                    scheduleScrollFooterAboveKeyboard(entryScrollRef, entryFooterRef, entryScrollYRef)
+                  }
                 />
                 <TouchableOpacity style={[styles.addBtn, { backgroundColor: catColor }]} onPress={addEntry}>
                   <Ionicons name="add" size={24} color={colors.white} />
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={[styles.btn, !meetsMin && styles.btnDisabled]}
-                onPress={finishEntry}
-                disabled={!meetsMin}
-              >
-                <Text style={styles.btnText}>Continue</Text>
-              </TouchableOpacity>
+              <View ref={entryFooterRef} collapsable={false}>
+                <TouchableOpacity
+                  style={[styles.btn, !meetsMin && styles.btnDisabled]}
+                  onPress={finishEntry}
+                  disabled={!meetsMin}
+                >
+                  <Text style={styles.btnText}>Continue</Text>
+                </TouchableOpacity>
+              </View>
             </>
           )}
         </View>
-      </KeyboardAvoidingView>
+        </ScrollView>
+      </View>
     );
   }
 
   const currentItem = openItems[actionIndex];
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={60}
-    >
-      <Animated.View style={[styles.container, { opacity: fade }]}>
+    <View style={styles.keyboardRoot}>
+      <Animated.View style={{ flex: 1, width: '100%', opacity: fade }}>
+        <ScrollView
+          ref={actionScrollRef}
+          style={{ flex: 1, width: '100%' }}
+          contentContainerStyle={styles.actionScrollContent}
+          onScroll={(e) => {
+            actionScrollYRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
+          showsVerticalScrollIndicator={false}
+        >
         <View style={styles.dots}>
           {openItems.map((_, i) => {
             const stripe = pickMacColor(accentColors, catColor, i);
@@ -205,18 +239,41 @@ export default function TwoColumnSort({
           value={actionText}
           onChangeText={setActionText}
           multiline
+          onFocus={() =>
+            scheduleScrollFooterAboveKeyboard(actionScrollRef, actionFooterRef, actionScrollYRef)
+          }
         />
-        <TouchableOpacity style={styles.btn} onPress={submitAction}>
-          <Text style={styles.btnText}>
-            {actionIndex >= openItems.length - 1 ? 'Finish' : 'Next'}
-          </Text>
-        </TouchableOpacity>
+        <View ref={actionFooterRef} collapsable={false}>
+          <TouchableOpacity style={styles.btn} onPress={submitAction}>
+            <Text style={styles.btnText}>
+              {actionIndex >= openItems.length - 1 ? 'Finish' : 'Next'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        </ScrollView>
       </Animated.View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardRoot: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: colors.background,
+  },
+  entryOuterScroll: {
+    flexGrow: 1,
+    width: '100%',
+    paddingBottom: spacing.xl,
+  },
+  actionScrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.sm,
+  },
   container: {
     flex: 1,
     alignItems: 'center',

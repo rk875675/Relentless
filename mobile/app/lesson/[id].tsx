@@ -4,7 +4,6 @@ import {
   Animated,
   AppState,
   AppStateStatus,
-  KeyboardAvoidingView,
   PanResponder,
   Platform,
   ScrollView,
@@ -14,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,6 +25,7 @@ import { bustCache } from '@/lib/api-cache';
 import { setPendingGainDeltas } from '@/lib/pending-deltas';
 import { colors, spacing } from '@/lib/theme';
 import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
+import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import FormattedJournalBody from '@/components/FormattedJournalBody';
 import PromptCards from '@/components/lesson/PromptCards';
 import BubbleSortExercise from '@/components/lesson/BubbleSort';
@@ -355,6 +355,7 @@ function blockWeightSeconds(block: ContentBlock): number {
 export default function LessonPlayerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   useKeepAwake('lesson-player');
 
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
@@ -472,6 +473,16 @@ export default function LessonPlayerScreen() {
 
   useEffect(() => { journalTextRef.current = journalText; }, [journalText]);
   useEffect(() => { lessonRef.current = lesson; }, [lesson]);
+
+  const lessonJournalScrollRef = useRef<ScrollView>(null);
+  const lessonJournalScrollYRef = useRef(0);
+  const lessonJournalFooterRef = useRef<View>(null);
+
+  useEffect(() => {
+    if (phase === 'block_journal' || phase === 'reflection') {
+      lessonJournalScrollYRef.current = 0;
+    }
+  }, [phase]);
 
   const hasBlocks = Boolean(lesson?.content_blocks?.blocks?.length);
   const blocks = lesson?.content_blocks?.blocks ?? [];
@@ -2394,13 +2405,18 @@ export default function LessonPlayerScreen() {
         )}
 
         {phase === 'block_journal' && lesson && (
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={60}
-          >
+          <View style={[styles.journalKeyboardRoot, { backgroundColor: colors.background }]}>
             <ScrollView
-              contentContainerStyle={styles.reflectionContent}
+              ref={lessonJournalScrollRef}
+              automaticallyAdjustKeyboardInsets
+              onScroll={(e) => {
+                lessonJournalScrollYRef.current = e.nativeEvent.contentOffset.y;
+              }}
+              scrollEventThrottle={16}
+              contentContainerStyle={[
+                styles.reflectionContent,
+                { paddingBottom: spacing.lg + insets.bottom + 12 },
+              ]}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
             >
@@ -2424,31 +2440,47 @@ export default function LessonPlayerScreen() {
                 value={journalText}
                 onChangeText={setJournalText}
                 multiline
+                enterKeyHint="enter"
+                returnKeyLabel={Platform.OS === 'android' ? 'Enter' : undefined}
                 autoCorrect
                 spellCheck
                 autoFocus
+                onFocus={() =>
+                  scheduleScrollFooterAboveKeyboard(
+                    lessonJournalScrollRef,
+                    lessonJournalFooterRef,
+                    lessonJournalScrollYRef,
+                  )
+                }
               />
-              <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={handleBlockJournalContinue}
-                disabled={submitting}
-              >
-                <Text style={styles.primaryBtnText}>
-                  {journalText.trim().length > 0 ? 'Save & Finish' : 'Skip & Finish'}
-                </Text>
-              </TouchableOpacity>
+              <View ref={lessonJournalFooterRef} collapsable={false}>
+                <TouchableOpacity
+                  style={styles.primaryBtn}
+                  onPress={handleBlockJournalContinue}
+                  disabled={submitting}
+                >
+                  <Text style={styles.primaryBtnText}>
+                    {journalText.trim().length > 0 ? 'Save & Finish' : 'Skip & Finish'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
-          </KeyboardAvoidingView>
+          </View>
         )}
 
         {phase === 'reflection' && lesson && (
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={60}
-          >
+          <View style={[styles.journalKeyboardRoot, { backgroundColor: colors.background }]}>
             <ScrollView
-              contentContainerStyle={styles.reflectionContent}
+              ref={lessonJournalScrollRef}
+              automaticallyAdjustKeyboardInsets
+              onScroll={(e) => {
+                lessonJournalScrollYRef.current = e.nativeEvent.contentOffset.y;
+              }}
+              scrollEventThrottle={16}
+              contentContainerStyle={[
+                styles.reflectionContent,
+                { paddingBottom: spacing.lg + insets.bottom + 12 },
+              ]}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
             >
@@ -2469,23 +2501,34 @@ export default function LessonPlayerScreen() {
                     value={journalText}
                     onChangeText={setJournalText}
                     multiline
+                    enterKeyHint="enter"
+                    returnKeyLabel={Platform.OS === 'android' ? 'Enter' : undefined}
                     autoCorrect
                     spellCheck
                     autoFocus
+                    onFocus={() =>
+                      scheduleScrollFooterAboveKeyboard(
+                        lessonJournalScrollRef,
+                        lessonJournalFooterRef,
+                        lessonJournalScrollYRef,
+                      )
+                    }
                   />
                 </>
               )}
-              <TouchableOpacity style={styles.primaryBtn} onPress={completeLesson} disabled={submitting}>
-                {submitting ? (
-                  <ActivityIndicator color={colors.white} />
-                ) : (
-                  <Text style={styles.primaryBtnText}>
-                    {journalText.trim().length > 0 ? 'Save & Finish' : 'Finish'}
-                  </Text>
-                )}
-              </TouchableOpacity>
+              <View ref={lessonJournalFooterRef} collapsable={false}>
+                <TouchableOpacity style={styles.primaryBtn} onPress={completeLesson} disabled={submitting}>
+                  {submitting ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>
+                      {journalText.trim().length > 0 ? 'Save & Finish' : 'Finish'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </ScrollView>
-          </KeyboardAvoidingView>
+          </View>
         )}
 
         {phase === 'completing' && (
@@ -2585,6 +2628,8 @@ export default function LessonPlayerScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  /** Block journal / reflection: avoid stacking KeyboardAvoidingView + manual keyboard padding (black gap above IME). */
+  journalKeyboardRoot: { flex: 1 },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2852,9 +2897,9 @@ const styles = StyleSheet.create({
   },
   reflectionContent: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xl,
+    paddingTop: spacing.md,
   },
   reflectionTitle: {
     fontSize: 22,

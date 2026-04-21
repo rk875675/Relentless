@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { colors, spacing } from '@/lib/theme';
+import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import { pickMacColor } from '@/lib/mac-categories';
 
 // Examples shown above a multiline text input. Single Save advances. No
@@ -37,6 +36,9 @@ export default function ExamplesWithEntry({
 }: Props) {
   const [text, setText] = useState('');
   const fade = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef(0);
+  const footerRef = useRef<View>(null);
 
   useEffect(() => {
     fade.setValue(0);
@@ -50,32 +52,34 @@ export default function ExamplesWithEntry({
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={60}
-    >
-      <Animated.View style={[styles.container, { opacity: fade }]}>
+    <Animated.View style={[styles.outer, { opacity: fade }]}>
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1, width: '100%' }}
+        contentContainerStyle={styles.scrollContent}
+        onScroll={(e) => {
+          scrollYRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+        showsVerticalScrollIndicator={false}
+      >
         {examplesHeader ? (
           <Text style={[styles.header, { color: catColor }]}>{examplesHeader}</Text>
         ) : null}
-        <ScrollView
-          style={styles.examplesArea}
-          contentContainerStyle={styles.examplesContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {examples.map((ex, i) => (
-            <View
-              key={i}
-              style={[
-                styles.exampleItem,
-                { borderLeftColor: pickMacColor(accentColors, catColor, i) },
-              ]}
-            >
-              <Text style={styles.exampleText}>{ex}</Text>
-            </View>
-          ))}
-        </ScrollView>
+        {examples.map((ex, i) => (
+          <View
+            key={i}
+            style={[
+              styles.exampleItem,
+              { borderLeftColor: pickMacColor(accentColors, catColor, i) },
+            ]}
+          >
+            <Text style={styles.exampleText}>{ex}</Text>
+          </View>
+        ))}
         <Text style={styles.inputPrompt}>{inputPrompt}</Text>
         <TextInput
           style={styles.textInput}
@@ -86,21 +90,30 @@ export default function ExamplesWithEntry({
           multiline
           autoCorrect
           spellCheck
+          onFocus={() => scheduleScrollFooterAboveKeyboard(scrollRef, footerRef, scrollYRef)}
         />
-        <TouchableOpacity style={styles.btn} onPress={handleSubmit}>
-          <Text style={styles.btnText}>{submitLabel}</Text>
-        </TouchableOpacity>
-      </Animated.View>
-    </KeyboardAvoidingView>
+        <View ref={footerRef} collapsable={false}>
+          <TouchableOpacity style={styles.btn} onPress={handleSubmit}>
+            <Text style={styles.btnText}>{submitLabel}</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  outer: {
     flex: 1,
+    width: '100%',
+    backgroundColor: colors.background,
+  },
+  scrollContent: {
+    flexGrow: 1,
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.lg,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.sm,
   },
   header: {
     fontSize: 16,
@@ -109,8 +122,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
-  examplesArea: { width: '100%', maxHeight: 220, marginTop: spacing.md },
-  examplesContent: { paddingVertical: spacing.xs },
   exampleItem: {
     backgroundColor: colors.surface,
     borderRadius: 12,
@@ -118,6 +129,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     marginBottom: 8,
+    width: '100%',
   },
   exampleText: {
     color: colors.textPrimary,

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  KeyboardAvoidingView,
-  Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -11,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '@/lib/theme';
+import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import { pickMacColor } from '@/lib/mac-categories';
 
 // `intro_hold_seconds` and `min_entry_seconds` remain on the data shape so
@@ -35,8 +35,15 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
   const textRef = useRef('');
 
   const fade = useRef(new Animated.Value(0)).current;
+  const entryScrollRef = useRef<ScrollView>(null);
+  const entryScrollYRef = useRef(0);
+  const entryFooterRef = useRef<View>(null);
 
   useEffect(() => { textRef.current = text; }, [text]);
+
+  useEffect(() => {
+    if (phase === 'entry') entryScrollYRef.current = 0;
+  }, [phase]);
 
   useEffect(() => { onIndexChange?.(cardIndex); }, [cardIndex, onIndexChange]);
 
@@ -161,12 +168,20 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
       )}
 
       {phase === 'entry' && (
-        <KeyboardAvoidingView
-          style={{ flex: 1, width: '100%' }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={60}
-        >
-          <View style={styles.entryInner}>
+        <View style={styles.entryKeyboardRoot}>
+          <ScrollView
+            ref={entryScrollRef}
+            style={{ flex: 1, width: '100%' }}
+            contentContainerStyle={styles.entryScrollContent}
+            onScroll={(e) => {
+              entryScrollYRef.current = e.nativeEvent.contentOffset.y;
+            }}
+            scrollEventThrottle={16}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            automaticallyAdjustKeyboardInsets
+            showsVerticalScrollIndicator={false}
+          >
             {dots}
             <Text style={styles.entryPrompt}>{card.prompt}</Text>
             <TextInput
@@ -179,15 +194,18 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
               autoCorrect
               spellCheck
               autoFocus
+              onFocus={() =>
+                scheduleScrollFooterAboveKeyboard(entryScrollRef, entryFooterRef, entryScrollYRef)
+              }
             />
-            <View style={styles.actionRow}>
+            <View ref={entryFooterRef} collapsable={false} style={styles.actionRow}>
               {backButton}
               <TouchableOpacity style={[styles.btn, styles.btnInRow]} onPress={nextCard}>
                 <Text style={styles.btnText}>{isLastCard ? 'Finish' : 'Next'}</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </ScrollView>
+        </View>
       )}
     </Animated.View>
   );
@@ -229,10 +247,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 28,
   },
-  entryInner: {
+  entryKeyboardRoot: {
     flex: 1,
-    justifyContent: 'center' as const,
+    width: '100%',
+    backgroundColor: colors.background,
+  },
+  entryScrollContent: {
+    flexGrow: 1,
     alignItems: 'center' as const,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
+    width: '100%',
   },
   entryPrompt: {
     fontSize: 16,

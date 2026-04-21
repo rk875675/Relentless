@@ -21,7 +21,7 @@
           "text": "Welcome to Relentless."
         },
         {
-          "start_s": 15.53,
+          "start_s": 15.78,
           "text": "This is mental performance training."
         },
         {
@@ -29,11 +29,11 @@
           "text": "The framework is called MAC."
         },
         {
-          "start_s": 47.9,
+          "start_s": 46.9,
           "text": "Mindfulness — notice where your attention is and choose where it goes."
         },
         {
-          "start_s": 66.22,
+          "start_s": 65.27,
           "text": "Acceptance — feel uncomfortable without treating it like an emergency."
         },
         {
@@ -51,16 +51,16 @@
       "ambient_audio": "ambient/ambient_music.mp3",
       "cards": [
         {
-          "front": "M — Mindfulness",
-          "back": "Notice where your attention goes. Choose where it goes."
+          "front": "Mindfulness",
+          "back": "Notice where your attention goes. No judgement, just awareness."
         },
         {
-          "front": "A — Acceptance",
-          "back": "Feel the discomfort. Don't react to it."
+          "front": "Acceptance",
+          "back": "Feel the discomfort, don't react to it."
         },
         {
-          "front": "C — Commitment",
-          "back": "Show up. Regardless of how you feel."
+          "front": "Commitment",
+          "back": "Create behavior change that is consistent with your values."
         }
       ]
     },

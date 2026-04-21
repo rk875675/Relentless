@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  KeyboardAvoidingView,
-  Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -10,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { colors, spacing } from '@/lib/theme';
+import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 
 // Two-phase block. Phase 1: typed entry (Save enabled when non-empty). Phase 2:
 // the entered value displayed large with the hold prompt and a Continue button.
@@ -35,6 +35,9 @@ export default function AnchorEntry({
   const [phase, setPhase] = useState<'entry' | 'hold'>('entry');
   const [text, setText] = useState('');
   const fade = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef(0);
+  const footerRef = useRef<View>(null);
 
   useEffect(() => {
     fade.setValue(0);
@@ -55,35 +58,48 @@ export default function AnchorEntry({
 
   if (phase === 'entry') {
     return (
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={60}
-      >
-        <Animated.View style={[styles.container, { opacity: fade }]}>
-          <Text style={[styles.entryPrompt, { color: catColor }]}>{entryPrompt}</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="One or two words..."
-            placeholderTextColor={colors.textMuted}
-            value={text}
-            onChangeText={setText}
-            autoCorrect
-            spellCheck
-            autoFocus
-            returnKeyType="done"
-            onSubmitEditing={handleSave}
-            blurOnSubmit
-          />
-          <TouchableOpacity
-            style={[styles.btn, !canSave && styles.btnDisabled]}
-            onPress={handleSave}
-            disabled={!canSave}
+      <View style={styles.anchorKeyboardRoot}>
+        <Animated.View style={{ flex: 1, width: '100%', opacity: fade }}>
+          <ScrollView
+            ref={scrollRef}
+            style={{ flex: 1, width: '100%' }}
+            contentContainerStyle={styles.anchorScrollContent}
+            onScroll={(e) => {
+              scrollYRef.current = e.nativeEvent.contentOffset.y;
+            }}
+            scrollEventThrottle={16}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            automaticallyAdjustKeyboardInsets
+            showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.btnText}>{saveLabel}</Text>
-          </TouchableOpacity>
+            <Text style={[styles.entryPrompt, { color: catColor }]}>{entryPrompt}</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="One or two words..."
+              placeholderTextColor={colors.textMuted}
+              value={text}
+              onChangeText={setText}
+              autoCorrect
+              spellCheck
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleSave}
+              blurOnSubmit
+              onFocus={() => scheduleScrollFooterAboveKeyboard(scrollRef, footerRef, scrollYRef)}
+            />
+            <View ref={footerRef} collapsable={false}>
+              <TouchableOpacity
+                style={[styles.btn, !canSave && styles.btnDisabled]}
+                onPress={handleSave}
+                disabled={!canSave}
+              >
+                <Text style={styles.btnText}>{saveLabel}</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </Animated.View>
-      </KeyboardAvoidingView>
+      </View>
     );
   }
 
@@ -101,6 +117,18 @@ export default function AnchorEntry({
 }
 
 const styles = StyleSheet.create({
+  anchorKeyboardRoot: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: colors.background,
+  },
+  anchorScrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.sm,
+  },
   container: {
     flex: 1,
     alignItems: 'center',
