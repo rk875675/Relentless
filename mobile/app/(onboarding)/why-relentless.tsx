@@ -4,12 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
+import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
 const TOTAL_STEPS = 12;
 
 export default function WhyRelentlessScreen() {
   const router = useRouter();
   const fade = useRef(new Animated.Value(0)).current;
+  const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
 
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
@@ -17,8 +19,9 @@ export default function WhyRelentlessScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={6} total={TOTAL_STEPS} />
-      <Animated.View style={[styles.inner, { opacity: fade }]}>
+      <ProgressBar step={6} total={TOTAL_STEPS} onBack={onPop} />
+      <View style={styles.flex} {...panHandlers}>
+        <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: shellTranslateX }] }]}>
         <View style={styles.topSection}>
           <Text style={styles.body}>Most athletes understand this.</Text>
           <Text style={styles.body}>Many have felt it.</Text>
@@ -40,13 +43,15 @@ export default function WhyRelentlessScreen() {
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>
         </View>
-      </Animated.View>
+        </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   inner: { flex: 1, justifyContent: 'space-between', paddingHorizontal: spacing.xl },
   topSection: { flex: 1, justifyContent: 'center' },
   body: {

@@ -14,6 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
+import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
 const TOTAL_STEPS = 10;
 const AUTO_SWIPE_MS = 4000;
@@ -62,6 +63,7 @@ export default function SocialProofScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const fadeIn = useRef(new Animated.Value(0)).current;
+  const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
 
   useEffect(() => {
     Animated.timing(fadeIn, { toValue: 1, duration: 400, useNativeDriver: true }).start();
@@ -87,8 +89,9 @@ export default function SocialProofScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={2} total={TOTAL_STEPS} />
-      <Animated.View style={[styles.inner, { opacity: fadeIn }]}>
+      <ProgressBar step={2} total={TOTAL_STEPS} onBack={onPop} />
+      <View style={styles.flex} {...panHandlers}>
+        <Animated.View style={[styles.inner, { opacity: fadeIn, transform: [{ translateX: shellTranslateX }] }]}>
         <View style={styles.content}>
           <View style={styles.divider}>
             <Text style={styles.title}>Trusted by D1 Athletes</Text>
@@ -136,13 +139,15 @@ export default function SocialProofScreen() {
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>
         </View>
-      </Animated.View>
+        </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   inner: { flex: 1, justifyContent: 'space-between' },
   content: { flex: 1, justifyContent: 'center', marginTop: -24 },
 

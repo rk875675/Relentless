@@ -7,10 +7,12 @@ import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { MAC_PILLAR_BY_TAG, MAC_PILLARS_ORDER } from '@/lib/mac-pillar-onboarding';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
+import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
 export default function MacFrameworkScreen() {
   const router = useRouter();
   const fade = useRef(new Animated.Value(0)).current;
+  const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
 
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
@@ -18,8 +20,13 @@ export default function MacFrameworkScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={ONBOARDING_PROGRESS.macFramework} total={ONBOARDING_TOTAL_STEPS} />
-      <Animated.View style={[styles.inner, { opacity: fade }]}>
+      <ProgressBar
+        step={ONBOARDING_PROGRESS.macFramework}
+        total={ONBOARDING_TOTAL_STEPS}
+        onBack={onPop}
+      />
+      <View style={styles.flex} {...panHandlers}>
+        <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: shellTranslateX }] }]}>
         <View style={styles.top}>
           <Text style={styles.title}>MAC</Text>
           <Text style={styles.sub}>Mindfulness, acceptance, commitment.</Text>
@@ -56,13 +63,15 @@ export default function MacFrameworkScreen() {
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>
         </View>
-      </Animated.View>
+        </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   inner: {
     flex: 1,
     justifyContent: 'space-between',

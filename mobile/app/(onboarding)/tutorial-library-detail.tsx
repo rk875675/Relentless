@@ -6,12 +6,14 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
+import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
 const TOTAL_STEPS = 12;
 
 export default function TutorialLibraryDetailScreen() {
   const router = useRouter();
   const fade = useRef(new Animated.Value(0)).current;
+  const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
 
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
@@ -19,8 +21,9 @@ export default function TutorialLibraryDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={9} total={TOTAL_STEPS} />
-      <Animated.View style={[styles.inner, { opacity: fade }]}>
+      <ProgressBar step={9} total={TOTAL_STEPS} onBack={onPop} />
+      <View style={styles.flex} {...panHandlers}>
+        <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: shellTranslateX }] }]}>
         <Text style={styles.screenLabel}>Library Screen</Text>
 
         <View style={styles.mockup}>
@@ -85,13 +88,15 @@ export default function TutorialLibraryDetailScreen() {
             <Text style={styles.buttonText}>Next</Text>
           </TouchableOpacity>
         </View>
-      </Animated.View>
+        </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   inner: { flex: 1, justifyContent: 'space-between', paddingHorizontal: spacing.lg },
   screenLabel: {
     fontSize: 13, fontWeight: '700', color: colors.textMuted, letterSpacing: 1,

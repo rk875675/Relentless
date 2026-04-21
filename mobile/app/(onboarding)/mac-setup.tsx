@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
+import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
 const TOTAL_STEPS = 12;
 
@@ -32,6 +33,7 @@ export default function MacSetupScreen() {
   const router = useRouter();
   const { tag } = useLocalSearchParams<{ tag: string }>();
   const fade = useRef(new Animated.Value(0)).current;
+  const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
 
   const content = COPY[tag ?? ''] ?? COPY.M;
   const nextRoute = EXERCISE_ROUTES[tag ?? ''] ?? EXERCISE_ROUTES.M;
@@ -42,8 +44,9 @@ export default function MacSetupScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={9} total={TOTAL_STEPS} />
-      <Animated.View style={[styles.inner, { opacity: fade }]}>
+      <ProgressBar step={9} total={TOTAL_STEPS} onBack={onPop} />
+      <View style={styles.flex} {...panHandlers}>
+        <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: shellTranslateX }] }]}>
         <View style={styles.topSection}>
           <Text style={styles.headline}>{content.headline}</Text>
           <Text style={styles.body}>{content.body}</Text>
@@ -57,13 +60,15 @@ export default function MacSetupScreen() {
             <Text style={styles.buttonText}>Try a Quick Exercise</Text>
           </TouchableOpacity>
         </View>
-      </Animated.View>
+        </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   inner: { flex: 1, justifyContent: 'space-between', paddingHorizontal: spacing.xl },
   topSection: { flex: 1, justifyContent: 'center' },
   headline: {

@@ -430,8 +430,8 @@ export default function ProfileScreen() {
         <>
           <Text style={styles.sectionLabel}>DEV TOOLS</Text>
           <Text style={styles.devStreakHint}>
-            Streak uses your device calendar day (X-Local-Date), not program day alone. Advance the
-            simulator date between completions to test multi-day streaks.
+            Dev tools are not for normal accounts—they only appear on internal test accounts and are
+            meant for QA, not everyday use.
           </Text>
           <View style={styles.rowsContainer}>
             <View style={[styles.profileRow, { justifyContent: 'space-between' }]}>

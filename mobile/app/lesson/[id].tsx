@@ -1377,6 +1377,17 @@ export default function LessonPlayerScreen() {
     } catch { /* noop */ }
   }, [advanceBlock, player, ambientPlayer, pulseBars, textFade, cardScale, breathCircleAnim, boxCueFade, finishLegacyPlayback]);
 
+  const exitFromPausedOsOverlay = useCallback(() => {
+    if (phaseRef.current !== 'paused_background') return;
+    backgroundPauseBeganMsRef.current = null;
+    sessionActive.current = false;
+    voiceoverStartPending.current = false;
+    stopAllTimers();
+    try { player.pause(); } catch { /* noop */ }
+    try { ambientPlayer.pause(); } catch { /* noop */ }
+    router.back();
+  }, [stopAllTimers, player, ambientPlayer, router]);
+
   // -----------------------------------------------------------------------
   // Restart from ready screen (user explicitly restarts prep)
   // -----------------------------------------------------------------------
@@ -3062,6 +3073,13 @@ export default function LessonPlayerScreen() {
               <TouchableOpacity style={styles.primaryBtn} onPress={resumeFromOsBackgroundPause}>
                 <Text style={styles.primaryBtnText}>Continue</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.osPauseExitBtn}
+                onPress={exitFromPausedOsOverlay}
+                hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
+              >
+                <Text style={styles.osPauseExitText}>Exit lesson</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -3473,7 +3491,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 21,
     marginTop: spacing.sm,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  osPauseExitBtn: {
+    marginTop: spacing.xs,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+  },
+  osPauseExitText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textMuted,
+    textAlign: 'center',
   },
   completingText: {
     color: colors.textMuted,

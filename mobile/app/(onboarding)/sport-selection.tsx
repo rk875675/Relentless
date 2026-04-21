@@ -17,12 +17,14 @@ import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { MAX_SPORT_LEN, OTHER_SENTINEL, PRESET_SPORTS } from '@/lib/sport-presets';
 import { colors, spacing } from '@/lib/theme';
+import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
 export default function SportSelectionScreen() {
   const router = useRouter();
   const [selected, setSelected] = useState<string | null>(null);
   const [otherText, setOtherText] = useState('');
   const fade = useRef(new Animated.Value(1)).current;
+  const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
 
   useEffect(() => {
     fade.setValue(0);
@@ -53,18 +55,23 @@ export default function SportSelectionScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={ONBOARDING_PROGRESS.sportSelection} total={ONBOARDING_TOTAL_STEPS} />
+      <ProgressBar
+        step={ONBOARDING_PROGRESS.sportSelection}
+        total={ONBOARDING_TOTAL_STEPS}
+        onBack={onPop}
+      />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+        {...panHandlers}
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View style={[styles.inner, { opacity: fade }]}>
+          <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: shellTranslateX }] }]}>
             <View style={styles.topSection}>
               <Text style={styles.title}>{"What's your sport?"}</Text>
               <Text style={styles.body}>

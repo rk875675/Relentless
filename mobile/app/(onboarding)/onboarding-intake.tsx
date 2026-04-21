@@ -1,11 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Animated, Dimensions, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
+import { useWizardSwipeBackRight } from '@/lib/use-wizard-swipe-back';
 
 type StepDef = {
   title: string;
@@ -37,7 +38,7 @@ const STEPS: StepDef[] = [
   },
   {
     title:
-      'If you performed at 100% mental toughness every time, how different would your results be?',
+      'If you showed up mentally every time, how different would your results be?',
     options: ['Completely different', 'A lot', 'Somewhat', 'A little', 'Not much'],
   },
   {
@@ -56,17 +57,62 @@ const STEPS: StepDef[] = [
 
 export default function OnboardingIntakeScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<(string | null)[]>(() => Array(STEPS.length).fill(null));
   const fade = useRef(new Animated.Value(1)).current;
+  const sheetTranslateX = useRef(new Animated.Value(0)).current;
+  const questionIndexRef = useRef(questionIndex);
+  questionIndexRef.current = questionIndex;
+  const backingRef = useRef(false);
+  const transitionDirRef = useRef<'fwd' | 'back'>('fwd');
 
   const step = STEPS[questionIndex]!;
   const selected = answers[questionIndex];
 
+  const runWizardBack = useCallback(() => {
+    if (questionIndexRef.current <= 0 || backingRef.current) return;
+    backingRef.current = true;
+    transitionDirRef.current = 'back';
+    sheetTranslateX.setValue(0);
+    Animated.timing(sheetTranslateX, {
+      toValue: Dimensions.get('window').width,
+      duration: 300,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.cubic),
+    }).start(({ finished }) => {
+      if (!finished) {
+        backingRef.current = false;
+        return;
+      }
+      setQuestionIndex((i) => i - 1);
+    });
+  }, [sheetTranslateX]);
+
   useEffect(() => {
+    return navigation.addListener('beforeRemove', (e) => {
+      if (questionIndexRef.current <= 0) return;
+      e.preventDefault();
+      runWizardBack();
+    });
+  }, [navigation, runWizardBack]);
+
+  const swipeBackPan = useWizardSwipeBackRight(
+    () => questionIndexRef.current > 0,
+    runWizardBack,
+  );
+
+  useEffect(() => {
+    backingRef.current = false;
     fade.setValue(0);
-    Animated.timing(fade, { toValue: 1, duration: 350, useNativeDriver: true }).start();
-  }, [questionIndex]);
+    if (transitionDirRef.current === 'back') {
+      sheetTranslateX.setValue(0);
+      Animated.timing(fade, { toValue: 1, duration: 360, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(fade, { toValue: 1, duration: 320, useNativeDriver: true }).start();
+    }
+    transitionDirRef.current = 'fwd';
+  }, [questionIndex, fade, sheetTranslateX]);
 
   const setSelected = (opt: string) => {
     Haptics.selectionAsync();
@@ -79,15 +125,24 @@ export default function OnboardingIntakeScreen() {
 
   const handleBack = () => {
     if (questionIndex > 0) {
-      setQuestionIndex((i) => i - 1);
+      runWizardBack();
     } else {
-      router.back();
+      sheetTranslateX.setValue(0);
+      Animated.timing(sheetTranslateX, {
+        toValue: Dimensions.get('window').width,
+        duration: 300,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }).start(({ finished }) => {
+        if (finished) router.back();
+      });
     }
   };
 
   const handleContinue = () => {
     if (!selected) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    transitionDirRef.current = 'fwd';
     if (questionIndex < STEPS.length - 1) {
       setQuestionIndex((i) => i + 1);
     } else {
@@ -104,46 +159,49 @@ export default function OnboardingIntakeScreen() {
         total={ONBOARDING_TOTAL_STEPS}
         onBack={handleBack}
       />
-      <Animated.View style={[styles.inner, { opacity: fade }]}>
-        <View style={styles.topSection}>
-          <Text style={styles.title}>{step.title}</Text>
+      <View style={styles.swipeArea} {...swipeBackPan}>
+        <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: sheetTranslateX }] }]}>
+          <View style={styles.topSection}>
+            <Text style={styles.title}>{step.title}</Text>
 
-          <View style={styles.options}>
-            {step.options.map((opt) => (
-              <TouchableOpacity
-                key={opt}
-                style={[styles.optionBtn, selected === opt && styles.optionBtnActive]}
-                onPress={() => setSelected(opt)}
-              >
-                <Text
-                  style={[
-                    styles.optionText,
-                    selected === opt && styles.optionTextActive,
-                  ]}
+            <View style={styles.options}>
+              {step.options.map((opt) => (
+                <TouchableOpacity
+                  key={opt}
+                  style={[styles.optionBtn, selected === opt && styles.optionBtnActive]}
+                  onPress={() => setSelected(opt)}
                 >
-                  {opt}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.optionText,
+                      selected === opt && styles.optionTextActive,
+                    ]}
+                  >
+                    {opt}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-        </View>
 
-        <View style={styles.bottom}>
-          <TouchableOpacity
-            style={[styles.button, !selected && styles.buttonDisabled]}
-            disabled={!selected}
-            onPress={handleContinue}
-          >
-            <Text style={styles.buttonText}>Continue</Text>
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
+          <View style={styles.bottom}>
+            <TouchableOpacity
+              style={[styles.button, !selected && styles.buttonDisabled]}
+              disabled={!selected}
+              onPress={handleContinue}
+            >
+              <Text style={styles.buttonText}>Continue</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  swipeArea: { flex: 1 },
   inner: { flex: 1, justifyContent: 'space-between', paddingHorizontal: spacing.xl },
   topSection: { flex: 1, justifyContent: 'center' },
   title: {

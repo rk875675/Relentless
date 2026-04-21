@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ProgressRing } from '@/components/ProgressRing';
@@ -486,6 +486,7 @@ function Tooltip({
 
 export default function TutorialScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const [stepIdx, setStepIdx] = useState(0);
 
   // Refs so PanResponder callbacks always have the latest values without recreating the handler
@@ -534,6 +535,14 @@ export default function TutorialScreen() {
   // Stable ref so PanResponder (created once) can always call the latest goToStep
   const goToStepRef = useRef(goToStep);
   goToStepRef.current = goToStep;
+
+  useEffect(() => {
+    return navigation.addListener('beforeRemove', (e) => {
+      if (stepIdxRef.current <= 0) return;
+      e.preventDefault();
+      goToStepRef.current(stepIdxRef.current - 1);
+    });
+  }, [navigation]);
 
   const panResponder = useRef(
     PanResponder.create({

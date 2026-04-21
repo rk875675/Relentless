@@ -6,12 +6,15 @@ import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
+import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
-const RELENTLESS_LINE = 'Daily mental reps for athletes—short, sharp, built for competition.';
+const RELENTLESS_LINE =
+  'Structured mental skills training for athletes: daily guided lessons built by professional sports psychologists using MAC principles.';
 
 export default function RelentlessIntroScreen() {
   const router = useRouter();
   const fade = useRef(new Animated.Value(0)).current;
+  const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
 
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
@@ -19,11 +22,16 @@ export default function RelentlessIntroScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={ONBOARDING_PROGRESS.relentlessIntro} total={ONBOARDING_TOTAL_STEPS} />
-      <Animated.View style={[styles.flex, { opacity: fade }]}>
+      <ProgressBar
+        step={ONBOARDING_PROGRESS.relentlessIntro}
+        total={ONBOARDING_TOTAL_STEPS}
+        onBack={onPop}
+      />
+      <View style={styles.flex} {...panHandlers}>
+        <Animated.View style={[styles.flex, { opacity: fade, transform: [{ translateX: shellTranslateX }] }]}>
         <View style={styles.main}>
           <View style={styles.top}>
-            <Text style={styles.screenTitle}>What Relentless is</Text>
+            <Text style={styles.screenTitle}>Relentless is</Text>
             <Text style={styles.lead}>{RELENTLESS_LINE}</Text>
           </View>
 
@@ -48,7 +56,8 @@ export default function RelentlessIntroScreen() {
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>
         </View>
-      </Animated.View>
+        </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }

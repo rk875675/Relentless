@@ -70,7 +70,18 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.linkButton} onPress={() => router.replace('/(onboarding)/welcome' as any)}>
+          <TouchableOpacity
+            style={styles.linkButton}
+            onPress={() => {
+              // If we were pushed here from (onboarding)/signup, just pop back to it.
+              // Otherwise (entered from welcome via replace), fall back to welcome.
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/(onboarding)/welcome' as any);
+              }
+            }}
+          >
             <Text style={styles.linkText}>Don't have an account? Sign Up</Text>
           </TouchableOpacity>
         </View>

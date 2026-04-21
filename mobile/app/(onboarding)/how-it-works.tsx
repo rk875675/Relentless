@@ -1,8 +1,9 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
+import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
 const TOTAL_STEPS = 12;
 
@@ -26,11 +27,13 @@ const PILLARS = [
 
 export default function HowItWorksScreen() {
   const router = useRouter();
+  const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={7} total={TOTAL_STEPS} />
-      <View style={styles.inner}>
+      <ProgressBar step={7} total={TOTAL_STEPS} onBack={onPop} />
+      <View style={styles.flex} {...panHandlers}>
+        <Animated.View style={[styles.inner, { transform: [{ translateX: shellTranslateX }] }]}>
         <View style={styles.topSection}>
           <Text style={styles.badge}>THE METHOD</Text>
           <Text style={styles.title}>Built on the MAC framework</Text>
@@ -65,6 +68,7 @@ export default function HowItWorksScreen() {
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>
         </View>
+        </Animated.View>
       </View>
     </SafeAreaView>
   );
@@ -72,6 +76,7 @@ export default function HowItWorksScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   inner: { flex: 1, justifyContent: 'space-between', paddingHorizontal: spacing.xl },
   topSection: { flex: 1, justifyContent: 'center' },
   badge: {

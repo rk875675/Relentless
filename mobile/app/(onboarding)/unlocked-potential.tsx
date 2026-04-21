@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
+import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 const AUTO_SWIPE_MS = 4000;
 const CARD_WIDTH = Dimensions.get('window').width - spacing.xl * 2;
 
@@ -69,6 +70,7 @@ export default function UnlockedPotentialScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const fade = useRef(new Animated.Value(0)).current;
+  const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
 
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
@@ -92,8 +94,13 @@ export default function UnlockedPotentialScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={ONBOARDING_PROGRESS.unlockedPotential} total={ONBOARDING_TOTAL_STEPS} />
-      <Animated.View style={[styles.inner, { opacity: fade }]}>
+      <ProgressBar
+        step={ONBOARDING_PROGRESS.unlockedPotential}
+        total={ONBOARDING_TOTAL_STEPS}
+        onBack={onPop}
+      />
+      <View style={styles.flex} {...panHandlers}>
+        <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: shellTranslateX }] }]}>
         {/* Top half — message */}
         <View style={styles.topHalf}>
           <Text style={styles.title}>You have untapped potential</Text>
@@ -157,13 +164,15 @@ export default function UnlockedPotentialScreen() {
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>
         </View>
-      </Animated.View>
+        </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   inner: { flex: 1 },
 
   topHalf: {

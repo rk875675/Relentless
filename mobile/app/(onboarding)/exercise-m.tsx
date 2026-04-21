@@ -5,13 +5,15 @@ import {
   TouchableOpacity,
   View,
   Animated,
+  Dimensions,
   Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useNavigation } from 'expo-router';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
+import { useWizardSwipeBackRight } from '@/lib/use-wizard-swipe-back';
 
 const TOTAL_STEPS = 12;
 
@@ -36,6 +38,7 @@ type Step = 'intro' | 'scene' | 'breathing' | 'done';
 
 export default function ExerciseMScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const [step, setStep] = useState<Step>('intro');
   const [phaseIdx, setPhaseIdx] = useState(0);
   const [round, setRound] = useState(1);
@@ -43,6 +46,51 @@ export default function ExerciseMScreen() {
 
   const [sceneLineIdx, setSceneLineIdx] = useState(0);
   const sceneTextFade = useRef(new Animated.Value(0)).current;
+  const stepRef = useRef<Step>(step);
+  stepRef.current = step;
+  const shellTranslateX = useRef(new Animated.Value(0)).current;
+  const backingRef = useRef(false);
+
+  const runExerciseBack = useCallback(() => {
+    const s = stepRef.current;
+    if (s === 'intro') {
+      router.back();
+      return;
+    }
+    if (backingRef.current) return;
+    backingRef.current = true;
+    shellTranslateX.setValue(0);
+    Animated.timing(shellTranslateX, {
+      toValue: Dimensions.get('window').width,
+      duration: 300,
+      useNativeDriver: true,
+      easing: Easing.out(Easing.cubic),
+    }).start(({ finished }) => {
+      if (!finished) {
+        backingRef.current = false;
+        return;
+      }
+      if (s === 'scene') setStep('intro');
+      else if (s === 'breathing') setStep('scene');
+      else if (s === 'done') setStep('breathing');
+      shellTranslateX.setValue(0);
+      backingRef.current = false;
+    });
+  }, [shellTranslateX, router]);
+
+  useEffect(() => {
+    return navigation.addListener('beforeRemove', (e) => {
+      const s = stepRef.current;
+      if (s === 'intro') return;
+      e.preventDefault();
+      runExerciseBack();
+    });
+  }, [navigation, runExerciseBack]);
+
+  const swipeBackPan = useWizardSwipeBackRight(
+    () => stepRef.current !== 'intro',
+    runExerciseBack,
+  );
 
   const circleScale = useRef(new Animated.Value(0.5)).current;
   const circleGlow = useRef(new Animated.Value(0.3)).current;
@@ -281,20 +329,24 @@ export default function ExerciseMScreen() {
     else if (step === 'done') router.push('/(onboarding)/what-you-get');
   };
 
+  const handleBack = () => runExerciseBack();
+
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={10} total={TOTAL_STEPS} />
-      <View style={styles.inner}>
-        {content()}
-        {showBtn && (
-          <View style={styles.bottomSection}>
-            <TouchableOpacity style={styles.button} onPress={advance}>
-              <Text style={styles.buttonText}>
-                {step === 'intro' ? 'Start exercise' : 'Continue'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+      <ProgressBar step={10} total={TOTAL_STEPS} onBack={handleBack} />
+      <View style={styles.swipeArea} {...swipeBackPan}>
+        <Animated.View style={[styles.inner, { transform: [{ translateX: shellTranslateX }] }]}>
+          {content()}
+          {showBtn && (
+            <View style={styles.bottomSection}>
+              <TouchableOpacity style={styles.button} onPress={advance}>
+                <Text style={styles.buttonText}>
+                  {step === 'intro' ? 'Start exercise' : 'Continue'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </Animated.View>
       </View>
     </SafeAreaView>
   );
@@ -302,6 +354,7 @@ export default function ExerciseMScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  swipeArea: { flex: 1 },
   inner: { flex: 1, justifyContent: 'space-between', paddingHorizontal: spacing.xl },
   topSection: { flex: 1, justifyContent: 'center' },
   badge: { fontSize: 12, fontWeight: '700', color: colors.accentLight, letterSpacing: 2, marginBottom: spacing.md },

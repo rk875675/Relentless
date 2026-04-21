@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
+import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
 const OPTIONS = [
   { label: 'Getting in your head', tag: 'M' },
@@ -17,6 +18,7 @@ export default function MacQuestionScreen() {
   const router = useRouter();
   const [selected, setSelected] = useState<string | null>(null);
   const fade = useRef(new Animated.Value(0)).current;
+  const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
 
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
@@ -24,9 +26,14 @@ export default function MacQuestionScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ProgressBar step={ONBOARDING_PROGRESS.macQuestion} total={ONBOARDING_TOTAL_STEPS} />
+      <ProgressBar
+        step={ONBOARDING_PROGRESS.macQuestion}
+        total={ONBOARDING_TOTAL_STEPS}
+        onBack={onPop}
+      />
 
-      <Animated.View style={[styles.inner, { opacity: fade }]}>
+      <View style={styles.flex} {...panHandlers}>
+        <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: shellTranslateX }] }]}>
         <View style={styles.topSection}>
           <Text style={styles.title}>
             Which of these do you struggle with the most?
@@ -73,13 +80,15 @@ export default function MacQuestionScreen() {
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>
         </View>
-      </Animated.View>
+        </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   inner: { flex: 1, justifyContent: 'space-between', paddingHorizontal: spacing.xl },
   topSection: { flex: 1, justifyContent: 'center' },
   title: {
