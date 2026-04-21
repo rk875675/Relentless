@@ -13,6 +13,8 @@ type FetchedUserSnapshot = {
   isDevAccount: boolean;
   profileOnboardingCompleted: boolean;
   competitionDate: string | null;
+  sport: string | null;
+  isTrackAthlete: boolean;
   entitlementStatus: string | null;
   entitlementExpiresAt: string | null;
 };
@@ -52,6 +54,8 @@ type AuthState = {
   isDevAccount: boolean;
   onboardingComplete: boolean;
   competitionDate: string | null;
+  sport: string | null;
+  isTrackAthlete: boolean;
   entitlementStatus: string | null;
   hasPremiumAccess: boolean;
   signIn: (email: string, password: string) => Promise<SignInResult>;
@@ -66,6 +70,8 @@ type AuthState = {
   resetOnboarding: () => Promise<void>;
   refreshUserState: () => Promise<void>;
   updateCompetitionDate: (date: string | null) => Promise<string | null>;
+  updateSport: (sport: string | null) => Promise<string | null>;
+  updateIsTrackAthlete: (value: boolean) => Promise<string | null>;
   /**
    * Optimistically marks the user as having active entitlement in local state,
    * without waiting for the DB write to complete. Called by SuperwallPurchaseSync
@@ -81,6 +87,8 @@ const AuthContext = createContext<AuthState>({
   isDevAccount: false,
   onboardingComplete: false,
   competitionDate: null,
+  sport: null,
+  isTrackAthlete: false,
   entitlementStatus: null,
   hasPremiumAccess: false,
   signIn: async () => ({ ok: false, error: '' }),
@@ -92,6 +100,8 @@ const AuthContext = createContext<AuthState>({
   resetOnboarding: async () => {},
   refreshUserState: async () => {},
   updateCompetitionDate: async () => null,
+  updateSport: async () => null,
+  updateIsTrackAthlete: async () => null,
   optimisticGrantAccess: () => {},
 });
 
@@ -104,6 +114,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /** is_dev only: after Reset to Onboarding, treat routing as incomplete while DB stays completed. */
   const [devReplayOnboarding, setDevReplayOnboarding] = useState(false);
   const [competitionDate, setCompetitionDate] = useState<string | null>(null);
+  const [sport, setSport] = useState<string | null>(null);
+  const [isTrackAthlete, setIsTrackAthlete] = useState(false);
   const [entitlementStatus, setEntitlementStatus] = useState<string | null>(null);
   const [entitlementExpiresAt, setEntitlementExpiresAt] = useState<string | null>(null);
   const [devPremiumBypass, setDevPremiumBypass] = useState(false);
@@ -123,18 +135,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const fetchUserState = useCallback(async (userId: string): Promise<FetchedUserSnapshot> => {
-    const [profileRes, entRes] = await Promise.all([
-      supabase
+    const profileSelectAttempts = [
+      'onboarding_completed, competition_date, is_dev, sport, is_track_athlete',
+      'onboarding_completed, competition_date, is_dev, sport',
+      'onboarding_completed, competition_date, is_dev, is_track_athlete',
+      'onboarding_completed, competition_date, is_dev',
+    ] as const;
+
+    const entRes = await supabase
+      .from('entitlements')
+      .select('status, expires_at')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    let profileRes = await supabase
+      .from('profiles')
+      .select(profileSelectAttempts[0])
+      .eq('id', userId)
+      .maybeSingle();
+
+    for (let i = 1; i < profileSelectAttempts.length && profileRes.error; i++) {
+      const msg = `${profileRes.error.message ?? ''} ${profileRes.error.details ?? ''}`.toLowerCase();
+      const missingCol =
+        profileRes.error.code === '42703' ||
+        (msg.includes('does not exist') && msg.includes('column'));
+      if (!missingCol) break;
+      profileRes = await supabase
         .from('profiles')
-        .select('onboarding_completed, competition_date, is_dev')
+        .select(profileSelectAttempts[i])
         .eq('id', userId)
-        .maybeSingle(),
-      supabase
-        .from('entitlements')
-        .select('status, expires_at')
-        .eq('user_id', userId)
-        .maybeSingle(),
-    ]);
+        .maybeSingle();
+    }
 
     if (profileRes.error) {
       throw new Error(profileRes.error.message);
@@ -149,12 +180,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isDev = profile?.is_dev === true;
     const profileCompleted = profile?.onboarding_completed ?? false;
     const compDate = profile?.competition_date ?? null;
+    const sportVal = (profile as { sport?: string | null } | null)?.sport ?? null;
+    const trackVal = (profile as { is_track_athlete?: boolean | null } | null)?.is_track_athlete === true;
     const entStatus = ent?.status ?? 'none';
     const entExpires = ent?.expires_at ?? null;
 
     setIsDevAccount(isDev);
     setProfileOnboardingCompleted(profileCompleted);
     setCompetitionDate(compDate);
+    setSport(sportVal);
+    setIsTrackAthlete(trackVal);
     setEntitlementStatus(entStatus);
     setEntitlementExpiresAt(entExpires);
 
@@ -162,6 +197,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isDevAccount: isDev,
       profileOnboardingCompleted: profileCompleted,
       competitionDate: compDate,
+      sport: sportVal,
+      isTrackAthlete: trackVal,
       entitlementStatus: entStatus,
       entitlementExpiresAt: entExpires,
     };
@@ -220,6 +257,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfileOnboardingCompleted(false);
           setDevReplayOnboarding(false);
           setCompetitionDate(null);
+          setSport(null);
+          setIsTrackAthlete(false);
           setEntitlementStatus(null);
           setEntitlementExpiresAt(null);
           setDevPremiumBypass(false);
@@ -305,6 +344,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setDevReplayOnboarding(false);
     setDevPremiumBypass(false);
     setSuppressDevPremium(false);
+    setSport(null);
+    setIsTrackAthlete(false);
     bustCache();
     clearPendingGainDeltas();
     await supabase.auth.signOut();
@@ -365,17 +406,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateCompetitionDate = useCallback(async (date: string | null): Promise<string | null> => {
-    if (!session?.user) return 'Not authenticated';
+    // Use getSession() — React `session` is often still null right after signUp().
+    const { data: { session: active } } = await supabase.auth.getSession();
+    const userId = active?.user?.id;
+    if (!userId) return 'Not authenticated';
     const { data, error } = await supabase
       .from('profiles')
       .update({ competition_date: date })
-      .eq('id', session.user.id)
+      .eq('id', userId)
       .select('competition_date');
     if (error) return error.message;
     if (!data?.length) return 'Could not save competition date';
     setCompetitionDate(data[0]?.competition_date ?? date);
     return null;
-  }, [session]);
+  }, []);
+
+  const updateSport = useCallback(async (sportValue: string | null): Promise<string | null> => {
+    const { data: { session: active } } = await supabase.auth.getSession();
+    const userId = active?.user?.id;
+    if (!userId) return 'Not authenticated';
+    const trimmed = sportValue?.trim() ? sportValue.trim().slice(0, 80) : null;
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ sport: trimmed })
+      .eq('id', userId)
+      .select('sport');
+    if (error) return error.message;
+    if (!data?.length) return 'Could not save sport';
+    setSport(data[0]?.sport ?? trimmed);
+    return null;
+  }, []);
+
+  const updateIsTrackAthlete = useCallback(async (value: boolean): Promise<string | null> => {
+    const { data: { session: active } } = await supabase.auth.getSession();
+    const userId = active?.user?.id;
+    if (!userId) return 'Not authenticated';
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ is_track_athlete: value })
+      .eq('id', userId)
+      .select('is_track_athlete');
+    if (error) return error.message;
+    if (!data?.length) return 'Could not save preference';
+    setIsTrackAthlete(data[0]?.is_track_athlete === true);
+    return null;
+  }, []);
 
   return (
     <AuthContext.Provider value={{
@@ -384,6 +459,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isDevAccount,
       onboardingComplete,
       competitionDate,
+      sport,
+      isTrackAthlete,
       entitlementStatus,
       hasPremiumAccess,
       signIn,
@@ -395,6 +472,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       resetOnboarding,
       refreshUserState,
       updateCompetitionDate,
+      updateSport,
+      updateIsTrackAthlete,
       optimisticGrantAccess,
     }}>
       {children}

@@ -1651,7 +1651,7 @@ export default function LessonPlayerScreen() {
               <View style={styles.readyMetaRow}>
                 <View style={styles.readyDurationPill}>
                   <Text style={styles.readyDurationPillText}>
-                    ~{approxLessonMinutes(lesson.duration_seconds)} min
+                    {approxLessonMinutes(lesson.duration_seconds)} min
                   </Text>
                 </View>
               </View>

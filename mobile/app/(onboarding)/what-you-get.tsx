@@ -61,7 +61,7 @@ export default function WhatYouGetScreen() {
         <View style={styles.bottom}>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => router.push('/(onboarding)/competition-date')}
+            onPress={() => router.push('/(onboarding)/sport-selection' as any)}
           >
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>

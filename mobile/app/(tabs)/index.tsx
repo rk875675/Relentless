@@ -13,7 +13,7 @@ import {
   Platform,
   RefreshControl,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -362,7 +362,11 @@ export default function HomeScreen() {
             const days = getDaysUntil(competitionDate);
             return (
               <View style={styles.countdownPill}>
-                <Ionicons name="flag-outline" size={13} color={days != null ? colors.accentLight : colors.textMuted} />
+                <MaterialCommunityIcons
+                  name="bullseye-arrow"
+                  size={14}
+                  color={days != null ? colors.accentLight : colors.textMuted}
+                />
                 <Text style={[styles.countdownText, days != null && { color: colors.accentLight }]}>
                   {days != null ? `${days}d` : '—'}
                 </Text>
@@ -529,7 +533,7 @@ export default function HomeScreen() {
                     </Text>
                   )}
                   <View style={styles.workoutMetaPill}>
-                    <Text style={styles.workoutMeta}>~{mins} min</Text>
+                    <Text style={styles.workoutMeta}>{mins} min</Text>
                   </View>
                 </View>
               </View>

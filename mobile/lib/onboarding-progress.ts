@@ -1,5 +1,5 @@
 /** Linear progress across post-welcome onboarding (welcome has no bar). */
-export const ONBOARDING_TOTAL_STEPS = 21;
+export const ONBOARDING_TOTAL_STEPS = 22;
 
 export const ONBOARDING_PROGRESS = {
   relentlessIntro: 1,
@@ -10,5 +10,7 @@ export const ONBOARDING_PROGRESS = {
   macQuestion: 12,
   macDetail: 13,
   weCanTrain: 14,
-  competitionDate: 21,
+  /** After tutorial (steps 15–20 in tutorial.tsx). */
+  sportSelection: 21,
+  competitionDate: 22,
 } as const;

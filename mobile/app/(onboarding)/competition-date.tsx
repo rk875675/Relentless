@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
@@ -22,6 +22,8 @@ function toISODate(d: Date): string {
 
 export default function CompetitionDateScreen() {
   const router = useRouter();
+  const { sport: sportParam } = useLocalSearchParams<{ sport?: string | string[] }>();
+  const sportFromPrev = Array.isArray(sportParam) ? sportParam[0] : sportParam;
   const [date, setDate] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState(Platform.OS === 'ios');
 
@@ -33,9 +35,13 @@ export default function CompetitionDateScreen() {
   };
 
   const goToSignup = (compDate?: string) => {
+    const sport = sportFromPrev?.trim();
     router.push({
       pathname: '/(onboarding)/signup' as any,
-      params: compDate ? { competitionDate: compDate } : {},
+      params: {
+        ...(compDate ? { competitionDate: compDate } : {}),
+        ...(sport ? { sport } : {}),
+      },
     });
   };
 

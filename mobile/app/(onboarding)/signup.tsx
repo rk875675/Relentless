@@ -17,8 +17,12 @@ import { colors, spacing } from '@/lib/theme';
 
 export default function OnboardingSignupScreen() {
   const router = useRouter();
-  const { competitionDate } = useLocalSearchParams<{ competitionDate?: string }>();
-  const { signUp, updateCompetitionDate } = useAuth();
+  const { competitionDate, sport: sportParam } = useLocalSearchParams<{
+    competitionDate?: string | string[];
+    sport?: string | string[];
+  }>();
+  const sportArg = Array.isArray(sportParam) ? sportParam[0] : sportParam;
+  const { signUp, updateCompetitionDate, updateSport } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -52,7 +56,12 @@ export default function OnboardingSignupScreen() {
 
     // Save competition date if one was selected
     if (competitionDate) {
-      await updateCompetitionDate(competitionDate).catch(() => {});
+      const comp = Array.isArray(competitionDate) ? competitionDate[0] : competitionDate;
+      if (comp) await updateCompetitionDate(comp).catch(() => {});
+    }
+    const sportTrim = sportArg?.trim();
+    if (sportTrim) {
+      await updateSport(sportTrim).catch(() => {});
     }
 
     // Check if we got a session (no email confirmation required)

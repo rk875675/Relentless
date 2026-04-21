@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ProgressRing } from '@/components/ProgressRing';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
@@ -189,7 +189,7 @@ function HomeScreen({ variant, rings, streak }: { variant: string; rings: RingVa
         <Text style={styles.screenBrand}>RELENTLESS</Text>
         <View style={styles.headerRight}>
           <View style={styles.countdownPill}>
-            <Ionicons name="flag-outline" size={13} color={colors.textMuted} />
+            <MaterialCommunityIcons name="bullseye-arrow" size={14} color={colors.textMuted} />
             <Text style={styles.countdownText}>12d</Text>
           </View>
           <View style={[styles.streakPill, isDecay && styles.streakPillBroken]}>
@@ -255,7 +255,7 @@ function HomeScreen({ variant, rings, streak }: { variant: string; rings: RingVa
           <Text style={styles.wodDayBadge}>Day 7 of 30</Text>
           <Text style={styles.wodTitle}>What MAC Training Actually Is</Text>
           <View style={styles.wodMetaPill}>
-            <Text style={styles.wodMeta}>~3 min</Text>
+            <Text style={styles.wodMeta}>3 min</Text>
           </View>
         </View>
       )}
@@ -349,7 +349,7 @@ function LibraryCategoryScreen() {
             <Text style={styles.lessonTitle}>{l.title}</Text>
           </View>
           <View style={[styles.lessonTimePill, styles.lessonTimePillMindfulness]}>
-            <Text style={[styles.lessonTimeText, styles.lessonTimeTextMindfulness]}>~{l.mins}</Text>
+            <Text style={[styles.lessonTimeText, styles.lessonTimeTextMindfulness]}>{l.mins}</Text>
           </View>
         </View>
       ))}
@@ -567,7 +567,7 @@ export default function TutorialScreen() {
 
   const handleNext = () => {
     if (stepIdx >= STEPS.length - 1) {
-      router.push('/(onboarding)/competition-date');
+      router.push('/(onboarding)/sport-selection' as any);
       return;
     }
     goToStep(stepIdx + 1);

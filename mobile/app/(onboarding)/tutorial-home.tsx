@@ -68,7 +68,7 @@ export default function TutorialHomeScreen() {
               <Text style={styles.mockWodDay}>DAY 1/30</Text>
               <Text style={styles.mockWodTitle}>What MAC Training Actually Is</Text>
               <View style={styles.mockWodMeta}>
-                <Text style={styles.mockWodMetaText}>~3 min</Text>
+                <Text style={styles.mockWodMetaText}>3 min</Text>
               </View>
             </View>
 

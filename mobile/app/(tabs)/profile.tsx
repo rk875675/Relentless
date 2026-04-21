@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   TouchableOpacity,
   ScrollView,
@@ -20,6 +22,7 @@ import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
+import { MAX_SPORT_LEN, OTHER_SENTINEL, PRESET_SPORTS, isPresetSport } from '@/lib/sport-presets';
 import { SUPERWALL_ENABLED, SUPERWALL_ONBOARDING_PLACEMENT } from '@/lib/superwall-config';
 import { supabase } from '@/lib/supabase';
 
@@ -50,7 +53,9 @@ export default function ProfileScreen() {
     session,
     signOut,
     competitionDate,
+    sport,
     updateCompetitionDate,
+    updateSport,
     refreshUserState,
     resetOnboarding,
     revokePremiumForTesting,
@@ -60,8 +65,12 @@ export default function ProfileScreen() {
   const [streak, setStreak] = useState<Streak | null>(null);
   const [totalCompletions, setTotalCompletions] = useState<number | null>(null);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [sportPickVisible, setSportPickVisible] = useState(false);
+  const [sportPickSelected, setSportPickSelected] = useState<string | null>(null);
+  const [sportPickOther, setSportPickOther] = useState('');
   const [pendingDate, setPendingDate] = useState<Date>(new Date());
   const [dateSaving, setDateSaving] = useState(false);
+  const [sportSaving, setSportSaving] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [devToolsVisible, setDevToolsVisible] = useState(false);
@@ -82,6 +91,37 @@ export default function ProfileScreen() {
     },
     [updateCompetitionDate],
   );
+
+  const openSportPicker = useCallback(() => {
+    const s = sport?.trim() ?? '';
+    if (s && isPresetSport(s)) {
+      setSportPickSelected(s);
+      setSportPickOther('');
+    } else if (s) {
+      setSportPickSelected(OTHER_SENTINEL);
+      setSportPickOther(s.slice(0, MAX_SPORT_LEN));
+    } else {
+      setSportPickSelected(null);
+      setSportPickOther('');
+    }
+    setSportPickVisible(true);
+  }, [sport]);
+
+  const persistSport = useCallback(async () => {
+    const isOther = sportPickSelected === OTHER_SENTINEL;
+    const resolved = isOther ? sportPickOther.trim() : sportPickSelected?.trim() ?? '';
+    if (!resolved || resolved.length > MAX_SPORT_LEN) return;
+    if (isOther && resolved.length < 2) return;
+    setSportSaving(true);
+    try {
+      const err = await updateSport(resolved);
+      if (err) Alert.alert('Could not save', err);
+      else setSportPickVisible(false);
+    } finally {
+      setSportSaving(false);
+    }
+  }, [sportPickSelected, sportPickOther, updateSport]);
+
   const [devDay, setDevDay] = useState<number | null>(null);
   const [devDayBusy, setDevDayBusy] = useState(false);
   const brandTapCount = useRef(0);
@@ -117,12 +157,13 @@ export default function ProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void refreshUserState();
       fetchData();
       if (__DEV__ || isDevAccount) {
         supabase.rpc('dev_get_program_day')
           .then(({ data }) => { if (typeof data === 'number') setDevDay(data); });
       }
-    }, [isDevAccount]),
+    }, [isDevAccount, refreshUserState]),
   );
 
   const handleRestore = async () => {
@@ -186,7 +227,18 @@ export default function ProfileScreen() {
   };
 
   const email = session?.user?.email ?? '';
-  const displayName = email ? email.split('@')[0] : 'Athlete';
+  const displayName = email ? email.split('@')[0] : 'Account';
+  const heroSportLine = sport?.trim() ?? '';
+
+  const sportResolvedForSave =
+    sportPickSelected === OTHER_SENTINEL
+      ? sportPickOther.trim()
+      : sportPickSelected?.trim() ?? '';
+  const sportPickCanSave =
+    sportPickSelected !== null &&
+    sportResolvedForSave.length > 0 &&
+    sportResolvedForSave.length <= MAX_SPORT_LEN &&
+    (sportPickSelected !== OTHER_SENTINEL || sportPickOther.trim().length >= 2);
 
   const daysUntilCompetition = competitionDate
     ? Math.ceil((new Date(competitionDate + 'T00:00:00').getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -205,6 +257,7 @@ export default function ProfileScreen() {
     : null;
 
   return (
+    <>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
@@ -229,7 +282,11 @@ export default function ProfileScreen() {
           </View>
         </View>
         <Text style={styles.userName}>{displayName}</Text>
-        <Text style={styles.userSport}>Track and Field Athlete</Text>
+        {heroSportLine ? (
+          <Text style={styles.userSport}>{heroSportLine}</Text>
+        ) : (
+          <Text style={styles.userSportMuted}>Set your sport in Settings</Text>
+        )}
       </View>
 
       {/* Stats Card */}
@@ -296,6 +353,15 @@ export default function ProfileScreen() {
           }}
         />
         <ProfileRow
+          icon="football-outline"
+          label="Sport"
+          value={sportSaving ? 'Saving...' : sport?.trim() ? sport.trim() : '—'}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            openSportPicker();
+          }}
+        />
+        <ProfileRow
           icon="journal-outline"
           label="Journal Entries"
           chevron
@@ -306,72 +372,6 @@ export default function ProfileScreen() {
           last
         />
       </View>
-
-      {/* Date Picker Modal */}
-      {datePickerVisible && (
-        Platform.OS === 'ios' ? (
-          <Modal visible transparent animationType="fade" onRequestClose={() => setDatePickerVisible(false)}>
-            <View style={styles.dateOverlay}>
-              <Pressable
-                style={StyleSheet.absoluteFillObject}
-                accessibilityRole="button"
-                accessibilityLabel="Close date picker"
-                onPress={() => setDatePickerVisible(false)}
-              />
-              <View style={styles.dateSheet}>
-                <DateTimePicker
-                  value={pendingDate}
-                  mode="date"
-                  display="spinner"
-                  minimumDate={new Date()}
-                  textColor={colors.textPrimary}
-                  onChange={(_, selected) => {
-                    if (selected) setPendingDate(selected);
-                  }}
-                />
-                <View style={styles.dateActions}>
-                  <TouchableOpacity
-                    style={styles.dateClearBtn}
-                    onPress={() => {
-                      setDatePickerVisible(false);
-                      void persistCompDate(null);
-                    }}
-                  >
-                    <Text style={styles.dateClearText}>Clear</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.dateSaveBtn}
-                    onPress={() => {
-                      setDatePickerVisible(false);
-                      void persistCompDate(toLocalISODate(pendingDate));
-                    }}
-                  >
-                    <Text style={styles.dateSaveText}>Save</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </Modal>
-        ) : (
-          <DateTimePicker
-            value={pendingDate}
-            mode="date"
-            minimumDate={new Date()}
-            onChange={(event: DateTimePickerEvent, selected) => {
-              if (event.type === 'dismissed') {
-                setDatePickerVisible(false);
-                return;
-              }
-              if (event.type !== 'set' || !selected) {
-                setDatePickerVisible(false);
-                return;
-              }
-              setDatePickerVisible(false);
-              void persistCompDate(toLocalISODate(selected));
-            }}
-          />
-        )
-      )}
 
       {/* Subscription Section */}
       <Text style={styles.sectionLabel}>SUBSCRIPTION</Text>
@@ -462,6 +462,164 @@ export default function ProfileScreen() {
         </Text>
       </TouchableOpacity>
     </ScrollView>
+
+    {sportPickVisible && (
+      <Modal
+        visible
+        transparent
+        animationType="fade"
+        onRequestClose={() => !sportSaving && setSportPickVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.sportOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          pointerEvents="box-none"
+        >
+          <Pressable
+            style={styles.trackBackdrop}
+            accessibilityRole="button"
+            accessibilityLabel="Close sport picker"
+            onPress={() => !sportSaving && setSportPickVisible(false)}
+          />
+          <View style={styles.sportSheet}>
+            <Text style={styles.sportSheetTitle}>{"What's your sport?"}</Text>
+            <Text style={styles.sportSheetBody}>
+              Same choices as onboarding. Updates your profile right away.
+            </Text>
+            <ScrollView
+              style={styles.sportScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.trackOptions}>
+                {PRESET_SPORTS.map((opt) => (
+                  <TouchableOpacity
+                    key={opt}
+                    style={[
+                      styles.trackOptionBtn,
+                      sportPickSelected === opt && styles.trackOptionBtnActive,
+                    ]}
+                    disabled={sportSaving}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setSportPickSelected(opt);
+                      if (opt !== OTHER_SENTINEL) setSportPickOther('');
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.trackOptionText,
+                        sportPickSelected === opt && styles.trackOptionTextActive,
+                      ]}
+                    >
+                      {opt}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {sportPickSelected === OTHER_SENTINEL ? (
+                <TextInput
+                  style={styles.sportOtherInput}
+                  placeholder="Type your sport"
+                  placeholderTextColor={colors.textMuted}
+                  value={sportPickOther}
+                  onChangeText={setSportPickOther}
+                  maxLength={MAX_SPORT_LEN}
+                  autoCapitalize="words"
+                  autoCorrect
+                  editable={!sportSaving}
+                />
+              ) : null}
+            </ScrollView>
+            <View style={styles.sportActions}>
+              <TouchableOpacity
+                style={styles.dateClearBtn}
+                disabled={sportSaving}
+                onPress={() => setSportPickVisible(false)}
+              >
+                <Text style={styles.dateClearText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.dateSaveBtn,
+                  (!sportPickCanSave || sportSaving) && styles.dateSaveBtnDisabled,
+                ]}
+                disabled={!sportPickCanSave || sportSaving}
+                onPress={() => void persistSport()}
+              >
+                <Text style={styles.dateSaveText}>{sportSaving ? 'Saving…' : 'Save'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    )}
+
+    {datePickerVisible && (
+      Platform.OS === 'ios' ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setDatePickerVisible(false)}>
+          <View style={styles.dateOverlay} pointerEvents="box-none">
+            <Pressable
+              style={styles.trackBackdrop}
+              accessibilityRole="button"
+              accessibilityLabel="Close date picker"
+              onPress={() => setDatePickerVisible(false)}
+            />
+            <View style={styles.dateSheet}>
+              <DateTimePicker
+                value={pendingDate}
+                mode="date"
+                display="spinner"
+                minimumDate={new Date()}
+                textColor={colors.textPrimary}
+                onChange={(_, selected) => {
+                  if (selected) setPendingDate(selected);
+                }}
+              />
+              <View style={styles.dateActions}>
+                <TouchableOpacity
+                  style={styles.dateClearBtn}
+                  onPress={() => {
+                    setDatePickerVisible(false);
+                    void persistCompDate(null);
+                  }}
+                >
+                  <Text style={styles.dateClearText}>Clear</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dateSaveBtn}
+                  onPress={() => {
+                    setDatePickerVisible(false);
+                    void persistCompDate(toLocalISODate(pendingDate));
+                  }}
+                >
+                  <Text style={styles.dateSaveText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      ) : (
+        <DateTimePicker
+          value={pendingDate}
+          mode="date"
+          minimumDate={new Date()}
+          onChange={(event: DateTimePickerEvent, selected) => {
+            if (event.type === 'dismissed') {
+              setDatePickerVisible(false);
+              return;
+            }
+            if (event.type !== 'set' || !selected) {
+              setDatePickerVisible(false);
+              return;
+            }
+            setDatePickerVisible(false);
+            void persistCompDate(toLocalISODate(selected));
+          }}
+        />
+      )
+    )}
+    </>
   );
 }
 
@@ -604,6 +762,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     letterSpacing: 0.5,
+  },
+  userSportMuted: {
+    fontSize: 13,
+    color: colors.textMuted,
+    letterSpacing: 0.3,
+    fontStyle: 'italic',
   },
 
   // Stats Card
@@ -756,6 +920,86 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
 
+  trackBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+  },
+  sportOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sportSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 28,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderBottomWidth: 0,
+    maxHeight: '88%',
+    zIndex: 2,
+    elevation: 12,
+  },
+  sportSheetTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 8,
+  },
+  sportSheetBody: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  sportScroll: {
+    maxHeight: 340,
+  },
+  sportOtherInput: {
+    marginTop: 4,
+    marginBottom: 12,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  sportActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  trackOptions: { gap: 12 },
+  trackOptionBtn: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  trackOptionBtnActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSubtle,
+  },
+  trackOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  trackOptionTextActive: {
+    color: colors.accentLight,
+  },
   // Date picker
   dateOverlay: {
     flex: 1,
@@ -769,6 +1013,8 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     paddingHorizontal: 20,
     paddingTop: 16,
+    zIndex: 2,
+    elevation: 12,
   },
   dateActions: {
     flexDirection: 'row',
@@ -789,6 +1035,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 32,
+  },
+  dateSaveBtnDisabled: {
+    opacity: 0.45,
   },
   dateSaveText: {
     fontSize: 15,

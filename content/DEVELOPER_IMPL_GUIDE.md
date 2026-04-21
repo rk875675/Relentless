@@ -496,8 +496,11 @@ Full-screen journal entry. User writes freely, then saves and finishes the lesso
 }
 ```
 
-- Each lesson can have at most one `journal_prompt`
-- It must always be the **last block** in the lesson
+- The lesson can have at most one `journal_prompt` **block** in
+  `content_blocks` (saving the journal **ends the session**). If the script
+  has more than one reflection question, use a **single** `prompt` with
+  multiple questions in one string, matching the coach handoff. It must
+  always be the **last block** in the lesson
 
 ### Journal body formatting contract
 

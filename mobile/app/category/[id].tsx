@@ -123,7 +123,7 @@ export default function CategoryScreen() {
             <Text style={[
               styles.cardDurationText,
               macAccentDurationPill && { color: categoryColor },
-            ]}>~{mins} min</Text>
+            ]}>{mins} min</Text>
           </View>
         </View>
       </TouchableOpacity>

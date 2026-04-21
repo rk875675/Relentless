@@ -1,416 +1,243 @@
-# Relentless — Content Authoring Kit
+# Relentless — Content Authoring Kit (V2) — Daily Workout (WOD) Guide
 
-Content authoring guide for lesson scripts, audio delivery, formatting,
-and handoff.
-Email if you have any questions: admin@relentlessmentaltoughness.com
-
-Welcome to the Relentless content team. This document is everything you need
-to author lessons for the app. Read it once, then use the templates and
-checklist every time you deliver a lesson. If your delivery matches this
-structure, it is ready to go straight into the app with no back-and-forth.
+> **IMPORTANT — PLEASE ACTUALLY READ THIS**  
+> If anything else in this file disagrees with **§0 Relentless — Quick Content Guide** below, **follow §0**.
 
 ---
 
-## 1. What the app is (quick context)
+## 0. Relentless — Quick Content Guide (source of truth)
 
-Relentless is a mobile mental-performance training app for competitive
-athletes. Users open the app each day, complete a short guided session
-(called a **Daily Workout**), and optionally explore a small library of
-extra lessons. Every lesson is grounded in the **MAC framework**
-(Mindfulness, Acceptance, Commitment).
+### IMPORTANT! PLEASE ACTUALLY READ THIS
 
-A Daily Workout typically lasts 2-5 minutes. The user hears a coach
-voiceover, sees short reinforcement phrases on screen, may do a brief
-timed exercise, and may end with a journal prompt. Your job is to create
-that content.
+#### What to deliver (per lesson)
 
----
+Put into **Google Drive**:
 
-## 2. Program overview
+1. **Script doc (PDF)** — **verbatim** to the script template in this section (export or save the filled template as PDF).  
+2. **Audio (mp3)** — **clear, high-quality** voice recordings for every voiceover segment.
 
-### What you are building
+#### Lesson components
 
-| Content type | Count | Description |
-|---|---|---|
-| Program lessons (Daily Workouts) | 30 | One per program day (Day 1 through Day 30) |
-| Library lessons | 12-24 | Each Library Lesson Topic will have a short and long lesson. Ex: Box breathing (tag: M) will have a short and long lesson in M. |
-| **Total** | **42-54** | |
+A lesson is broken down into **modules** the user works through.
 
-### Library lesson breakdown
+**Typical:** voiceover → exercise → voiceover → journal  
 
-Each category contains multiple topics. Every topic has a short and a long
-lesson. Use NN (01, 02, ...) to number topics within their category.
+**You may mix and match** these in any order (still subject to integration rules in §4):
 
-| Category | Short naming | Long naming |
-|---|---|---|
-| Mindfulness | Library-M-NN-Short | Library-M-NN-Long |
-| Acceptance | Library-A-NN-Short | Library-A-NN-Long |
-| Commitment | Library-C-NN-Short | Library-C-NN-Long |
+- **Voiceover**  
+- **On-screen phrases** (during voiceover — your script lines; one line ≈ one on-screen phrase)  
+- **Exercise**  
+- **Journal prompt**
 
-### MAC tagging
+**Requirement:** **At least 1 voiceover + 1 exercise** for every Daily Workout.
 
-Every lesson must be tagged to **at least one** MAC category:
+#### Example script template
 
-- **M** — Mindfulness
-- **A** — Acceptance
-- **C** — Commitment
+```
+LESSON TITLE, NUMBER (Day _), MAC TAG
 
-Program lessons can be tagged to one, two, or all three. Library lessons
-are tagged to exactly one (the category they belong to). You decide the
-tagging for each program lesson based on its content.
+VOICEOVER
+[filename.mp3] (approximate duration)
 
-### Sequencing
+Full spoken script goes here
 
-You decide how to sequence the 30 program days — what topics to cover,
-when to introduce each concept, how difficulty or depth progresses. The
-app enforces the day order you assign; the content within each day is
-entirely your call.
 
----
+EXERCISE
+[EXERCISE NAME — total duration]
 
-## 3. What you deliver per lesson
+Specific exercise description (types included below in Exercise Types)
 
-Every lesson delivery has **two parts**:
 
-1. **A script document** — the filled-in template from Section 4 below
-   (Google Doc)
-2. **Audio recording files** — mp3 segments of you reading the voiceover
-   portions of the script
+VOICEOVER
+[filename.mp3] (approximate duration)
 
-That's it. We handle everything else (app integration, timing, playback).
+Full spoken script goes here
+
+
+JOURNAL PROMPT
+
+Exact question for the user here.
+```
+
+#### Exercise types
+
+These are **frameworks** for common exercises we have used. **Goal:** make it **interactive**. If you have a **new** exercise suggestion, describe it in detail and send it to **admin@relentlessmentaltoughness.com**.
+
+- **Breath circle** — Animated circle with haptics for the user to follow a specific breathing pattern. **IMPORTANT:** define the pattern for the user to follow (e.g. **box breathing** — 4s in, 4s hold, 4s out, 4s hold).  
+- **Flash cards** — Cards that highlight key phrases or questions so the user can fully understand. Works best when followed by a **text entry**.  
+- **Text entry** — Entry for the user to respond to a question you either asked verbally or via a flash card.  
+- **Journal prompt** — A special text entry that is saved to the user’s **journal** in their profile.  
+- **Other interactive tools** — If your exercise type does not fall into one of these categories, include a **DETAILED** description of what it includes. How does it progress? What does the screen say? Are there haptics? Does it require user entry? Etc. **Be specific.**
 
 ---
 
-## 4. Script templates
+## 1. What this is (full guide)
 
-### 4a. Daily Workout (program lesson) template
+Relentless is a **mobile** mental performance training app for **competitive** athletes. Each day the user opens the app, completes a short **guided** session (the **WOD**), and moves through the **30-day** program. **Library** lessons exist separately; they are **not** part of this coach handoff (see product spec).
 
-Copy this template for Day 1–30 lessons. Fill in each section that applies.
-Delete any optional section you don't use.
+**MAC framework** — tag each lesson with at least one of **M** (Mindfulness), **A** (Acceptance), **C** (Commitment), or a combination.
+
+**Engineering / integration:** [`content/DEVELOPER_IMPL_GUIDE.md`](DEVELOPER_IMPL_GUIDE.md).
+
+---
+
+## 2. What you are building
+
+| Content | Amount | Notes |
+|--------|--------|--------|
+| **Daily Workouts** | **30** | Day 1–30. |
+| **Deliverable** | **30 × (script PDF + mp3s)** | Upload to **Google Drive** per §0. |
+
+**Library** content is **not** included in this pipeline.
+
+You choose **day order topics**, **difficulty**, and **flow**; the product enforces **which** calendar day unlocks next.
+
+---
+
+## 3. Deliverables (per lesson) — detail
+
+Per §0, each lesson in Drive is:
+
+1. **Script as PDF** — matches the **template** (§0 or §4 extended copy); **verbatim** exercise / journal strings when a spec exists.  
+2. **mp3** voiceover files — **clear**, **quiet**, **high-quality**; naming in **§7**.
+
+Working in **Google Docs** first is fine; **submit** the **PDF** export for the handoff.
+
+Line breaks in **VOICEOVER** = on-screen phrase boundaries; **~duration** next to each filename helps integration.
+
+---
+
+## 4. Script template (extended, matches §0)
+
+Use **§0** as the canonical layout. This section adds **field labels** and integration notes you can paste into Docs before exporting to PDF.
 
 ```
 LESSON TITLE: [short title]
-LESSON NUMBER: [Day 1–30]
-MAC TAG(S): [M, A, C, or a combination like MA, MC, MAC]
+LESSON NUMBER: Day [1–30]
+MAC TAG(S): [M, A, C, or combination, e.g. MA, MAC]
 
 ========================================
 VOICEOVER
 ========================================
 
-[filename.mp3]  (~approximate duration in seconds)
+[filename.mp3]  (~approximate duration, e.g. ~45s)
 
-[Write every word you will say in this recording segment.]
+[Full spoken script. One line = one on-screen phrase while this file plays.]
 
-
-[filename.mp3]  (~approximate duration in seconds)
-
-[Full spoken script for the next segment.]
+[Add more [filename.mp3] + script blocks as needed.]
 
 ========================================
-EXERCISE  (optional — delete if none)
+EXERCISE  (required — at least one per lesson)
 ========================================
 
-[EXERCISE — total duration in seconds]
-(description of model/tool for exercise if there is one)
+[EXERCISE NAME — total duration in seconds]
 
-Step 1: "[text shown on screen]/Model/however the exercise works" — [duration in seconds]
-Step 2: "[text shown on screen]/Model" — [duration in seconds]
-Step 3: "[text shown on screen]/Model" — [duration in seconds]
-(add or remove steps as needed)
+[Specific exercise description. Name the exercise type from §0 / §5 where it applies
+ (Breath circle, Flash cards, Text entry, Journal-style prompt inside exercise, or Other).]
 
+[Steps, on-screen lines, timings — verbatim if an approved script exists.]
 
-========================================
-VOICEOVER (continued, if any)
-========================================
-
-[filename.mp3]  (~approximate duration in seconds)
-
-[Full spoken script.]
+Step 1: "[text]" — [duration in seconds]
+Step 2: "[text]" — [duration in seconds]
+(add steps as needed)
 
 ========================================
-JOURNAL PROMPT  (optional — delete if none)
+VOICEOVER  (continued — if any)
 ========================================
 
-[JOURNAL PROMPT]
-[The exact question shown to the user.]
+[filename.mp3]  (~duration)
+
+[Full spoken script, one line = one on-screen phrase.]
+
+========================================
+JOURNAL PROMPT  (optional unless your day design requires it)
+========================================
+
+[Exact question(s) for the user. If multiple questions, one block with a short lead-in + numbered items unless the team specifies otherwise.]
 ```
 
-#### Verbatim exercise copy
+### On-screen text: voiceover
 
-When an **approved exercise script** is provided (interactive model description,
-step prompts, on-screen labels, multi-select options, and any timing or UX notes
-that belong to the exercise), put it in the `EXERCISE` section **word for word**.
-Do **not** paraphrase, shorten, merge steps, substitute synonyms, or “clean up”
-exercise copy. If something does not fit the app or template, flag it for revision
-instead of rewriting it yourself. The same rule applies to library lessons — see
-Section 4b and Section 5.
+The **VOICEOVER** text must **match** what you **record** on each **mp3**. Integration aligns on-screen lines to the audio (internal tools such as Whisper may be used). **Clean** voice track, **no** loud music on the coach file; exercises often use **separate** ambient in the app.
+
+### On-screen text: exercise
+
+**Step** lines and the **description** are what the athlete sees during the exercise module. **Separate** from the voiceover phrase list. **Verbatim** when an approved spec exists.
+
+### Block order (when §0 says “mix and match”)
+
+- **Minimum:** **≥1** voiceover **and** **≥1** exercise (§0).  
+- **Typical:** voiceover → exercise → voiceover → journal.  
+- You may **reorder** modules (e.g. exercise between two voiceovers); **if you include a journal**, put it **last** after all other voice and exercise unless the **product team** approves a different map.  
+- **Multiple** exercises: **OK** — each gets its own `EXERCISE` section in script order.
 
 ---
 
-### 4b. Library lesson template
+## 5. Exercises (rules + §0 exercise types)
 
-Library lessons do **not** require audio recording. The intro text is
-displayed as tap-through cards instead of a voiceover. No mp3 files needed.
+### Coach rules (still in effect)
 
-```
-LESSON TITLE: [short title]
-LESSON NUMBER: [Library-M-01-Short, Library-A-02-Long, etc.]
-MAC TAG(S): [M, A, or C — library lessons have exactly one tag]
+1. **Verbatim** — Approved exercise copy is pasted **word for word** (see project guardrails).  
+2. **Tap-to-advance** — Default for content steps (read → tap). **Do not** rely on time-locks, forced countdowns, or auto-advance for reflection / typed / multi-select style steps. **Exception:** real **breath / rhythm** patterns where timing **is** the exercise (e.g. box breathing phases). If a script asks for disallowed pacing, include the copy **verbatim** and **note** the intent; implementation follows product rules.  
+3. **Structure** — Each exercise block: **name**, **total duration**, **specific description** (see §0 types), then **steps** / on-screen copy as needed.  
+4. **Clarity** — Short, actionable lines; second person, present tense for visualizations when used.  
+5. **Ambient** — Default exists; say if you need silence or a different treatment above the block.
 
-========================================
-TAP-THROUGH TEXT  (intro cards, no audio)
-========================================
+### Exercise types (from Quick Content Guide)
 
-[Write 3–7 short paragraphs. Each becomes one card the athlete taps through.
-Keep each paragraph to 1–2 sentences — readable at a glance.
-The last paragraph should set up the exercise.]
+Repeat of §0 for coaches who start here:
 
-Paragraph 1: [opening hook or core concept]
-Paragraph 2: [build on it]
-Paragraph 3: [...]
-Paragraph 4: [...]
-Paragraph 5: [transition into the exercise]
+- **Breath circle** — Animated circle + haptics; **define** inhale/hold/exhale **timings** (e.g. box 4-4-4-4).  
+- **Flash cards** — Key phrases/questions; pairs well with **text entry** after.  
+- **Text entry** — Response to something said in voiceover or shown on a card.  
+- **Journal prompt** (as an exercise *type* in §0) — The in-app “save to profile journal” pattern when we build that interaction. The **closing** **JOURNAL PROMPT** section of your script (§4) is where you write the **exact end-of-lesson question**; keep wording consistent with what you want saved or shown.  
+- **Other** — **Detailed** spec: flow, screen copy, haptics yes/no, entry required yes/no.
 
-
-========================================
-EXERCISE  (optional — delete if none)
-========================================
-
-[EXERCISE — total duration in seconds]
-(describe the model/interaction clearly — see Section 5 for box breathing)
-
-Step 1: "[text shown on screen]" — [duration in seconds]
-Step 2: "[text shown on screen]" — [duration in seconds]
-Step 3: "[text shown on screen]" — [duration in seconds]
-
-
-========================================
-JOURNAL PROMPT  (optional — delete if none)
-========================================
-
-[JOURNAL PROMPT]
-[The exact question shown to the user.]
-```
-
-**Library lesson delivery:** you only need the completed script above.
-No audio files required. We handle integration.
-
-### Block ordering
-
-A lesson is played as an ordered sequence of blocks. The most common
-pattern for **Daily Workouts (program lessons)** is:
-
-> Voiceover → Exercise → Voiceover → Journal Prompt
-
-**Library lessons** use a different structure — no recorded audio is
-needed. Instead, the coach's intro text is displayed as tap-through cards
-the athlete reads at their own pace:
-
-> Tap-Through Text → Exercise → Journal Prompt
-
-See Section 4b for the library lesson template.
-
-You can use any combination in any order. Examples of valid structures:
-
-- Voiceover only (no exercise, no journal)
-- Voiceover → Journal Prompt
-- Tap-Through Text → Journal Prompt (reflection-only library lesson)
-- Tap-Through Text → Exercise → Tap-Through Text → Exercise → Journal Prompt
-
-The only rule: the lesson must contain at least one `voiceover` or
-`tap_through_text` block. Journal prompt, if present, must always be last.
+**New ideas:** email **admin@relentlessmentaltoughness.com** with a full written spec.
 
 ---
 
-## 5. Exercises
+## 6. Audio requirements
 
-Exercises are timed, step-based blocks displayed on the athlete's screen
-during a lesson. They appear between voiceover segments and give the
-athlete a structured activity to perform (breathing drills, body scans,
-visualization, focused attention, etc.).
-
-### Verbatim copy for exercise sections
-
-Anything that belongs to the **exercise** portion of an approved script —
-including the interactive model write-up, each step’s on-screen text, every
-multi-select option label, and any coach-specified strings tied to the exercise —
-must be reproduced **exactly** in your handoff. Do not paraphrase exercise content
-when authoring or pasting into the template. (Voiceover wording has its own
-“say exactly what you record” expectation; this rule calls out **exercise**
-sections specifically because they are easy to accidentally shorten when
-reformatting.)
-
-### Tap-to-advance pacing (no time-locks)
-
-Exercise content steps in the app are **tap-to-advance**. The athlete reads,
-thinks, types, or selects, then taps a button (Next, Save, Confirm, Continue)
-to move on. We do **not** implement:
-
-- Submit buttons that are locked for the first N seconds with a visible
-  countdown.
-- "Auto-advance after N seconds" for content steps (typed entry, multi-select,
-  reflection cards, scoring questions).
-- Hold-gates that prevent advancing until a minimum time has elapsed.
-
-If your script specifies any of those (lock timers, countdowns, auto-advance),
-write the copy verbatim and **call out the pacing intent in a note**, but
-expect the implementation to use tap-to-advance regardless. The only timed
-exercises are **rhythm/breath drills** (e.g. `box_breathing`, body-scan zone
-timers) where the timer *is* the exercise.
-
-### How to write an exercise block
-
-Each exercise block needs:
-
-1. **A total duration** — the overall time the exercise runs (for rhythm/breath
-   drills) or an estimated wall-clock duration (for tap-to-advance content
-   steps; used for the home-card "approx min" only).
-2. **Numbered steps** — each step has on-screen instruction text. For
-   rhythm/breath drills, steps advance automatically on a per-step timer.
-   For all other content steps, steps are tap-to-advance per the rule above.
-
-### Writing clear step instructions
-
-Do not assume the athlete already knows a technique. Each step's on-screen
-text should be self-contained and explicit:
-
-- **Tell them exactly what to do.** "Close your eyes. Inhale through your
-  nose for 4 seconds" — not just "Box breathing."
-- **If the step involves a visualization, describe what to picture.** For
-  example: "Picture yourself standing behind the starting blocks. See the
-  lane in front of you. Feel the surface under your feet." The athlete
-  should be able to follow the visualization from the text alone, without
-  prior explanation.
-- **Keep each step short enough to read at a glance.** One to three
-  sentences is ideal. If you need more detail, split it across multiple
-  steps.
-
-### Interactive exercises
-
-Some exercises will ask the athlete to interact with some sort of
-tool/model on the screen — for example a breathing circle the user follows
-along with (inhale: the bubble grows; exhale: the bubble shrinks).
-
-- Be **very explicit** in the exercise model section of the script about
-  exactly what you are looking for in this interactive tool.
-- Be as **detailed and clear** as possible.
-
-### Visualization exercises
-
-Many exercises will ask the athlete to visualize a scenario. When writing
-a visualization step:
-
-- Describe the **setting** (where are they?), the **sensory details**
-  (what do they see, hear, feel?), and the **action** (what are they
-  doing in the visualization?).
-- Progress the scene across steps — e.g., Step 1 sets the scene, Step 2
-  adds a challenge or pressure, Step 3 has the athlete perform through it.
-- Write in second person, present tense: "You are standing at the free
-  throw line. The gym is loud. You feel the ball in your hands."
-
-### Ambient audio
-
-A default ambient track plays during exercises. If a specific exercise
-needs a different track or silence, note it in your script above the
-exercise block.
-
----
-
-## 6. Audio recording specs
-
-### Format
-
-mp3
-
-### Recording quality
-
-- Deliver **dry, clean** recordings — no compression, EQ, reverb, or
-  effects
-- Use a quiet environment with minimal background noise
-- Leave approximately **1 second of silence** at the start and end of
-  each segment for clean playback stitching
-
-### Segments
-
-Segments are a recording convenience. The app plays them back-to-back
-seamlessly — the user never knows where one ends and another begins.
-
-- Split your recording wherever is convenient for you
-- If you record the whole voiceover section in one take, deliver it as
-  one segment file — that's fine
-- If you mess up part of the lesson or want to redo a part of it, just
-  redo/resend that segment
-- Ensure the segments are clearly defined in the submitted script
-
-### How timestamps work
-
-Timestamps are relative to the **start of that voiceover segment** (not
-the start of the whole lesson). Use your best estimate — we will fine-tune
-during integration if needed.
+- **Format:** mp3.  
+- **Quality:** Clear, quiet environment; **no** background **music** on the **voice** track; **~1 s** silence at start and end of each segment.  
+- **Segments:** Flexible count; app stitches in order; avoid **long** empty gaps **inside** a single file.  
+- **Timing:** Approximate duration next to each filename is fine; exact length comes from the files; voiceover line timing is refined in integration.
 
 ---
 
 ## 7. File naming
 
-### Program lessons (Day 1-30)
-
 ```
 lesson_[NN]_seg_[SS].mp3
 ```
 
-| Placeholder | Meaning | Example |
-|---|---|---|
-| `NN` | Lesson number, zero-padded | `01`, `14`, `30` |
-| `SS` | Segment number, zero-padded | `01`, `02`, `03` |
+| Part | Meaning | Example |
+|------|---------|---------|
+| `NN` | Day, zero-padded | `01` … `30` |
+| `SS` | Segment index | `01`, `02` |
 
-Examples:
-- `lesson_01_seg_01.mp3` — Day 1, first segment
-- `lesson_01_seg_02.mp3` — Day 1, second segment
-- `lesson_14_seg_01.mp3` — Day 14, only segment (one take)
-
-### Library lessons
-
-```
-library_[category]_[NN]_[length]_seg_[SS].mp3
-```
-
-| Placeholder | Meaning | Example |
-|---|---|---|
-| `category` | MAC category, lowercase, spelled out | `mindfulness`, `acceptance`, `commitment` |
-| `NN` | Topic number within the category, zero-padded | `01`, `02`, `03` |
-| `length` | Short or long variant | `short`, `long` |
-| `SS` | Segment number, zero-padded | `01`, `02`, `03` |
-
-Examples:
-- `library_mindfulness_01_short_seg_01.mp3`
-- `library_acceptance_02_long_seg_02.mp3`
-- `library_commitment_01_short_seg_01.mp3`
+If files are **merged** for shipping, say so explicitly in the script.
 
 ---
 
 ## 8. Delivery checklist
 
-Use this for every lesson before you hand it off.
-
-- [ ] Script document with full voiceover text (every word you say)
-- [ ] Audio segment files (mp3, named correctly per Section 7) (has
-      segment duration (timestamps))
-- [ ] MAC tag(s) listed at the top of the script
-- [ ] Exercise block with total duration, step text, and per-step
-      durations (if the lesson has an exercise). The exercise(s) should be
-      explicitly described including describing any interactive
-      tools/models clearly.
-- [ ] Journal prompt with exact question text (if the lesson has one)
-- [ ] Approximate duration noted for each audio segment
+- [ ] **Google Drive** folder (or agreed location) with **script PDF** + **mp3s**.  
+- [ ] Script **PDF** is **verbatim** with the template; **all** voiceover words; **one line per on-screen phrase** in voiceover.  
+- [ ] **≥1** voiceover + **≥1** exercise (§0).  
+- [ ] **mp3s** named per §7; **~duration** per file in the script.  
+- [ ] **MAC** tags on the lesson header.  
+- [ ] Each **EXERCISE**: name, total duration, **type** (§5), description, steps as needed; **verbatim** if spec’d.  
+- [ ] **Journal** (if used): last in script unless team-approved otherwise; exact question text.  
 
 ---
 
-## 9. Reference example — Day 1 (fully formatted)
+## 9. Reference example — Day 1
 
-Below is a complete, correctly formatted delivery for Day 1. Use this as
-your reference for tone, level of detail, and formatting.
+Tone and density reference. UI may add cards or merge audio; **spoken**, **exercise**, and **journal** copy stay the contract.
 
-```
+```text
 LESSON TITLE: What MAC Training Actually Is
 LESSON NUMBER: Day 1
 MAC TAG(S): M
@@ -462,8 +289,9 @@ Take a second and think about which one you need most.
 EXERCISE
 ========================================
 
-[EXERCISE — 60 seconds]
-(If there is a description of an exercise put here)
+[MAC recap — 60 seconds]
+
+Three short recall lines (flash-card style content; integration maps block type).
 
 Step 1: "M — Mindfulness. Notice where your attention goes. Choose where
          it goes." — 20 seconds
@@ -474,7 +302,7 @@ Step 3: "C — Commitment. Show up. Regardless of how you feel."
 
 
 ========================================
-VOICEOVER (continued)
+VOICEOVER
 ========================================
 
 lesson_01_seg_03.mp3  (~19s)
@@ -497,62 +325,25 @@ biggest weakness right now? Why?
 
 ## 10. FAQ
 
-**Can a lesson have no exercise?**
-Yes. Many lessons will be voiceover + journal prompt only, or even
-voiceover only.
-
-**Can a lesson have no journal prompt?**
-Yes. Not every lesson needs one.
-
-**Can a lesson have multiple exercises?**
-Yes. Place each exercise block between voiceover blocks in your script,
-in the order you want them played.
-
-**Can a lesson have multiple journal prompts?**
-No. Limit each lesson to one journal prompt. If you have two questions,
-combine them into one or split across two lessons.
-
-**How many segments should I split a voiceover into?**
-However many you want. One segment per voiceover section is fine. Ten
-segments is also fine. It has no effect on what the user experiences.
-
-**Do I need to provide ambient music for exercises?**
-No. We have a default ambient track. If you want a specific track for a
-specific exercise, let us know.
-
-**How precise do my timestamps need to be?**
-Your best estimate is fine. We adjust them during integration after
-listening to your recordings. Getting within a few seconds is plenty.
-
-**How precise do my segment durations need to be?**
-Approximate is fine. Write `(~45s)` based on your best guess. We
-calculate exact durations from the audio files.
-
-**What if my lesson doesn't fit this template?**
-Describe what you have in mind and we will figure out the right format.
-The template covers the vast majority of cases, but we can accommodate
-variations.
-
-**What is the ideal lesson length?**
-That is your call. The current range is roughly 2.5-7 minutes for program
-lessons. Library-short and library-long are relative to each other within
-their category — you decide what short and long mean.
+| Question | Answer |
+|----------|--------|
+| **Minimum** per lesson? | **≥1 voiceover + ≥1 exercise** (§0). |
+| **No journal**? | **OK** — journal section is optional unless your design requires it. |
+| **No exercise**? | **Not OK** for a standard handoff — every WOD needs an exercise module. |
+| **Multiple exercises**? | **OK** — keep script order clear. |
+| **Library**? | **Out of scope** for this coach pipeline. |
+| **Multiple journal questions**? | Prefer **one** `JOURNAL PROMPT` block with lead-in + numbered items unless the team says otherwise. |
 
 ---
 
-## Quick-start summary
+## 11. Quick start
 
-**Daily Workout (Day 1–30):**
-1. Pick the day number
-2. Copy the template from Section 4a
-3. Write the voiceover script, add exercise and/or journal prompt if desired
-4. Record your audio, name files per Section 7
-5. Run through the checklist in Section 8
-6. Deliver: script document + mp3 files
+1. Read **§0** (Quick Content Guide).  
+2. Pick day **1–30**.  
+3. Fill the **template** in Docs → **export PDF**; record **mp3s** (§7).  
+4. Upload **PDF + audio** to **Google Drive**.  
+5. Run **§8** checklist.  
 
-**Library lesson (Short or Long):**
-1. Pick the lesson number (Library-M-01-Short, Library-A-02-Long, etc.)
-2. Copy the template from Section 4b
-3. Write the tap-through paragraphs, add exercise and/or journal prompt if desired
-4. No audio recording needed
-5. Deliver: script document only
+---
+
+*Google Docs tips: use headings for sections, 1.15–1.3 line spacing, 8–12pt space after major headings before export.*

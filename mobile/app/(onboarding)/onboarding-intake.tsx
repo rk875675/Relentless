@@ -15,11 +15,17 @@ type StepDef = {
 const STEPS: StepDef[] = [
   {
     title: 'How important is mental toughness in your sport?',
-    options: ['Not very', 'Somewhat', 'Quite important', 'Very important', 'Extremely important'],
+    options: ['Extremely important', 'Very important', 'Quite important', 'Somewhat', 'Not very'],
   },
   {
     title: "What's your current long-term goal? (college, D1, pro, etc.)",
-    options: ['High school / getting recruited', 'College athletics', 'D1 or higher', 'Pro / elite trajectory', 'Still figuring it out'],
+    options: [
+      'Pro / elite trajectory',
+      'D1 or higher',
+      'College athletics',
+      'High school / getting recruited',
+      'Still figuring it out',
+    ],
   },
   {
     title: 'After a comp, could you have done more?',
@@ -32,15 +38,15 @@ const STEPS: StepDef[] = [
   {
     title:
       'If you performed at 100% mental toughness every time, how different would your results be?',
-    options: ['Not much', 'A little', 'Somewhat', 'A lot', 'Completely different'],
+    options: ['Completely different', 'A lot', 'Somewhat', 'A little', 'Not much'],
   },
   {
     title: 'How different would your life be if you reached your full potential?',
-    options: ['Not much', 'A little', 'Somewhat', 'A lot', 'Completely different'],
+    options: ['Completely different', 'A lot', 'Somewhat', 'A little', 'Not much'],
   },
   {
     title: 'How strongly do you want that level of performance?',
-    options: ['Not much', 'A little', 'Somewhat', 'Strongly', 'More than anything'],
+    options: ['More than anything', 'Strongly', 'Somewhat', 'A little', 'Not much'],
   },
   {
     title: "Are you willing to commit to reaching that level, even if it's not easy?",
@@ -85,7 +91,7 @@ export default function OnboardingIntakeScreen() {
     if (questionIndex < STEPS.length - 1) {
       setQuestionIndex((i) => i + 1);
     } else {
-      router.push('/(onboarding)/mac-framework' as any); // TEMP: reviews hidden — restore to '/(onboarding)/unlocked-potential'
+      router.push('/(onboarding)/unlocked-potential' as any);
     }
   };
 

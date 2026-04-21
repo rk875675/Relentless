@@ -39,6 +39,9 @@ Initial audience / scope
 V1 is for track / running athletes only.
 The product should expand one sport at a time later.
 V1 content comes from one track-focused sports psychology / coaching partner.
+The partner coach handoff (scripts and audio) for the 30-day program is the
+Daily Workout pipeline. Library lesson authoring and sourcing is separate
+from that handoff; this PRD does not lock who produces library content.
 Source-of-truth rule
 This section reflects the actual current app direction.
 Older notes or brainstorms should not override these decisions.

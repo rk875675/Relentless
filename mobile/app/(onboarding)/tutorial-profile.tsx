@@ -94,7 +94,7 @@ export default function TutorialProfileScreen() {
             style={styles.button}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/(onboarding)/competition-date');
+              router.push('/(onboarding)/sport-selection' as any);
             }}
           >
             <Text style={styles.buttonText}>Continue</Text>
