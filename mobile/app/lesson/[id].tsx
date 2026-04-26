@@ -4,6 +4,7 @@ import {
   Animated,
   AppState,
   AppStateStatus,
+  BackHandler,
   PanResponder,
   Platform,
   ScrollView,
@@ -35,6 +36,8 @@ import CountdownTimerExercise from '@/components/lesson/CountdownTimer';
 import MultiSelectExercise from '@/components/lesson/MultiSelect';
 import ExamplesWithEntryExercise from '@/components/lesson/ExamplesWithEntry';
 import AnchorEntryExercise from '@/components/lesson/AnchorEntry';
+import PhysiologicalSighExercise from '@/components/lesson/PhysiologicalSigh';
+import MultiFieldEntryExercise from '@/components/lesson/MultiFieldEntry';
 import MacAlternatingRing from '@/components/lesson/MacAlternatingRing';
 import {
   MAC_A11Y_NAME,
@@ -152,6 +155,30 @@ type CountdownTimerBlock = {
   completion_hold_seconds: number;
 };
 
+type PhysiologicalSighBlock = {
+  type: 'physiological_sigh';
+  first_inhale_seconds: number;
+  sneak_inhale_seconds: number;
+  exhale_seconds: number;
+  phase_cues: {
+    first_inhale: string;
+    sneak_inhale: string;
+    exhale: string;
+  };
+  done_label?: string;
+  estimated_duration_seconds?: number;
+};
+
+type MultiFieldEntryBlock = {
+  type: 'multi_field_entry';
+  ambient_audio?: string | null;
+  header: string;
+  fields: { label: string; input?: boolean; placeholder?: string }[];
+  submit_label?: string;
+  summary_header?: string;
+  continue_label?: string;
+};
+
 type MultiSelectBlock = {
   type: 'multi_select';
   ambient_audio?: string | null;
@@ -190,6 +217,8 @@ type ContentBlock =
   | TwoColumnSortBlock
   | ListBuilderBlock
   | CountdownTimerBlock
+  | PhysiologicalSighBlock
+  | MultiFieldEntryBlock
   | MultiSelectBlock
   | ExamplesWithEntryBlock
   | AnchorEntryBlock;
@@ -223,6 +252,10 @@ const STANDARD_WOD_READY_TAGLINE = "focuses on the 'why' and teaching through th
 
 /** WOD Day 3 — baseline gut-check: flash cards + required 1–10 score before each advance (saved with journal). */
 const LESSON_DAY3_BASELINE_ID = 'd0000000-0000-0000-0000-000000000003';
+
+function isLibraryLessonType(lessonType: string | undefined): boolean {
+  return lessonType === 'library' || lessonType === 'library_long';
+}
 
 const BASELINE_SCORE_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
@@ -349,6 +382,8 @@ function blockWeightSeconds(block: ContentBlock): number {
     case 'multi_select': return 25;
     case 'examples_with_entry': return 45;
     case 'anchor_entry': return 45;
+    case 'physiological_sigh': return Math.max(1, block.estimated_duration_seconds ?? 60);
+    case 'multi_field_entry': return Math.max(1, block.fields.length * 25);
     default: return 10;
   }
 }
@@ -970,17 +1005,21 @@ export default function LessonPlayerScreen() {
       block.type === 'two_column_sort' ||
       block.type === 'list_builder' ||
       block.type === 'countdown_timer' ||
+      block.type === 'physiological_sigh' ||
+      block.type === 'multi_field_entry' ||
       block.type === 'multi_select' ||
       block.type === 'examples_with_entry' ||
       block.type === 'anchor_entry'
     ) {
       setCurrentAudioUrl(null);
       if (block.type === 'prompt_cards') setPromptCardsIndex(0);
-      try {
-        if (!ambientPlayer.playing) {
-          ambientPlayer.seekTo(0).then(() => ambientPlayer.play()).catch(() => {});
-        }
-      } catch { /* noop */ }
+      if (block.type !== 'physiological_sigh') {
+        try {
+          if (!ambientPlayer.playing) {
+            ambientPlayer.seekTo(0).then(() => ambientPlayer.play()).catch(() => {});
+          }
+        } catch { /* noop */ }
+      }
     } else {
       advanceBlock();
     }
@@ -1377,16 +1416,26 @@ export default function LessonPlayerScreen() {
     } catch { /* noop */ }
   }, [advanceBlock, player, ambientPlayer, pulseBars, textFade, cardScale, breathCircleAnim, boxCueFade, finishLegacyPlayback]);
 
-  const exitFromPausedOsOverlay = useCallback(() => {
-    if (phaseRef.current !== 'paused_background') return;
+  const endPlaybackSession = useCallback(() => {
     backgroundPauseBeganMsRef.current = null;
     sessionActive.current = false;
     voiceoverStartPending.current = false;
     stopAllTimers();
     try { player.pause(); } catch { /* noop */ }
     try { ambientPlayer.pause(); } catch { /* noop */ }
+  }, [stopAllTimers, player, ambientPlayer]);
+
+  const exitFromPausedOsOverlay = useCallback(() => {
+    if (phaseRef.current !== 'paused_background') return;
+    endPlaybackSession();
     router.back();
-  }, [stopAllTimers, player, ambientPlayer, router]);
+  }, [endPlaybackSession, router]);
+
+  /** Library-only: leave during active playback without posting /complete (no progress, no Past WOD side effects). */
+  const exitLibraryInPlayer = useCallback(() => {
+    endPlaybackSession();
+    router.back();
+  }, [endPlaybackSession, router]);
 
   // -----------------------------------------------------------------------
   // Restart from ready screen (user explicitly restarts prep)
@@ -1464,6 +1513,8 @@ export default function LessonPlayerScreen() {
     currentBlock?.type === 'two_column_sort' ||
     currentBlock?.type === 'list_builder' ||
     currentBlock?.type === 'countdown_timer' ||
+    currentBlock?.type === 'physiological_sigh' ||
+    currentBlock?.type === 'multi_field_entry' ||
     currentBlock?.type === 'multi_select' ||
     currentBlock?.type === 'examples_with_entry' ||
     currentBlock?.type === 'anchor_entry';
@@ -1605,6 +1656,20 @@ export default function LessonPlayerScreen() {
   ).current;
 
   const showPlayingChrome = phase === 'playing' || phase === 'paused_background';
+
+  const lessonIsLibrary = Boolean(lesson && isLibraryLessonType(lesson.lesson_type));
+  const showTopBarLeftClose = !showPlayingChrome || lessonIsLibrary;
+
+  useEffect(() => {
+    if (!lesson || !isLibraryLessonType(lesson.lesson_type) || !showPlayingChrome) {
+      return;
+    }
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      exitLibraryInPlayer();
+      return true;
+    });
+    return () => sub.remove();
+  }, [lesson, showPlayingChrome, exitLibraryInPlayer]);
 
   const hasLegacyVoiceover = !hasBlocks && Boolean(lesson?.voiceover_url);
   const legacyAudioElapsed = Math.floor(audioStatus.currentTime);
@@ -1833,8 +1898,20 @@ export default function LessonPlayerScreen() {
       <Stack.Screen options={{ headerShown: false, gestureEnabled: !showPlayingChrome }} />
       <SafeAreaView style={styles.container}>
         <View style={styles.topBar}>
-          {!showPlayingChrome ? (
-            <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
+          {showTopBarLeftClose ? (
+            <TouchableOpacity
+              onPress={() => {
+                if (lessonIsLibrary && showPlayingChrome) {
+                  exitLibraryInPlayer();
+                } else {
+                  router.back();
+                }
+              }}
+              hitSlop={12}
+              accessibilityLabel={
+                lessonIsLibrary && showPlayingChrome ? 'Exit lesson' : 'Close'
+              }
+            >
               <Ionicons name="close" size={28} color={colors.textSecondary} />
             </TouchableOpacity>
           ) : (
@@ -2745,6 +2822,37 @@ export default function LessonPlayerScreen() {
                 catColor={catColor}
                 accentColors={isMultiMac ? macAccentColorsRaw : undefined}
                 suspendForBackground={phase === 'paused_background'}
+                onComplete={handleComplete}
+              />
+            );
+          }
+          if (block.type === 'physiological_sigh') {
+            return (
+              <PhysiologicalSighExercise
+                key={blockIndex}
+                firstInhaleSeconds={block.first_inhale_seconds}
+                sneakInhaleSeconds={block.sneak_inhale_seconds}
+                exhaleSeconds={block.exhale_seconds}
+                phaseCues={block.phase_cues}
+                doneLabel={block.done_label ?? 'Done'}
+                catColor={catColor}
+                accentColors={isMultiMac ? macAccentColorsRaw : undefined}
+                suspendForBackground={phase === 'paused_background'}
+                onComplete={handleComplete}
+              />
+            );
+          }
+          if (block.type === 'multi_field_entry') {
+            return (
+              <MultiFieldEntryExercise
+                key={blockIndex}
+                header={block.header}
+                fields={block.fields}
+                submitLabel={block.submit_label ?? 'Save'}
+                summaryHeader={block.summary_header}
+                continueLabel={block.continue_label ?? 'Continue'}
+                catColor={catColor}
+                accentColors={isMultiMac ? macAccentColorsRaw : undefined}
                 onComplete={handleComplete}
               />
             );

@@ -160,6 +160,8 @@ JOURNAL PROMPT  (optional unless your day design requires it)
 
 The **VOICEOVER** text must **match** what you **record** on each **mp3**. Integration aligns on-screen lines to the audio (internal tools such as Whisper may be used). **Clean** voice track, **no** loud music on the coach file; exercises often use **separate** ambient in the app.
 
+For the in-app `timed_text` display, keep each cue short enough to read as **1–2 on-screen lines**. If a spoken sentence is too long, do **not** split it into extra timed cues just to fit the screen; keep the existing timing slot and use a short display phrase that preserves the meaning. Do not paraphrase exercise prompts, option labels, step text, or journal prompts.
+
 ### On-screen text: exercise
 
 **Step** lines and the **description** are what the athlete sees during the exercise module. **Separate** from the voiceover phrase list. **Verbatim** when an approved spec exists.

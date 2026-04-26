@@ -158,6 +158,40 @@ const CountdownTimerBlockSchema = z.object({
   completion_hold_seconds: z.number().min(0),
 }).strict();
 
+const PhysiologicalSighPhaseCuesSchema = z.object({
+  first_inhale: z.string().min(1),
+  sneak_inhale: z.string().min(1),
+  exhale: z.string().min(1),
+}).strict();
+
+// Repeating double-inhale breath circle. User controls completion with Done;
+// estimated_duration_seconds is only used for progress/duration estimates.
+const PhysiologicalSighBlockSchema = z.object({
+  type: z.literal("physiological_sigh"),
+  first_inhale_seconds: z.number().positive(),
+  sneak_inhale_seconds: z.number().positive(),
+  exhale_seconds: z.number().positive(),
+  phase_cues: PhysiologicalSighPhaseCuesSchema,
+  done_label: z.string().min(1).default("Done"),
+  estimated_duration_seconds: z.number().int().positive().default(60),
+}).strict();
+
+const MultiFieldEntryFieldSchema = z.object({
+  label: z.string().min(1),
+  input: z.boolean().default(true),
+  placeholder: z.string().min(1).optional(),
+}).strict();
+
+const MultiFieldEntryBlockSchema = z.object({
+  type: z.literal("multi_field_entry"),
+  ambient_audio: z.string().min(1).optional(),
+  header: z.string().min(1),
+  fields: z.array(MultiFieldEntryFieldSchema).min(1),
+  submit_label: z.string().min(1).default("Save"),
+  summary_header: z.string().min(1).optional(),
+  continue_label: z.string().min(1).default("Continue"),
+}).strict();
+
 // Tap-to-toggle multi-choice list. User selects any number of options and
 // taps Confirm. No time-locks, no countdown. (Day 2 Step 2.)
 const MultiSelectBlockSchema = z.object({
@@ -204,6 +238,8 @@ const ContentBlockSchema = z.discriminatedUnion("type", [
   TwoColumnSortBlockSchema,
   ListBuilderBlockSchema,
   CountdownTimerBlockSchema,
+  PhysiologicalSighBlockSchema,
+  MultiFieldEntryBlockSchema,
   MultiSelectBlockSchema,
   ExamplesWithEntryBlockSchema,
   AnchorEntryBlockSchema,

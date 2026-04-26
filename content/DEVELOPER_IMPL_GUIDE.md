@@ -19,6 +19,15 @@ option strings, and related coach-authored labels. Do not paraphrase, tighten, o
 merge exercise copy in JSON or SQL migrations. If the spec does not match a block
 type, resolve with a content or product revision rather than rewriting the script.
 
+**Library lesson types (`library` / `library_long`) — in-player exit:** The lesson
+player always shows a top-left close (X) while content is running. Tapping it (or
+Android hardware back, while the lesson is active) stops audio/timers, navigates
+back, and does **not** call the server completion flow — so no progress/MAC
+deltas, no journal post from that session, and program “Past WODs” in the
+Library category list is unchanged. Program/scheduled WODs (`standard`) keep
+their current behavior: no in-player top bar while the workout is in progress
+(edge swipe stays off during play).
+
 ---
 
 ## 2. UUID + sort_order registry
@@ -37,9 +46,13 @@ anywhere. Use the next available row in each category.
 | 5   | Box Breathing — Level 1                    | `d0000000-0000-0000-0000-000000000005` | 4          | ✅ DONE  |
 | 6   | Body Scan — Level 1                        | `d0000000-0000-0000-0000-000000000006` | 5          | ✅ DONE  |
 | 7   | Focus Anchor — Find Yours                  | `d0000000-0000-0000-0000-000000000007` | 6          | ✅ DONE  |
-| 8   | —                                          | `d0000000-0000-0000-0000-000000000008` | 7          | —        |
-| 9   | —                                          | `d0000000-0000-0000-0000-000000000009` | 8          | —        |
-| 10  | —                                          | `d0000000-0000-0000-0000-000000000010` | 9          | —        |
+| 8   | Why You're Better in Practice Than Games  | `d0000000-0000-0000-0000-000000000008` | 7          | ✅ DONE  |
+| 9   | The 30-Second Reset                       | `d0000000-0000-0000-0000-000000000009` | 8          | ✅ DONE  |
+| 10  | Controlling the Controllables             | `d0000000-0000-0000-0000-000000000010` | 9          | ✅ DONE  |
+| 11  | The Physiological Sigh                    | `d0000000-0000-0000-0000-000000000011` | 10         | ✅ DONE  |
+| 12  | The Evidence Log                          | `d0000000-0000-0000-0000-000000000012` | 11         | ✅ DONE  |
+| 13  | Building Your Daily Routine               | `d0000000-0000-0000-0000-000000000013` | 12         | ✅ DONE  |
+| 14  | Using Your Anchor In Competition          | `d0000000-0000-0000-0000-000000000014` | 13         | ✅ DONE  |
 
 **Sort order pattern:** 0-indexed by day number (Day 1 = 0, Day 2 = 1, …)
 
