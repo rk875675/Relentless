@@ -45,6 +45,8 @@ type TutorialStep = {
   tooltip: TooltipContent;
   progressStep: number;
   caretPosition: 'left' | 'center';
+  /** Negative values pull the tooltip up (only used on specific steps; default 0). */
+  tooltipNudgeY?: number;
 };
 
 const STEPS: TutorialStep[] = [
@@ -59,6 +61,8 @@ const STEPS: TutorialStep[] = [
     },
     progressStep: 15,
     caretPosition: 'center',
+    // Sits under full scroll; nudge up so the caret targets the MAC legend (below rings).
+    tooltipNudgeY: -118,
   },
   {
     tab: 'home',
@@ -271,7 +275,7 @@ function LibraryScreen({ variant, rings, streak }: { variant: string; rings: Rin
   ];
   return (
     <ScrollView
-      style={styles.screenScroll}
+      style={[styles.screenScroll, variant === 'overview' && styles.screenScrollLibraryOverview]}
       contentContainerStyle={styles.screenContent}
       showsVerticalScrollIndicator={false}
       scrollEnabled={false}
@@ -298,7 +302,6 @@ function LibraryScreen({ variant, rings, streak }: { variant: string; rings: Rin
             style={[
               styles.categoryBtn,
               isHighlighted && styles.categoryBtnHighlight,
-              !isHighlighted && variant === 'overview' && { opacity: 0.12 },
             ]}
           >
             <View style={[styles.categoryAccent, { backgroundColor: cat.color }]} />
@@ -433,6 +436,8 @@ function Tooltip({
   anim,
   isDecay,
   caretPosition,
+  nudgeY = 0,
+  pinToBottom = false,
 }: {
   content: TooltipContent;
   stepIdx: number;
@@ -440,15 +445,24 @@ function Tooltip({
   anim: Animated.Value;
   isDecay?: boolean;
   caretPosition: 'left' | 'center';
+  nudgeY?: number;
+  /** Pushes the tooltip to the bottom of the screen area (e.g. library overview). */
+  pinToBottom?: boolean;
 }) {
   const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
   const bg = isDecay ? TOOLTIP_BG_DECAY : TOOLTIP_BG;
   const borderColor = isDecay ? TOOLTIP_BORDER_DECAY : TOOLTIP_BORDER;
   const accentColor = isDecay ? colors.error : colors.accentLight;
   const caretLeft = CARET_OFFSETS[caretPosition];
+  const marginTop = pinToBottom ? 'auto' : nudgeY;
 
   return (
-    <Animated.View style={[styles.tooltipWrap, { opacity: anim, transform: [{ translateY }] }]}>
+    <Animated.View
+      style={[
+        styles.tooltipWrap,
+        { marginTop, opacity: anim, transform: [{ translateY }] },
+      ]}
+    >
       {/* border triangle — slightly larger, rendered behind fill */}
       <View
         style={[
@@ -564,6 +578,7 @@ export default function TutorialScreen() {
         } else if (gs.dx > SWIPE_THRESHOLD && idx > 0) {
           goToStepRef.current(idx - 1);
         } else {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
           // Snap back if threshold not met
           Animated.spring(slideX, {
             toValue: 0,
@@ -578,6 +593,7 @@ export default function TutorialScreen() {
 
   const handleNext = () => {
     if (stepIdx >= STEPS.length - 1) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.push('/(onboarding)/sport-selection' as any);
       return;
     }
@@ -594,11 +610,13 @@ export default function TutorialScreen() {
     if (stepIdx > 0) {
       goToStep(stepIdx - 1);
     } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       router.back();
     }
   };
 
   const isDecay = step.variant === 'decay';
+  const pinLibraryTooltipBottom = step.tab === 'library' && step.variant === 'overview';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -609,18 +627,16 @@ export default function TutorialScreen() {
           style={[styles.screenArea, { transform: [{ translateX: slideX }] }]}
           {...panResponder.panHandlers}
         >
-          <View>
+          <View style={pinLibraryTooltipBottom ? { flex: 1, minHeight: 0 } : undefined}>
             {step.tab === 'home' && (
               <HomeScreen variant={step.variant} rings={step.rings} streak={step.streak} />
             )}
-            {step.tab === 'library' && step.variant === 'category'
-              ? <LibraryCategoryScreen />
-              : step.tab === 'library' && (
-                  <LibraryScreen variant={step.variant} rings={step.rings} streak={step.streak} />
-                )}
-            {step.tab === 'profile' && (
-              <ProfileScreen rings={step.rings} streak={step.streak} />
-            )}
+            {step.tab === 'library' && step.variant === 'category' ? (
+              <LibraryCategoryScreen />
+            ) : step.tab === 'library' ? (
+              <LibraryScreen variant={step.variant} rings={step.rings} streak={step.streak} />
+            ) : null}
+            {step.tab === 'profile' && <ProfileScreen rings={step.rings} streak={step.streak} />}
             {/* Dim overlay separates mock screen from tooltip */}
             <Animated.View
               pointerEvents="none"
@@ -635,6 +651,8 @@ export default function TutorialScreen() {
             anim={stepAnim}
             isDecay={isDecay}
             caretPosition={step.caretPosition}
+            nudgeY={step.tooltipNudgeY ?? 0}
+            pinToBottom={pinLibraryTooltipBottom}
           />
         </Animated.View>
 
@@ -656,8 +674,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   inner: { flex: 1 },
 
-  screenArea: { flex: 1 },
+  screenArea: { flex: 1, flexDirection: 'column' },
   screenScroll: {},
+  // Library overview: fill area above the pinned bottom tooltip.
+  screenScrollLibraryOverview: { flex: 1, minHeight: 0 },
   screenContent: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 20 },
   screenHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16,

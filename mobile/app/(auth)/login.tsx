@@ -1,30 +1,25 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { useRouter } from 'expo-router';
+import { AuthSocialSignInButtons } from '@/components/auth/AuthSocialSignInButtons';
 import { useAuth } from '@/lib/auth-context';
+import { useSocialSignIn } from '@/lib/use-social-sign-in';
 
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
+  const { googleLoading, appleLoading, socialBusy, handleGoogle, handleApple } = useSocialSignIn();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      setError('Enter your email and password.');
-      return;
-    }
-    setError('');
+    if (!email || !password) return;
     setLoading(true);
     try {
       const result = await signIn(email.trim(), password);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      router.replace(result.path as any);
+      if (!result.ok) return;
+      if (result.path) router.replace(result.path as any);
     } finally {
       setLoading(false);
     }
@@ -36,6 +31,16 @@ export default function LoginScreen() {
         <View style={styles.inner}>
           <Text style={styles.logo}>RELENTLESS</Text>
           <Text style={styles.tagline}>Mental performance training for athletes</Text>
+
+          <AuthSocialSignInButtons
+            variant="login"
+            onGoogle={handleGoogle}
+            onApple={handleApple}
+            googleLoading={googleLoading}
+            appleLoading={appleLoading}
+          />
+
+          <Text style={styles.emailSectionLabel}>Sign in with email</Text>
 
           <TextInput
             style={styles.input}
@@ -60,9 +65,15 @@ export default function LoginScreen() {
             autoComplete="off"
           />
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <TouchableOpacity
+            style={styles.forgotTouch}
+            onPress={() => router.push('/(auth)/forgot-password' as any)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
 
-          <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
+          <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading || socialBusy}>
             {loading ? (
               <ActivityIndicator color="#000" />
             ) : (
@@ -112,7 +123,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#888',
     textAlign: 'center',
-    marginBottom: 48,
+    marginBottom: 20,
+  },
+  emailSectionLabel: {
+    fontSize: 13,
+    color: '#888',
+    marginBottom: 10,
   },
   input: {
     backgroundColor: '#1a1a1a',
@@ -121,15 +137,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    marginBottom: 14,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#333',
   },
-  error: {
-    color: '#ff4444',
-    fontSize: 13,
-    textAlign: 'center',
-    marginBottom: 12,
+  forgotTouch: {
+    alignSelf: 'flex-end',
+    marginBottom: 14,
+  },
+  forgotText: {
+    color: '#888',
+    fontSize: 14,
   },
   button: {
     backgroundColor: '#fff',

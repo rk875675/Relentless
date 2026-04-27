@@ -30,4 +30,5 @@ export const spacing = {
   xl: 32,
 };
 
-export const TAB_BAR_CLEARANCE = 110;
+/** Scroll padding above docked tab bar (~row + home indicator). */
+export const TAB_BAR_CLEARANCE = 100;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Animated,
   Modal,
@@ -12,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
+  Linking,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -76,7 +78,12 @@ const emptyStreak: Streak = {
   current_streak: 0,
   longest_streak: 0,
   last_activity_date: null,
+  freebie_used: false,
 };
+
+function streakFreebieModalAckKey(userId: string): string {
+  return `relentless:streak_freebie_ack_ymd:${userId}`;
+}
 
 const MISS_REFLECTION_JOURNAL_PATH = '/journal?entry_type=miss_reflection&limit=1';
 
@@ -114,7 +121,8 @@ function ringBasePct(score: number | undefined, delta: ScoreDelta | undefined | 
 }
 
 export default function HomeScreen() {
-  const { competitionDate } = useAuth();
+  const { competitionDate, session } = useAuth();
+  const currentUserId = session?.user?.id ?? null;
   const router = useRouter();
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [lastWod, setLastWod] = useState<Lesson | null>(null);
@@ -136,7 +144,6 @@ export default function HomeScreen() {
   const [missJournalSaveError, setMissJournalSaveError] = useState('');
   const [missJournalDismissed, setMissJournalDismissed] = useState(false);
   const [showFreebieModal, setShowFreebieModal] = useState(false);
-  const freebieDismissedRef = useRef(false);
   const freebieScale = useRef(new Animated.Value(0)).current;
   const freebieOpacity = useRef(new Animated.Value(0)).current;
   const deltaDateRef = useRef<string | null>(null);
@@ -162,6 +169,7 @@ export default function HomeScreen() {
         data: MissReflectionJournalListResponse | null;
         error: string | null;
       },
+      freebieAckYmd: string | null,
     ) => {
       setShowMissReflection(false);
       const items = missJournalRes.error ? undefined : missJournalRes.data?.items;
@@ -177,15 +185,26 @@ export default function HomeScreen() {
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const daysSince = Math.floor((today.getTime() - lastDate.getTime()) / 86400000);
 
-        if (daysSince === 2 && !streakData.freebie_used && !freebieDismissedRef.current) {
+        const shouldShowFreebie =
+          daysSince === 2 &&
+          !streakData.freebie_used &&
+          streakData.last_activity_date !== freebieAckYmd;
+
+        if (shouldShowFreebie) {
           setShowFreebieModal(true);
-        } else if (
+        } else {
+          setShowFreebieModal(false);
+        }
+        if (
+          !shouldShowFreebie &&
           !missJournalDismissed &&
           !hasMissJournalForGap &&
           (daysSince >= 3 || (daysSince === 2 && streakData.freebie_used))
         ) {
           setShowMissReflection(true);
         }
+      } else {
+        setShowFreebieModal(false);
       }
     };
 
@@ -209,7 +228,11 @@ export default function HomeScreen() {
           MISS_REFLECTION_JOURNAL_PATH,
           { headers: homeHeaders },
         );
-        applyMissReflectionFromStreakAndJournal(cachedStreak, missJournalRes);
+        const freebieAckYmd =
+          currentUserId != null
+            ? await AsyncStorage.getItem(streakFreebieModalAckKey(currentUserId))
+            : null;
+        applyMissReflectionFromStreakAndJournal(cachedStreak, missJournalRes, freebieAckYmd);
         setRefreshing(false);
         return;
       }
@@ -242,7 +265,11 @@ export default function HomeScreen() {
     const streakData = streakRes.error ? emptyStreak : (streakRes.data ?? emptyStreak);
     setStreak(streakData);
 
-    applyMissReflectionFromStreakAndJournal(streakData, missJournalRes);
+    const freebieAckYmd =
+      currentUserId != null
+        ? await AsyncStorage.getItem(streakFreebieModalAckKey(currentUserId))
+        : null;
+    applyMissReflectionFromStreakAndJournal(streakData, missJournalRes, freebieAckYmd);
 
     const today = getDeviceLocalCalendarYmd();
     const gainDeltas = getPendingGainDeltas();
@@ -266,7 +293,7 @@ export default function HomeScreen() {
     initialLoadDone.current = true;
     setLoading(false);
     setRefreshing(false);
-  }, [missJournalDismissed]);
+  }, [currentUserId, missJournalDismissed]);
 
   useFocusEffect(
     useCallback(() => {
@@ -285,7 +312,7 @@ export default function HomeScreen() {
     if (!showFreebieModal) return;
     freebieScale.setValue(0);
     freebieOpacity.setValue(0);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
     Animated.sequence([
       Animated.timing(freebieOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
       Animated.spring(freebieScale, { toValue: 1, friction: 5, tension: 100, useNativeDriver: true }),
@@ -293,8 +320,11 @@ export default function HomeScreen() {
   }, [showFreebieModal]);
 
   const dismissFreebie = () => {
-    freebieDismissedRef.current = true;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const ymd = streak?.last_activity_date;
+    if (ymd && currentUserId) {
+      void AsyncStorage.setItem(streakFreebieModalAckKey(currentUserId), ymd);
+    }
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     Animated.timing(freebieOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
       setShowFreebieModal(false);
     });
@@ -643,6 +673,22 @@ export default function HomeScreen() {
           )}
         </View>
       </View>
+
+      {/* Coach CTA — PRD: subtle outbound path to coach for 1:1 help */}
+      <TouchableOpacity
+        style={styles.ctaCard}
+        activeOpacity={0.8}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          Linking.openURL('https://grantchiasson.com/home');
+        }}
+      >
+        <Text style={styles.ctaTitle}>Want to go deeper?</Text>
+        <Text style={styles.ctaByline}>Sessions with Grant</Text>
+        <Text style={styles.ctaSub}>
+          Personalized coaching for your specific goals
+        </Text>
+      </TouchableOpacity>
     </ScrollView>
 
     <Modal visible={showFreebieModal} transparent animationType="none">
@@ -681,8 +727,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingTop: 64,
-    /** Tight clearance above floating tab bar; avoid flexGrow so short content does not leave a tall empty gap. */
-    paddingBottom: TAB_BAR_CLEARANCE - 48,
+    paddingBottom: TAB_BAR_CLEARANCE,
   },
   header: {
     flexDirection: 'row',
@@ -1023,6 +1068,37 @@ const styles = StyleSheet.create({
   journalError: {
     fontSize: 12,
     color: colors.error,
+  },
+  ctaCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    padding: spacing.lg,
+    alignItems: 'center',
+    marginTop: spacing.lg,
+  },
+  ctaTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  ctaByline: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.accent,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  ctaSub: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 6,
+    textAlign: 'center',
+    lineHeight: 19,
+    maxWidth: 280,
   },
   inlineError: {
     alignItems: 'center',

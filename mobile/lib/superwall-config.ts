@@ -12,6 +12,10 @@ export const SUPERWALL_IOS_API_KEY =
 /**
  * Placement id configured in the Superwall dashboard for the onboarding paywall.
  * Default: `onboarding_paywall` — create this placement and attach your remote paywall.
+ *
+ * App Store Guideline 3.1.2(c): the Superwall paywall shown for this placement should also
+ * visibly include subscription title, each option’s period and localized price, a short value
+ * description, and the same Terms + Privacy URLs as the in-app shell (`SubscriptionLegalDisclosure`).
  */
 export const SUPERWALL_ONBOARDING_PLACEMENT =
   process.env.EXPO_PUBLIC_SUPERWALL_ONBOARDING_PLACEMENT ?? 'onboarding_paywall';

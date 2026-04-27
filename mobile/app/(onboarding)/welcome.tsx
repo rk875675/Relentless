@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { colors, spacing } from '@/lib/theme';
 
 export default function WelcomeScreen() {
@@ -11,12 +12,19 @@ export default function WelcomeScreen() {
   const fadeCta = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.stagger(250, [
+    const seq = Animated.stagger(250, [
       Animated.timing(fadeTitle, { toValue: 1, duration: 500, useNativeDriver: true }),
       Animated.timing(fadeTagline, { toValue: 1, duration: 400, useNativeDriver: true }),
       Animated.timing(fadeCta, { toValue: 1, duration: 400, useNativeDriver: true }),
-    ]).start();
-  }, []);
+    ]);
+    seq.start();
+    return () => {
+      seq.stop();
+      fadeTitle.stopAnimation();
+      fadeTagline.stopAnimation();
+      fadeCta.stopAnimation();
+    };
+  }, [fadeCta, fadeTagline, fadeTitle]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -40,7 +48,10 @@ export default function WelcomeScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.signInLink}
-            onPress={() => router.replace('/(auth)/login' as any)}
+            onPress={() => {
+              markInAppAuthHubEntry();
+              router.push({ pathname: '/(auth)' as any, params: { from: 'signin' } });
+            }}
           >
             <Text style={styles.signInText}>Already have an account? Sign In</Text>
           </TouchableOpacity>

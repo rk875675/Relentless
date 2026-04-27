@@ -1,12 +1,31 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { AppState } from 'react-native';
+import { Alert, AppState, Linking, Platform } from 'react-native';
 import { Session } from '@supabase/supabase-js';
+import * as WebBrowser from 'expo-web-browser';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import { supabase } from './supabase';
+import { getOAuthRedirectUrl, parseOAuthCallbackUrl } from './auth-redirects';
+import { openAuthSessionWithTimeout } from './oauth-open-auth-session';
 import { bustCache } from './api-cache';
 import { clearPendingGainDeltas } from './pending-deltas';
 import { setApiToken } from './api';
+import { clearOnboardingProgress } from './onboarding-local-state';
+
+/** Google / Apple OAuth pitfalls: see `mobile/docs/AUTH_SOCIAL_SIGNIN.md`. */
 
 const FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000;
+/** If profile/entitlement queries stall (common on first OAuth after code exchange), still resolve the sign-in promise. Session is already persisted; background fetch + RouteGuard corrects routing. */
+const POST_SIGNIN_PROFILE_BUDGET_MS = 12_000;
+
+/** Use the Supabase client (not React `session`) so Skip works on the first tap in Expo Go / after fast refresh. */
+async function getClientUserId(hint?: string | null): Promise<string | null> {
+  if (hint) return hint;
+  const { data: s } = await supabase.auth.getSession();
+  if (s.session?.user?.id) return s.session.user.id;
+  const { data: g } = await supabase.auth.getUser();
+  return g.user?.id ?? null;
+}
 
 /** Fresh DB snapshot from `fetchUserState` (used so post–sign-in navigation does not wait on React state). */
 type FetchedUserSnapshot = {
@@ -21,7 +40,15 @@ type FetchedUserSnapshot = {
 
 type SignInResult =
   | { ok: false; error: string }
-  | { ok: true; path: '/(tabs)' | '/(onboarding)/paywall' | '/(onboarding)/welcome' };
+  | { ok: true; path: '/(tabs)' | '/(onboarding)/paywall' | '/(onboarding)/welcome' }
+  | { ok: true; path: null };
+
+/** User closed OAuth sheet or provider returned access_denied — do not show an error toast. */
+export type SocialSignInResult = SignInResult | { ok: false; cancelled: true };
+
+type OAuthExchangeResult =
+  | { ok: true; user: { id: string } }
+  | { ok: false; error: string };
 
 /** Mirrors onboardingComplete / hasPremiumAccess in this file for one-shot routing after sign-in. */
 function postSignInPath(
@@ -59,9 +86,11 @@ type AuthState = {
   entitlementStatus: string | null;
   hasPremiumAccess: boolean;
   signIn: (email: string, password: string) => Promise<SignInResult>;
+  signInWithGoogle: () => Promise<SocialSignInResult>;
+  signInWithApple: () => Promise<SocialSignInResult>;
   signUp: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
-  completeOnboarding: () => Promise<void>;
+  completeOnboarding: (options?: { requireUser?: boolean; userId?: string | null }) => Promise<void>;
   /** __DEV__ or profiles.is_dev: trial bypass + complete onboarding without StoreKit. */
   completeOnboardingDevBypass: () => Promise<void>;
   /** __DEV__ or is_dev: hide premium for paywall QA (is_dev uses local suppress flag). */
@@ -92,6 +121,8 @@ const AuthContext = createContext<AuthState>({
   entitlementStatus: null,
   hasPremiumAccess: false,
   signIn: async () => ({ ok: false, error: '' }),
+  signInWithGoogle: async () => ({ ok: false, error: 'Not in provider.' }),
+  signInWithApple: async () => ({ ok: false, error: 'Not in provider.' }),
   signUp: async () => null,
   signOut: async () => {},
   completeOnboarding: async () => {},
@@ -121,6 +152,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [devPremiumBypass, setDevPremiumBypass] = useState(false);
   /** When true, is_dev accounts behave like non-subscribers for route guard (paywall QA). */
   const [suppressDevPremium, setSuppressDevPremium] = useState(false);
+  const oauthCodeExchangeRef = useRef(new Map<string, Promise<OAuthExchangeResult>>());
+
+  /** When true, an optimistic entitlement grant is in effect (purchase completed
+   *  but backend sync hasn't confirmed yet). Prevents fetchUserState from
+   *  downgrading the local entitlement until the DB catches up. */
+  const optimisticGrantActiveRef = useRef(false);
 
   /** Latest routing overlays for post–sign-in path (React state may not have flushed yet). */
   const routingFlagsRef = useRef({
@@ -190,8 +227,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setCompetitionDate(compDate);
     setSport(sportVal);
     setIsTrackAthlete(trackVal);
-    setEntitlementStatus(entStatus);
-    setEntitlementExpiresAt(entExpires);
+
+    const dbEntitlementActive = entStatus === 'trial' || entStatus === 'active';
+    if (optimisticGrantActiveRef.current && !dbEntitlementActive) {
+      // Keep the optimistic values — DB hasn't caught up with the StoreKit purchase yet.
+    } else {
+      if (dbEntitlementActive) optimisticGrantActiveRef.current = false;
+      setEntitlementStatus(entStatus);
+      setEntitlementExpiresAt(entExpires);
+    }
+
+    // Return effective values so postSignInPath sees the optimistic grant if active.
+    const effectiveEntStatus =
+      optimisticGrantActiveRef.current && !dbEntitlementActive ? 'active' : entStatus;
+    const effectiveEntExpires =
+      optimisticGrantActiveRef.current && !dbEntitlementActive
+        ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+        : entExpires;
 
     return {
       isDevAccount: isDev,
@@ -199,8 +251,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       competitionDate: compDate,
       sport: sportVal,
       isTrackAthlete: trackVal,
-      entitlementStatus: entStatus,
-      entitlementExpiresAt: entExpires,
+      entitlementStatus: effectiveEntStatus,
+      entitlementExpiresAt: effectiveEntExpires,
     };
   }, []);
 
@@ -242,16 +294,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, s) => {
+      (_event, s) => {
         if (_event === 'INITIAL_SESSION') return;
         setSession(s);
         setApiToken(s?.access_token ?? null);
         if (s?.user) {
-          try {
-            await fetchUserState(s.user.id);
-          } catch {
-            try { await fetchUserState(s.user.id); } catch { /* give up */ }
-          }
+          // Defer async work: awaiting inside this callback can stall or deadlock
+          // exchangeCodeForSession during Google OAuth (see supabase-js#1429).
+          const userId = s.user.id;
+          setTimeout(() => {
+            void (async () => {
+              try {
+                await fetchUserState(userId);
+              } catch {
+                try { await fetchUserState(userId); } catch { /* give up */ }
+              }
+            })();
+          }, 0);
         } else {
           setIsDevAccount(false);
           setProfileOnboardingCompleted(false);
@@ -286,59 +345,246 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         devPremiumBypass ||
         (isDevAccount && !suppressDevPremium);
 
+  const finishSignInFlow = useCallback(
+    async (userId: string): Promise<SignInResult> => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        return { ok: false, error: 'Session did not start. Try again or restart the app.' };
+      }
+      setSession(sessionData.session);
+      setApiToken(sessionData.session.access_token);
+      setDevReplayOnboarding(false);
+      setSuppressDevPremium(false);
+      setDevPremiumBypass(false);
+      routingFlagsRef.current = {
+        devReplayOnboarding: false,
+        suppressDevPremium: false,
+        devPremiumBypass: false,
+      };
+      const fetchWithRetries = async () => {
+        let lastErr: unknown;
+        for (let attempt = 0; attempt < 4; attempt++) {
+          if (attempt > 0) {
+            await new Promise((r) => setTimeout(r, 120 * attempt));
+          }
+          try {
+            return await fetchUserState(userId);
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        throw lastErr instanceof Error
+          ? lastErr
+          : new Error('Could not load your profile. Try again.');
+      };
+
+      const runBackgroundProfileFetch = () => {
+        void (async () => {
+          for (let a = 0; a < 4; a++) {
+            try {
+              await fetchUserState(userId);
+              return;
+            } catch {
+              if (a < 3) await new Promise((r) => setTimeout(r, 250 * (a + 1)));
+            }
+          }
+        })();
+      };
+
+      let snap: FetchedUserSnapshot;
+      try {
+        snap = await Promise.race([
+          fetchWithRetries(),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('POST_SIGNIN_PROFILE_TIMEOUT')), POST_SIGNIN_PROFILE_BUDGET_MS);
+          }),
+        ]);
+      } catch {
+        runBackgroundProfileFetch();
+        return { ok: true, path: null };
+      }
+      const path = postSignInPath(snap, routingFlagsRef.current);
+      return { ok: true, path };
+    },
+    [fetchUserState],
+  );
+
+  const exchangeOAuthCodeForSignIn = useCallback((code: string): Promise<OAuthExchangeResult> => {
+    const existing = oauthCodeExchangeRef.current.get(code);
+    if (existing) return existing;
+
+    const exchange = (async () => {
+      const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+      if (exchangeError) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData.session?.user) {
+          return { ok: true as const, user: sessionData.session.user };
+        }
+        return { ok: false as const, error: exchangeError.message };
+      }
+      if (!data?.user) return { ok: false as const, error: 'Could not sign in with Google.' };
+      return { ok: true as const, user: data.user };
+    })().finally(() => {
+      oauthCodeExchangeRef.current.delete(code);
+    });
+
+    oauthCodeExchangeRef.current.set(code, exchange);
+    return exchange;
+  }, []);
+
+  useEffect(() => {
+    const completeOAuthFromUrl = async (url: string | null) => {
+      if (!url || !url.includes('auth-callback')) return;
+      const { code, error: oauthError } = parseOAuthCallbackUrl(url);
+      if (!code || oauthError) return;
+      const out = await exchangeOAuthCodeForSignIn(code);
+      if (out.ok) {
+        await finishSignInFlow(out.user.id);
+      }
+    };
+
+    // Cold start only: `signInWithGoogle` already completes the exchange via
+    // `openAuthSessionWithTimeout`. A global `Linking.addEventListener('url')`
+    // here duplicated that work and could run `finishSignInFlow` twice in
+    // parallel for the same code (stall / flaky navigation).
+    void Linking.getInitialURL().then(completeOAuthFromUrl);
+  }, [exchangeOAuthCodeForSignIn, finishSignInFlow]);
+
   const signIn = async (email: string, password: string): Promise<SignInResult> => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { ok: false, error: error.message };
     if (!data.user) return { ok: false, error: 'Could not sign in.' };
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      return { ok: false, error: 'Session did not start. Try again or restart the app.' };
-    }
-
-    // A fresh credential sign-in is an explicit "start clean" intent. Clear any
-    // QA overlays that may still be set from a prior in-app reset (e.g., a dev
-    // user tapped Reset to Onboarding, was routed to welcome, then signed back
-    // in without signing out — the signed-out branch in onAuthStateChange would
-    // not have fired). Update the ref synchronously so postSignInPath below
-    // does not read stale flags before React commits the setState.
-    setDevReplayOnboarding(false);
-    setSuppressDevPremium(false);
-    setDevPremiumBypass(false);
-    routingFlagsRef.current = {
-      devReplayOnboarding: false,
-      suppressDevPremium: false,
-      devPremiumBypass: false,
-    };
-
-    let snap: FetchedUserSnapshot | undefined;
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      if (attempt > 0) {
-        await new Promise((r) => setTimeout(r, 120 * attempt));
-      }
-      try {
-        snap = await fetchUserState(data.user.id);
-        break;
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    if (!snap) {
-      const msg = lastErr instanceof Error ? lastErr.message : 'Could not load your profile.';
-      return { ok: false, error: `${msg} Try again.` };
-    }
-
-    const path = postSignInPath(snap, routingFlagsRef.current);
-    return { ok: true, path };
+    return finishSignInFlow(data.user.id);
   };
 
+  const signInWithGoogle = useCallback(
+    async (): Promise<SocialSignInResult> => {
+      if (Platform.OS === 'web') {
+        return { ok: false, error: 'Google sign-in is not available here.' };
+      }
+      const redirectTo = getOAuthRedirectUrl();
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+      if (!data.url) {
+        return { ok: false, error: 'Could not start Google sign-in.' };
+      }
+      if (__DEV__) {
+        // Expo Go uses exp://…/--/auth-callback, not relentless://. Add the printed
+        // URL to Supabase Auth → Redirect URLs or OAuth falls back to Site URL.
+        console.log('[auth] Google OAuth redirectTo (must match Supabase allow list):', redirectTo);
+      }
+      WebBrowser.maybeCompleteAuthSession();
+      const result = await openAuthSessionWithTimeout(data.url, redirectTo);
+      if (result.type !== 'success' || !('url' in result) || !result.url) {
+        if (result.type === 'cancel' || result.type === 'dismiss') {
+          return { ok: false, cancelled: true };
+        }
+        return { ok: false, error: 'Sign-in was not completed.' };
+      }
+      const { code, error: oauthError } = parseOAuthCallbackUrl(result.url);
+      if (oauthError) {
+        if (oauthError === 'access_denied' || oauthError === 'user_cancelled') {
+          return { ok: false, cancelled: true };
+        }
+        return { ok: false, error: oauthError };
+      }
+      if (!code) {
+        return { ok: false, error: 'No sign-in code returned. Add the OAuth redirect URL in Supabase.' };
+      }
+      let out: OAuthExchangeResult;
+      try {
+        out = await Promise.race([
+          exchangeOAuthCodeForSignIn(code),
+          new Promise<{ ok: false; error: string }>((_, reject) =>
+            setTimeout(
+              () => reject(new Error('Sign-in took too long. Check your network and try again.')),
+              45_000,
+            ),
+          ),
+        ]);
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : 'Sign-in with Google failed.' };
+      }
+      if (!out.ok) return { ok: false, error: out.error };
+      // Must await the same post-sign-in profile path as email/Apple. A fallback snapshot always
+      // looks "incomplete" and would incorrectly route existing users to welcome.
+      return await finishSignInFlow(out.user.id);
+    },
+    [exchangeOAuthCodeForSignIn, finishSignInFlow],
+  );
+
+  const signInWithApple = useCallback(async (): Promise<SocialSignInResult> => {
+    if (Platform.OS !== 'ios') {
+      return { ok: false, error: 'Sign in with Apple is only available on iOS.' };
+    }
+    const available = await AppleAuthentication.isAvailableAsync();
+    if (!available) {
+      return { ok: false, error: 'Sign in with Apple is not available on this device.' };
+    }
+    const randomBytes = await Crypto.getRandomBytesAsync(32);
+    const rawNonce = Array.from(randomBytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    const hashedNonce = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      rawNonce,
+    );
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        ],
+        nonce: hashedNonce,
+      });
+      if (!credential.identityToken) {
+        return { ok: false, error: 'Apple did not return an identity token.' };
+      }
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+        nonce: rawNonce,
+      });
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+      if (!data.user) {
+        return { ok: false, error: 'Could not sign in with Apple.' };
+      }
+      return finishSignInFlow(data.user.id);
+    } catch (e: unknown) {
+      if (e && typeof e === 'object' && 'code' in e && (e as { code: string }).code === 'ERR_CANCELED') {
+        return { ok: false, cancelled: true };
+      }
+      const message = e instanceof Error ? e.message : 'Sign in with Apple failed.';
+      return { ok: false, error: message };
+    }
+  }, [finishSignInFlow]);
+
   const signUp = async (email: string, password: string): Promise<string | null> => {
-    const { error } = await supabase.auth.signUp({ email, password });
-    return error?.message ?? null;
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) return error.message;
+    // With auto-confirm, the session is available immediately. Set it so
+    // post-signup code (e.g. purchase sync) doesn't have to wait for
+    // onAuthStateChange to fire.
+    if (data.session) {
+      setSession(data.session);
+      setApiToken(data.session.access_token);
+    }
+    return null;
   };
 
   const signOut = async () => {
+    await clearOnboardingProgress();
+    optimisticGrantActiveRef.current = false;
     setIsDevAccount(false);
     setProfileOnboardingCompleted(false);
     setDevReplayOnboarding(false);
@@ -351,22 +597,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   };
 
-  const completeOnboarding = useCallback(async () => {
-    if (!session?.user) return;
-    await supabase
+  const completeOnboarding = useCallback(async (options?: { requireUser?: boolean; userId?: string | null }) => {
+    const requireUser = options?.requireUser === true;
+    const userId = await getClientUserId(options?.userId);
+    if (!userId) {
+      if (requireUser) {
+        throw new Error('Not signed in.');
+      }
+      return;
+    }
+    const { data, error } = await supabase
       .from('profiles')
       .update({ onboarding_completed: true })
-      .eq('id', session.user.id);
+      .eq('id', userId)
+      .select('id');
+    if (error) throw new Error(error.message);
+    if (!data?.length) {
+      throw new Error(
+        'No profile row for this user yet. Reload the app, or finish the signup flow that creates your profile.',
+      );
+    }
     setProfileOnboardingCompleted(true);
     setDevReplayOnboarding(false);
-  }, [session]);
+  }, []);
 
   const completeOnboardingDevBypass = useCallback(async () => {
     if (!__DEV__ && !isDevAccount) return;
     setSuppressDevPremium(false);
     setDevPremiumBypass(true);
-    try { await supabase.rpc('dev_grant_trial'); } catch { /* RPC may not be deployed */ }
-    await completeOnboarding();
+    try {
+      try { await supabase.rpc('dev_grant_trial'); } catch { /* RPC may not be deployed */ }
+      await completeOnboarding({ requireUser: true });
+    } catch (e) {
+      setDevPremiumBypass(false);
+      const msg = e instanceof Error ? e.message : 'Could not finish onboarding.';
+      Alert.alert(
+        'Could not continue',
+        __DEV__ || isDevAccount
+          ? `${msg}\n\nCheck Supabase profile update (onboarding_completed) and network.`
+          : msg,
+      );
+      throw e;
+    }
   }, [completeOnboarding, isDevAccount]);
 
   const revokePremiumForTesting = useCallback(() => {
@@ -397,10 +669,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isDevAccount]);
 
   const optimisticGrantAccess = useCallback(() => {
+    optimisticGrantActiveRef.current = true;
     setSuppressDevPremium(false);
-    // Set a far-future expiry so the expired-check doesn't immediately revoke it.
-    // The real expiry is written to DB by syncSubscriptionWithBackend in background,
-    // and refreshUserState() replaces this value once the DB write completes.
     setEntitlementStatus('active');
     setEntitlementExpiresAt(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString());
   }, []);
@@ -464,6 +734,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       entitlementStatus,
       hasPremiumAccess,
       signIn,
+      signInWithGoogle,
+      signInWithApple,
       signUp,
       signOut,
       completeOnboarding,

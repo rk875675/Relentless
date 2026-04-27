@@ -1,7 +1,8 @@
 import { Tabs } from 'expo-router';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/lib/theme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -20,13 +21,11 @@ function TabIcon({
   size: number;
 }) {
   return (
-    <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-      <Ionicons
-        name={focused ? filledName : outlineName}
-        size={size - 2}
-        color={color}
-      />
-    </View>
+    <Ionicons
+      name={focused ? filledName : outlineName}
+      size={size - 2}
+      color={color}
+    />
   );
 }
 
@@ -43,7 +42,12 @@ function HapticTabButton(props: any) {
   );
 }
 
+const TAB_ROW_HEIGHT = 56;
+
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = TAB_ROW_HEIGHT + insets.bottom;
+
   return (
     <Tabs
       initialRouteName="index"
@@ -55,24 +59,23 @@ export default function TabLayout() {
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           position: 'absolute',
-          bottom: 28,
-          left: 20,
-          right: 20,
-          height: 62,
-          borderRadius: 31,
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: tabBarHeight,
+          paddingBottom: insets.bottom,
+          paddingTop: 4,
+          borderRadius: 0,
           backgroundColor: colors.tabBarBg,
-          borderTopWidth: 0,
-          borderWidth: 1,
-          borderColor: colors.tabBarBorder,
+          borderTopWidth: 1,
+          borderTopColor: colors.tabBarBorder,
+          borderLeftWidth: 0,
+          borderRightWidth: 0,
+          borderBottomWidth: 0,
           elevation: 0,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.3,
-          shadowRadius: 16,
-          paddingBottom: 0,
         },
         tabBarItemStyle: {
-          paddingVertical: 8,
+          paddingVertical: 4,
         },
         tabBarLabelStyle: {
           fontSize: 10,
@@ -111,16 +114,3 @@ export default function TabLayout() {
     </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  iconWrap: {
-    width: 44,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconWrapActive: {
-    backgroundColor: colors.tabBarActive,
-  },
-});

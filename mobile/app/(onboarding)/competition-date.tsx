@@ -36,10 +36,10 @@ export default function CompetitionDateScreen() {
     if (selected) setDate(selected);
   };
 
-  const goToSignup = (compDate?: string) => {
+  const goToPaywall = (compDate?: string) => {
     const sport = sportFromPrev?.trim();
     router.push({
-      pathname: '/(onboarding)/signup' as any,
+      pathname: '/(onboarding)/paywall' as any,
       params: {
         ...(compDate ? { competitionDate: compDate } : {}),
         ...(sport ? { sport } : {}),
@@ -48,10 +48,10 @@ export default function CompetitionDateScreen() {
   };
 
   const saveAndContinue = () => {
-    goToSignup(date ? toISODate(date) : undefined);
+    goToPaywall(date ? toISODate(date) : undefined);
   };
 
-  const skip = () => goToSignup();
+  const skip = () => goToPaywall();
 
   return (
     <SafeAreaView style={styles.container}>

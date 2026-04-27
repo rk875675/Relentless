@@ -15,51 +15,18 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+import { ONBOARDING_TESTIMONIALS, ONBOARDING_TRUST_HEADLINE } from '@/lib/onboarding-testimonials';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
+
 const AUTO_SWIPE_MS = 4000;
 const CARD_WIDTH = Dimensions.get('window').width - spacing.xl * 2;
-
-const TESTIMONIALS = [
-  {
-    title: 'Locked in on race day',
-    quote:
-      'I used to freeze at the start line. Relentless changed how I show up—I actually look forward to pressure now.',
-    name: 'Marcus T.',
-    detail: 'D1 Sprinter, USC',
-    avatarUrl: 'https://i.pravatar.cc/256?img=12',
-  },
-  {
-    title: 'Actually built for athletes',
-    quote:
-      "The exercises feel relevant to my sport and game day. Quick sessions between lifts, and it feels like prep—not generic mindfulness.",
-    name: 'Ava R.',
-    detail: 'D1 Hurdler, Oregon',
-    avatarUrl: 'https://i.pravatar.cc/256?img=45',
-  },
-  {
-    title: 'My coach noticed first',
-    quote:
-      "I'm calmer, more focused, and more consistent in meets—I bounce back faster on rough training weeks.",
-    name: 'Jordan K.',
-    detail: 'D1 Distance, Michigan',
-    avatarUrl: 'https://i.pravatar.cc/256?img=33',
-  },
-  {
-    title: 'Skeptic turned believer',
-    quote:
-      "I was skeptical about mental training. After two weeks I PR'd—and I trust my process when it counts.",
-    name: 'Dani L.',
-    detail: 'D1 Jumps, Florida',
-    avatarUrl: 'https://i.pravatar.cc/256?img=68',
-  },
-];
 
 function Stars() {
   return (
     <View style={styles.stars}>
       {[1, 2, 3, 4, 5].map((i) => (
-        <Ionicons key={i} name="star" size={20} color="#f59e0b" />
+        <Ionicons key={i} name="star" size={22} color="#f59e0b" />
       ))}
     </View>
   );
@@ -70,7 +37,7 @@ export default function UnlockedPotentialScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const fade = useRef(new Animated.Value(0)).current;
-  const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
+  const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade({ swipeFromEdgeOnly: true });
 
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
@@ -79,7 +46,7 @@ export default function UnlockedPotentialScreen() {
   useEffect(() => {
     const timer = setInterval(() => {
       setActiveIdx((prev) => {
-        const next = (prev + 1) % TESTIMONIALS.length;
+        const next = (prev + 1) % ONBOARDING_TESTIMONIALS.length;
         scrollRef.current?.scrollTo({ x: next * (CARD_WIDTH + 12), animated: true });
         return next;
       });
@@ -89,7 +56,7 @@ export default function UnlockedPotentialScreen() {
 
   const onScroll = (e: { nativeEvent: { contentOffset: { x: number } } }) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + 12));
-    if (idx !== activeIdx && idx >= 0 && idx < TESTIMONIALS.length) setActiveIdx(idx);
+    if (idx !== activeIdx && idx >= 0 && idx < ONBOARDING_TESTIMONIALS.length) setActiveIdx(idx);
   };
 
   return (
@@ -101,69 +68,59 @@ export default function UnlockedPotentialScreen() {
       />
       <View style={styles.flex} {...panHandlers}>
         <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: shellTranslateX }] }]}>
-        {/* Top half — message */}
-        <View style={styles.topHalf}>
-          <Text style={styles.title}>You have untapped potential</Text>
-          <Text style={styles.body}>This is exactly why we built Relentless.</Text>
-          <Text style={styles.supporting}>
-            We{"'"}re going to help you build a mental toughness routine you can
-            actually stick to.
-          </Text>
-        </View>
+          <View style={styles.topHalf}>
+            <Text style={styles.title}>You have untapped potential</Text>
+            <Text style={styles.body}>This is exactly why we built Relentless.</Text>
+          </View>
 
-        {/* Bottom half — reviews */}
-        <View style={styles.bottomHalf}>
-          <Text style={styles.reviewHeading}>Trusted by D1 Athletes</Text>
-          <ScrollView
-            ref={scrollRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={CARD_WIDTH + 12}
-            decelerationRate="fast"
-            contentContainerStyle={styles.cardRow}
-            onMomentumScrollEnd={onScroll}
-          >
-            {TESTIMONIALS.map((t, i) => (
-              <View key={i} style={[styles.card, { width: CARD_WIDTH }]}>
-                <View style={styles.cardTop}>
-                  <Stars />
-                  <Text style={styles.cardTitle}>{t.title}</Text>
-                  <Text style={styles.quote}>{`\u201C${t.quote}\u201D`}</Text>
-                </View>
-                <View style={styles.cardFooter}>
-                  <Image
-                    source={{ uri: t.avatarUrl }}
-                    style={styles.avatar}
-                    resizeMode="cover"
-                  />
-                  <View style={styles.cardFooterText}>
-                    <Text style={styles.name}>{t.name}</Text>
-                    <Text style={styles.detail}>{t.detail}</Text>
+          <View style={styles.bottomHalf}>
+            <Text style={styles.reviewHeading}>{ONBOARDING_TRUST_HEADLINE}</Text>
+            <ScrollView
+              ref={scrollRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={CARD_WIDTH + 12}
+              decelerationRate="fast"
+              contentContainerStyle={styles.cardRow}
+              onMomentumScrollEnd={onScroll}
+            >
+              {ONBOARDING_TESTIMONIALS.map((t, i) => (
+                <View key={i} style={[styles.card, { width: CARD_WIDTH }]}>
+                  <View style={styles.cardTop}>
+                    <Stars />
+                    <Text style={styles.quote}>{`\u201C${t.quote}\u201D`}</Text>
+                  </View>
+                  <View style={styles.cardFooter}>
+                    <View style={styles.avatarWrap}>
+                      <Image source={t.avatar} style={styles.avatar} resizeMode="cover" />
+                    </View>
+                    <View style={styles.cardFooterText}>
+                      <Text style={styles.name}>{t.name}</Text>
+                      <Text style={styles.detail}>{t.detail}</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-            ))}
-          </ScrollView>
-          <View style={styles.dots}>
-            {TESTIMONIALS.map((_, i) => (
-              <View key={i} style={[styles.dot, i === activeIdx && styles.dotActive]} />
-            ))}
+              ))}
+            </ScrollView>
+            <View style={styles.dots}>
+              {ONBOARDING_TESTIMONIALS.map((_, i) => (
+                <View key={i} style={[styles.dot, i === activeIdx && styles.dotActive]} />
+              ))}
+            </View>
           </View>
-        </View>
 
-        {/* Button */}
-        <View style={styles.btnArea}>
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/(onboarding)/mac-framework' as any);
-            }}
-          >
-            <Text style={styles.buttonText}>Continue</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={styles.btnArea}>
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/(onboarding)/mac-framework' as any);
+              }}
+            >
+              <Text style={styles.buttonText}>Continue</Text>
+            </TouchableOpacity>
+          </View>
         </Animated.View>
       </View>
     </SafeAreaView>
@@ -197,26 +154,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
-  supporting: {
-    fontSize: 15,
-    color: colors.textSecondary,
-    lineHeight: 22,
-    textAlign: 'center',
-    paddingHorizontal: spacing.sm,
-  },
 
   bottomHalf: {
     flex: 0.6,
     justifyContent: 'center',
   },
   reviewHeading: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.textMuted,
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.white,
     textAlign: 'center',
-    marginBottom: spacing.sm,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    marginBottom: spacing.md,
+    letterSpacing: 0.2,
+    paddingHorizontal: spacing.sm,
+    lineHeight: 24,
   },
   cardRow: { paddingHorizontal: spacing.xl, gap: 12 },
   card: {
@@ -230,44 +181,44 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   cardTop: {},
-  stars: { flexDirection: 'row', gap: 4, marginBottom: 14 },
-  cardTitle: {
-    fontSize: 19,
-    fontWeight: '800',
-    color: colors.white,
-    marginBottom: 12,
-    lineHeight: 26,
-  },
+  stars: { flexDirection: 'row', gap: 4, marginBottom: 16 },
   quote: {
-    fontSize: 15,
+    fontSize: 17,
     color: colors.textSecondary,
-    lineHeight: 24,
+    lineHeight: 27,
     letterSpacing: 0.15,
-    marginBottom: 14,
+    marginBottom: 16,
   },
   cardFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: 10,
+    paddingTop: 14,
+  },
+  avatarWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: colors.border,
+    width: 64,
+    height: 64,
   },
   cardFooterText: { flex: 1, flexShrink: 1 },
   name: {
-    fontSize: 17,
+    fontSize: 19,
     fontWeight: '700',
     color: colors.textPrimary,
-    lineHeight: 22,
-    marginBottom: 2,
+    lineHeight: 24,
+    marginBottom: 4,
   },
-  detail: { fontSize: 15, fontWeight: '500', color: colors.textMuted, lineHeight: 20 },
+  detail: { fontSize: 16, fontWeight: '500', color: colors.textMuted, lineHeight: 22 },
   dots: {
     flexDirection: 'row',
     justifyContent: 'center',

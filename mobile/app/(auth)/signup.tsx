@@ -8,32 +8,17 @@ export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const handleSignup = async () => {
-    if (!email || !password) {
-      setError('Enter your email and password.');
-      return;
-    }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
-      return;
-    }
-    if (password !== confirm) {
-      setError('Passwords do not match.');
-      return;
-    }
-    setError('');
+    if (!email || !password) return;
+    if (password.length < 6) return;
+    if (password !== confirm) return;
     setLoading(true);
     const err = await signUp(email.trim(), password);
     setLoading(false);
-    if (err) {
-      setError(err);
-    } else {
-      setSuccess(true);
-    }
+    if (!err) setSuccess(true);
   };
 
   if (success) {
@@ -42,7 +27,7 @@ export default function SignupScreen() {
         <View style={styles.inner}>
           <Text style={styles.logo}>RELENTLESS</Text>
           <Text style={styles.successText}>Check your email to confirm your account, then sign in.</Text>
-          <Link href="/(auth)/login" asChild>
+          <Link href="/(auth)" asChild>
             <TouchableOpacity style={styles.button}>
               <Text style={styles.buttonText}>Back to Sign In</Text>
             </TouchableOpacity>
@@ -93,8 +78,6 @@ export default function SignupScreen() {
             autoComplete="off"
           />
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
           <TouchableOpacity style={styles.button} onPress={handleSignup} disabled={loading}>
             {loading ? (
               <ActivityIndicator color="#000" />
@@ -103,7 +86,7 @@ export default function SignupScreen() {
             )}
           </TouchableOpacity>
 
-          <Link href="/(auth)/login" asChild>
+          <Link href="/(auth)" asChild>
             <TouchableOpacity style={styles.linkButton}>
               <Text style={styles.linkText}>Already have an account? Sign In</Text>
             </TouchableOpacity>
@@ -155,12 +138,6 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     borderWidth: 1,
     borderColor: '#333',
-  },
-  error: {
-    color: '#ff4444',
-    fontSize: 13,
-    textAlign: 'center',
-    marginBottom: 12,
   },
   button: {
     backgroundColor: '#fff',

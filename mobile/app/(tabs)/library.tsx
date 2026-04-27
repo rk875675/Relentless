@@ -1,13 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import {
-  Linking,
-  StyleSheet,
-  Text,
-  View,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
-} from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
@@ -195,22 +187,6 @@ export default function LibraryScreen() {
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </TouchableOpacity>
       ))}
-
-      {/* Coach CTA — PRD: subtle outbound path to coach for 1:1 help */}
-      <TouchableOpacity
-        style={styles.ctaCard}
-        activeOpacity={0.8}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          Linking.openURL('https://grantchiasson.com/home');
-        }}
-      >
-        <Text style={styles.ctaTitle}>Want to go deeper?</Text>
-        <Text style={styles.ctaByline}>Sessions with Grant</Text>
-        <Text style={styles.ctaSub}>
-          Personalized coaching for your specific goals
-        </Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -301,37 +277,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textPrimary,
     letterSpacing: 0.3,
-  },
-  ctaCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    padding: spacing.lg,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  ctaTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  ctaByline: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.accent,
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  ctaSub: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 6,
-    textAlign: 'center',
-    lineHeight: 19,
-    maxWidth: 280,
   },
   inlineError: {
     alignItems: 'center',

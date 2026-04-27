@@ -2,7 +2,10 @@ import { useRef, useCallback, useEffect } from 'react';
 import { Animated, Dimensions, Easing } from 'react-native';
 import { useRouter, useNavigation } from 'expo-router';
 import type { NavigationAction } from '@react-navigation/native';
-import { useWizardSwipeBackRight } from '@/lib/use-wizard-swipe-back';
+import {
+  useWizardSwipeBackRight,
+  type WizardSwipeBackOptions,
+} from '@/lib/use-wizard-swipe-back';
 
 const SLIDE_OUT_MS = 320;
 
@@ -16,7 +19,7 @@ function screenWidth() {
  * `beforeRemove` dispatches the same action after the animation so navigation
  * does not get stuck after `preventDefault`.
  */
-export function useOnboardingPopWithFade() {
+export function useOnboardingPopWithFade(swipeOptions?: WizardSwipeBackOptions) {
   const router = useRouter();
   const navigation = useNavigation();
   const shellTranslateX = useRef(new Animated.Value(0)).current;
@@ -66,6 +69,7 @@ export function useOnboardingPopWithFade() {
         router.back();
       });
     },
+    swipeOptions,
   );
 
   const onPop = useCallback(() => {

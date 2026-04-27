@@ -29,7 +29,10 @@ export default function MacFrameworkScreen() {
         <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: shellTranslateX }] }]}>
         <View style={styles.top}>
           <Text style={styles.title}>MAC</Text>
-          <Text style={styles.sub}>Mindfulness, acceptance, commitment.</Text>
+          <Text style={styles.credLine}>
+            MAC is a proven sports psychology framework used by elite athletes to build focus, resilience, and
+            consistent high performance under pressure.
+          </Text>
 
           <View style={styles.list}>
             {MAC_PILLARS_ORDER.map((tag) => {
@@ -88,14 +91,16 @@ const styles = StyleSheet.create({
     color: colors.white,
     textAlign: 'center',
     letterSpacing: 4,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
-  sub: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textMuted,
+  credLine: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textSecondary,
     textAlign: 'center',
+    lineHeight: 20,
     marginBottom: spacing.lg,
+    marginHorizontal: spacing.xs,
   },
   list: { gap: 10 },
   row: {

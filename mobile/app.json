@@ -15,6 +15,7 @@
     "ios": {
       "buildNumber": "5",
       "supportsTablet": false,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "com.relentlessmentaltoughness.relentless",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -24,7 +25,10 @@
       "expo-router",
       "@react-native-community/datetimepicker",
       "expo-audio",
-      "expo-asset"
+      "expo-asset",
+      "expo-iap",
+      "expo-web-browser",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true
