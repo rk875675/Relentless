@@ -1,14 +1,11 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AuthSocialSignInButtons } from '@/components/auth/AuthSocialSignInButtons';
 import { useAuth } from '@/lib/auth-context';
-import { useSocialSignIn } from '@/lib/use-social-sign-in';
 
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
-  const { googleLoading, appleLoading, socialBusy, handleGoogle, handleApple } = useSocialSignIn();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -31,14 +28,6 @@ export default function LoginScreen() {
         <View style={styles.inner}>
           <Text style={styles.logo}>RELENTLESS</Text>
           <Text style={styles.tagline}>Mental performance training for athletes</Text>
-
-          <AuthSocialSignInButtons
-            variant="login"
-            onGoogle={handleGoogle}
-            onApple={handleApple}
-            googleLoading={googleLoading}
-            appleLoading={appleLoading}
-          />
 
           <Text style={styles.emailSectionLabel}>Sign in with email</Text>
 
@@ -73,7 +62,7 @@ export default function LoginScreen() {
             <Text style={styles.forgotText}>Forgot password?</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading || socialBusy}>
+          <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
             {loading ? (
               <ActivityIndicator color="#000" />
             ) : (
