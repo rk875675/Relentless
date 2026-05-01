@@ -59,10 +59,10 @@ const STEPS: TutorialStep[] = [
       title: 'YOUR MAC SCORE',
       body: 'Three rings — Mindfulness, Acceptance, Commitment. Every lesson you complete fills them.',
     },
-    progressStep: 15,
+    progressStep: 17,
     caretPosition: 'center',
     // Sits under full scroll; nudge up so the caret targets the MAC legend (below rings).
-    tooltipNudgeY: -118,
+    tooltipNudgeY: -166,
   },
   {
     tab: 'home',
@@ -73,7 +73,7 @@ const STEPS: TutorialStep[] = [
       title: 'WORKOUT OF THE DAY',
       body: 'A short guided session, delivered daily. Finish any lesson to keep your streak alive.',
     },
-    progressStep: 16,
+    progressStep: 18,
     caretPosition: 'center',
   },
   {
@@ -85,7 +85,7 @@ const STEPS: TutorialStep[] = [
       title: 'STAY CONSISTENT',
       body: 'Miss a day and every ring drops −2 pts. Miss enough and your streak breaks — plus you owe a reflection.',
     },
-    progressStep: 17,
+    progressStep: 19,
     caretPosition: 'left',
   },
   {
@@ -97,7 +97,7 @@ const STEPS: TutorialStep[] = [
       title: 'THE LIBRARY',
       body: 'Browse exercises by MAC category — use them before practice, on game day, or as extra reps.',
     },
-    progressStep: 18,
+    progressStep: 20,
     caretPosition: 'left',
   },
   {
@@ -109,7 +109,7 @@ const STEPS: TutorialStep[] = [
       title: 'PICK AN EXERCISE',
       body: 'Each category has a set of exercises with estimated times. Tap any one — before practice, on game day, or whenever you need a reset.',
     },
-    progressStep: 19,
+    progressStep: 21,
     caretPosition: 'center',
   },
   {
@@ -121,7 +121,7 @@ const STEPS: TutorialStep[] = [
       title: 'YOUR PROGRESS',
       body: 'Track your streak, personal best, and total lessons. Set your competition countdown to stay locked in.',
     },
-    progressStep: 20,
+    progressStep: 22,
     caretPosition: 'center',
   },
 ];

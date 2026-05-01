@@ -3,6 +3,9 @@ import { Stack, useGlobalSearchParams, useRouter, useSegments } from 'expo-route
 import * as SplashScreen from 'expo-splash-screen';
 import * as Linking from 'expo-linking';
 import { useEffect, useRef } from 'react';
+import { AnalyticsScreenTracker } from '@/components/AnalyticsScreenTracker';
+import { PostHogIdentitySync } from '@/components/PostHogIdentitySync';
+import { PostHogRoot } from '@/components/PostHogRoot';
 import { SuperwallRoot } from '@/components/SuperwallRoot';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { parseAuthParamsFromUrl } from '@/lib/auth-redirects';
@@ -104,9 +107,6 @@ function RouteGuard() {
     const onPaywall =
       inOnboarding &&
       ((segments as string[]).includes('paywall') || (segments as string[])[1] === 'paywall');
-    const onSignup =
-      inOnboarding &&
-      ((segments as string[]).includes('signup') || (segments as string[])[1] === 'signup');
     const onWelcome =
       inOnboarding &&
       ((segments as string[])[1] === 'welcome' || (segments as string[]).includes('welcome'));
@@ -158,10 +158,9 @@ function RouteGuard() {
       router.replace('/(onboarding)/paywall');
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
       router.replace('/(tabs)');
-    } else if (session && !onboardingComplete && hasPremiumAccess && (onPaywall || onSignup)) {
-      // Safety net: user purchased/subscribed but completeOnboarding() hasn't
-      // fired yet (async gap between entitlement grant and DB write). Covers
-      // both the paywall screen and the post-paywall signup screen.
+    } else if (session && !onboardingComplete && hasPremiumAccess && onPaywall) {
+      // Safety net: paywall only. Post-paywall signup handles its own completion in
+      // signup.tsx — running this on signup races finishPostPaywallSetup and can hang.
       completeOnboarding().then(() => router.replace('/(tabs)')).catch(() => {});
     }
 
@@ -200,11 +199,15 @@ function RouteGuard() {
 export default function RootLayout() {
   return (
     <ThemeProvider value={DarkTheme}>
-      <AuthProvider>
-        <SuperwallRoot>
-          <RouteGuard />
-        </SuperwallRoot>
-      </AuthProvider>
+      <PostHogRoot>
+        <AuthProvider>
+          <PostHogIdentitySync />
+          <SuperwallRoot>
+            <AnalyticsScreenTracker />
+            <RouteGuard />
+          </SuperwallRoot>
+        </AuthProvider>
+      </PostHogRoot>
     </ThemeProvider>
   );
 }

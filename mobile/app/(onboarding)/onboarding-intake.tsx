@@ -42,7 +42,9 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 type ChoiceStep = { type: 'choice'; title: string; options: readonly string[] };
 type HoldStep = { type: 'hold'; title: string; overlayLine: string; successLine: string; holdDurationMs: number };
-type StepDef = ChoiceStep | HoldStep;
+type QuoteStep = { type: 'quote' };
+type GapStep = { type: 'gap' };
+type StepDef = ChoiceStep | HoldStep | QuoteStep | GapStep;
 
 const STEPS: StepDef[] = [
   {
@@ -71,11 +73,13 @@ const STEPS: StepDef[] = [
     title: 'How often do you feel you could have done more after a comp?',
     options: ['Always', 'Often', 'Sometimes', 'Rarely', 'Never'],
   },
+  { type: 'quote' },
   {
     type: 'choice',
     title: "How different would your results be if you gave it 100% mentally?",
     options: [...MENTAL_RESULTS_OPTIONS],
   },
+  { type: 'gap' },
   {
     type: 'choice',
     title: 'How different would your life be if you reached your full potential?',
@@ -159,10 +163,25 @@ function HoldToCommitBlock({
   }, [phase]);
 
   const scheduleTicks = useCallback((ms: number) => {
-    const t1 = setTimeout(() => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light), ms * 0.25);
-    const t2 = setTimeout(() => void Haptics.selectionAsync(), ms * 0.5);
-    const t3 = setTimeout(() => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium), ms * 0.75);
-    tickersRef.current = [t1, t2, t3];
+    /** Ticks track ring fill ~linearly so feedback matches the arc; intensity ramps at the end. */
+    const n = 10;
+    const styles = [
+      Haptics.ImpactFeedbackStyle.Light,
+      Haptics.ImpactFeedbackStyle.Light,
+      Haptics.ImpactFeedbackStyle.Medium,
+      Haptics.ImpactFeedbackStyle.Medium,
+      Haptics.ImpactFeedbackStyle.Medium,
+      Haptics.ImpactFeedbackStyle.Heavy,
+      Haptics.ImpactFeedbackStyle.Heavy,
+      Haptics.ImpactFeedbackStyle.Heavy,
+      Haptics.ImpactFeedbackStyle.Heavy,
+      Haptics.ImpactFeedbackStyle.Rigid,
+    ] as const;
+    tickersRef.current = Array.from({ length: n }, (_, i) => {
+      const u = n <= 1 ? 1 : i / (n - 1);
+      const p = 0.1 + 0.86 * u;
+      return setTimeout(() => void Haptics.impactAsync(styles[i]!), ms * p);
+    });
   }, []);
 
   const onPressIn = useCallback(() => {
@@ -171,7 +190,8 @@ function HoldToCommitBlock({
     holdProgress.setValue(0);
     setPhase('holding');
     onInteractingChange(true);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    clearTicks();
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     scheduleTicks(durationMs);
     const anim = Animated.timing(holdProgress, {
       toValue: 1,
@@ -189,7 +209,10 @@ function HoldToCommitBlock({
       clearTicks();
       setPhase('success');
       onInteractingChange(false);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      tickersRef.current = [
+        setTimeout(() => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 0),
+        setTimeout(() => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 140),
+      ];
     });
   }, [phase, holdProgress, durationMs, onInteractingChange, scheduleTicks, clearTicks]);
 
@@ -367,6 +390,280 @@ const holdStyles = StyleSheet.create({
   fpButtonPressed: { opacity: 0.92 },
 });
 
+// ─── Quote interstitial ──────────────────────────────────────────────────────
+
+function QuoteStep({ onContinue }: { onContinue: () => void }) {
+  const quoteOp = useRef(new Animated.Value(0)).current;
+  const attrOp = useRef(new Animated.Value(0)).current;
+  const stanfordOp = useRef(new Animated.Value(0)).current;
+  const continueOp = useRef(new Animated.Value(0)).current;
+  const [canContinue, setCanContinue] = useState(false);
+  const animRef = useRef<Animated.CompositeAnimation | null>(null);
+  const hapticTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    hapticTimersRef.current = [
+      setTimeout(() => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light), 600),
+      setTimeout(() => void Haptics.selectionAsync(), 3000),
+    ];
+    const anim = Animated.sequence([
+      Animated.timing(quoteOp, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.delay(300),
+      Animated.timing(attrOp, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.delay(500),
+      Animated.timing(stanfordOp, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.delay(400),
+      Animated.timing(continueOp, { toValue: 1, duration: 300, useNativeDriver: true }),
+    ]);
+    animRef.current = anim;
+    anim.start(() => setCanContinue(true));
+    return () => {
+      animRef.current?.stop();
+      hapticTimersRef.current.forEach(clearTimeout);
+      hapticTimersRef.current = [];
+    };
+  }, []);
+
+  return (
+    <View style={quoteStyles.container}>
+      <View style={quoteStyles.content}>
+        <Animated.Text style={[quoteStyles.quote, { opacity: quoteOp }]}>
+          {'\u201cThe expectations I placed on myself were higher than what anyone expected from me.\u201d'}
+        </Animated.Text>
+        <Animated.View style={[quoteStyles.attrBlock, { opacity: attrOp }]}>
+          <Text style={quoteStyles.attrName}>Kobe Bryant</Text>
+        </Animated.View>
+        <Animated.View style={[quoteStyles.stanfordBlock, { opacity: stanfordOp }]}>
+          <View style={quoteStyles.divider} />
+          <Text style={quoteStyles.stanfordQuote}>
+            {'\u201cWhen they\u2019re at their best, athletes are focused on just being in the moment and executing their job.\u201d'}
+          </Text>
+          <Text style={quoteStyles.stanfordAttr}>Kelli Moran-Miller · Stanford University</Text>
+          <Text style={quoteStyles.stanfordRole}>Director of Sport Psychology, 2024</Text>
+        </Animated.View>
+      </View>
+      <Animated.View style={[quoteStyles.bottom, { opacity: continueOp }]}>
+        <TouchableOpacity
+          style={[quoteStyles.button, !canContinue && quoteStyles.buttonDisabled]}
+          disabled={!canContinue}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            onContinue();
+          }}
+        >
+          <Text style={quoteStyles.buttonText}>Continue</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
+  );
+}
+
+const quoteStyles = StyleSheet.create({
+  container: { flex: 1, justifyContent: 'space-between' },
+  content: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.xl, gap: 18 },
+  quote: {
+    fontSize: 24,
+    fontWeight: '800',
+    fontStyle: 'italic',
+    color: colors.white,
+    lineHeight: 34,
+    textAlign: 'center',
+  },
+  attrBlock: { gap: 4 },
+  attrName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.accentLight,
+    textAlign: 'center',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginBottom: 14,
+  },
+  stanfordBlock: { gap: 6 },
+  stanfordQuote: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    fontWeight: '500',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  stanfordAttr: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  stanfordRole: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  bottom: { paddingBottom: spacing.xl, paddingHorizontal: spacing.xl },
+  button: {
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  buttonDisabled: { opacity: 0.4 },
+  buttonText: { color: colors.white, fontSize: 16, fontWeight: '700' },
+});
+
+// ─── Gap interstitial ────────────────────────────────────────────────────────
+
+const BAR_MAX_H = 200;
+const GAP_CURRENT_H: Record<string, number> = {
+  'Completely different': Math.round(BAR_MAX_H * 0.20),
+  'A lot': Math.round(BAR_MAX_H * 0.35),
+  'Somewhat': Math.round(BAR_MAX_H * 0.52),
+  'A little': Math.round(BAR_MAX_H * 0.70),
+  'Not much': Math.round(BAR_MAX_H * 0.85),
+};
+
+function GapStep({ q5Answer, onContinue }: { q5Answer: string | null; onContinue: () => void }) {
+  const targetH = q5Answer != null
+    ? (GAP_CURRENT_H[q5Answer] ?? Math.round(BAR_MAX_H * 0.5))
+    : Math.round(BAR_MAX_H * 0.5);
+
+  const currentBarH = useRef(new Animated.Value(0)).current;
+  const potentialBarH = useRef(new Animated.Value(0)).current;
+  const taglineOp = useRef(new Animated.Value(0)).current;
+  const continueOp = useRef(new Animated.Value(0)).current;
+  const [canContinue, setCanContinue] = useState(false);
+  const animRef = useRef<Animated.CompositeAnimation | null>(null);
+  const hapticTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    hapticTimersRef.current = [
+      setTimeout(() => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 200),
+      setTimeout(() => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid), 1100),
+      setTimeout(() => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 1160),
+      setTimeout(() => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid), 1900),
+      setTimeout(() => void Haptics.selectionAsync(), 2600),
+    ];
+    const anim = Animated.sequence([
+      Animated.delay(200),
+      Animated.parallel([
+        Animated.timing(currentBarH, {
+          toValue: targetH,
+          duration: 900,
+          useNativeDriver: false,
+          easing: Easing.out(Easing.cubic),
+        }),
+        Animated.timing(potentialBarH, {
+          toValue: BAR_MAX_H,
+          duration: 900,
+          useNativeDriver: false,
+          easing: Easing.out(Easing.cubic),
+        }),
+      ]),
+      Animated.delay(300),
+      Animated.timing(taglineOp, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.delay(400),
+      Animated.timing(continueOp, { toValue: 1, duration: 300, useNativeDriver: true }),
+    ]);
+    animRef.current = anim;
+    anim.start(() => setCanContinue(true));
+    return () => {
+      animRef.current?.stop();
+      hapticTimersRef.current.forEach(clearTimeout);
+      hapticTimersRef.current = [];
+    };
+  }, []);
+
+  return (
+    <View style={gapStyles.container}>
+      <View style={gapStyles.content}>
+        <View style={gapStyles.barsRow}>
+          <View style={gapStyles.barCol}>
+            <View style={gapStyles.barTrack}>
+              <Animated.View style={[gapStyles.currentBar, { height: currentBarH }]} />
+            </View>
+            <Text style={gapStyles.barLabel}>You now</Text>
+          </View>
+          <View style={gapStyles.barCol}>
+            <View style={gapStyles.barTrack}>
+              <Animated.View style={[gapStyles.potentialBar, { height: potentialBarH }]} />
+            </View>
+            <Text style={gapStyles.barLabel}>Full potential</Text>
+          </View>
+        </View>
+        <Animated.Text style={[gapStyles.tagline, { opacity: taglineOp }]}>
+          {"That gap is trainable.\nThat's exactly what this is for."}
+        </Animated.Text>
+      </View>
+      <Animated.View style={[gapStyles.bottom, { opacity: continueOp }]}>
+        <TouchableOpacity
+          style={[gapStyles.button, !canContinue && gapStyles.buttonDisabled]}
+          disabled={!canContinue}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            onContinue();
+          }}
+        >
+          <Text style={gapStyles.buttonText}>Continue</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
+  );
+}
+
+const gapStyles = StyleSheet.create({
+  container: { flex: 1, justifyContent: 'space-between' },
+  content: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.xl },
+  barsRow: { flexDirection: 'row', gap: 40, justifyContent: 'center' },
+  barCol: { alignItems: 'center' },
+  barTrack: {
+    width: 80,
+    height: BAR_MAX_H,
+    justifyContent: 'flex-end',
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+  },
+  currentBar: {
+    width: '100%',
+    backgroundColor: 'rgba(139, 92, 246, 0.35)',
+    borderRadius: 10,
+  },
+  potentialBar: {
+    width: '100%',
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+  },
+  barLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  tagline: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.white,
+    textAlign: 'center',
+    lineHeight: 32,
+    marginTop: 40,
+  },
+  bottom: { paddingBottom: spacing.xl, paddingHorizontal: spacing.xl },
+  button: {
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  buttonDisabled: { opacity: 0.4 },
+  buttonText: { color: colors.white, fontSize: 16, fontWeight: '700' },
+});
+
+// ─── Main screen ─────────────────────────────────────────────────────────────
+
 export default function OnboardingIntakeScreen() {
   const router = useRouter();
   const navigation = useNavigation();
@@ -392,8 +689,9 @@ export default function OnboardingIntakeScreen() {
   );
 
   const step = STEPS[questionIndex]!;
+  const isInterstitial = step.type === 'quote' || step.type === 'gap';
   const isHoldStep = step.type === 'hold';
-  const selected = answers[questionIndex];
+  const selected = isInterstitial ? null : answers[questionIndex];
   const holdCompleted = isHoldStep && selected === 'Committed';
 
   const goNext = useCallback(
@@ -435,7 +733,7 @@ export default function OnboardingIntakeScreen() {
         return;
       }
       setQuestionIndex((i) => {
-        if (i === 7) setHoldBlockReset((k) => k + 1);
+        if (i === 9) setHoldBlockReset((k) => k + 1);
         return i - 1;
       });
     });
@@ -501,6 +799,11 @@ export default function OnboardingIntakeScreen() {
     }
   };
 
+  const onInterstitialContinue = useCallback(() => {
+    transitionDirRef.current = 'fwd';
+    goNext(questionIndexRef.current);
+  }, [goNext]);
+
   const handleContinue = () => {
     if (isHoldStep && !holdCompleted) return;
     if (!selected) return;
@@ -548,6 +851,13 @@ export default function OnboardingIntakeScreen() {
               successLine={step.successLine}
               onLockedIn={onHoldLockedIn}
               onInteractingChange={setHoldInteracting}
+            />
+          ) : step.type === 'quote' ? (
+            <QuoteStep onContinue={onInterstitialContinue} />
+          ) : step.type === 'gap' ? (
+            <GapStep
+              q5Answer={answers[5] ?? null}
+              onContinue={onInterstitialContinue}
             />
           ) : (
             <>

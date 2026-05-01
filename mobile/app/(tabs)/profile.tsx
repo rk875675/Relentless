@@ -24,7 +24,8 @@ import { apiFetch } from '@/lib/api';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { MAX_SPORT_LEN, OTHER_SENTINEL, PRESET_SPORTS, isPresetSport } from '@/lib/sport-presets';
-import { SUPERWALL_ENABLED, SUPERWALL_ONBOARDING_PLACEMENT } from '@/lib/superwall-config';
+import { SUPERWALL_ENABLED } from '@/lib/superwall-config';
+import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { supabase } from '@/lib/supabase';
 
 type Streak = {
@@ -181,14 +182,27 @@ export default function ProfileScreen() {
   );
 
   const handleRestore = async () => {
-    if (!SUPERWALL_ENABLED) return;
+    if (restoreBusy) return;
     setRestoreBusy(true);
     try {
-      const sw = require('expo-superwall');
-      await sw.useSuperwallStore.getState().registerPlacement(SUPERWALL_ONBOARDING_PLACEMENT);
-      await refreshUserState();
+      const res = await restorePurchasesViaStoreKit();
+      if (res.ok) {
+        await refreshUserState().catch(() => {});
+        Alert.alert('Subscription restored', 'Your purchase has been restored to this account.');
+      } else {
+        const message =
+          res.reason === 'no_purchases' || res.reason === 'no_original_tx_id'
+            ? 'No active subscription was found on this Apple ID.'
+            : res.reason === 'unsupported_platform'
+              ? 'Restore is only available on iOS.'
+              : res.reason === 'sdk_unavailable'
+                ? 'Restore is unavailable in this build. Please try again from a release build.'
+                : 'Could not verify your purchase. Please check your connection and try again.';
+        Alert.alert('Restore purchases', message);
+      }
     } catch (err) {
       console.warn('[Profile] Restore purchases failed', err);
+      Alert.alert('Restore purchases', 'Something went wrong. Please try again.');
     } finally {
       setRestoreBusy(false);
     }

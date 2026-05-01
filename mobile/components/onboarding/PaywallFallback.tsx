@@ -3,13 +3,12 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
-import { useNavigation, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth } from '@/lib/auth-context';
 import { colors, spacing } from '@/lib/theme';
 import { SubscriptionLegalDisclosure } from '@/components/onboarding/SubscriptionLegalDisclosure';
-import { saveOnboardingProgress } from '@/lib/onboarding-local-state';
-import { resetOnboardingStackNearPaywall } from '@/lib/reset-onboarding-stack-near-paywall';
+import { clearOnboardingProgress, saveOnboardingProgress } from '@/lib/onboarding-local-state';
 
 const isExpoGo = Constants.appOwnership === 'expo';
 
@@ -20,7 +19,6 @@ type PaywallFallbackProps = {
 
 /** Used when Superwall is not configured (e.g. web or missing EXPO_PUBLIC_SUPERWALL_IOS_API_KEY). */
 export function PaywallFallback({ sport, competitionDate }: PaywallFallbackProps) {
-  const navigation = useNavigation();
   const router = useRouter();
   const { session, signOut } = useAuth();
 
@@ -47,15 +45,26 @@ export function PaywallFallback({ sport, competitionDate }: PaywallFallbackProps
     router.push({ pathname: '/(auth)' as any, params: { from: 'app' } });
   };
 
+  /** X always returns the user to competition-date. See PaywallSuperwall.handleClose. */
+  const handleClose = () => {
+    void clearOnboardingProgress();
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace({
+      pathname: '/(onboarding)/competition-date' as any,
+      params: sport ? { sport } : {},
+    });
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
         <View style={styles.headerSpacer} />
         <TouchableOpacity
           style={styles.closeBtn}
-          onPress={() => {
-            resetOnboardingStackNearPaywall(navigation, { sport });
-          }}
+          onPress={handleClose}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityRole="button"
           accessibilityLabel="Close"

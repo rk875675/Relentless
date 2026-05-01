@@ -276,6 +276,7 @@ type AppleSubscriptionResponse = {
       status: number;
       productId?: string;
       expiresDate?: number;
+      signedTransactionInfo?: string;
     }>;
   }>;
 };
@@ -350,8 +351,47 @@ function resolveEntitlement(data: AppleSubscriptionResponse): {
     : null;
 
   return {
-    entitlementStatus: isActive ? "active" : "expired",
+    entitlementStatus: isActive
+      ? isFreeTrialTransaction(tx.signedTransactionInfo)
+        ? "trial"
+        : "active"
+      : "expired",
     productId: tx.productId ?? null,
     expiresAt,
   };
+}
+
+type AppleTransactionPayload = {
+  offerDiscountType?: string;
+  isTrialPeriod?: boolean;
+  is_trial_period?: boolean;
+};
+
+function isFreeTrialTransaction(signedTransactionInfo?: string): boolean {
+  if (!signedTransactionInfo) return false;
+
+  const payload = decodeJwtPayload<AppleTransactionPayload>(signedTransactionInfo);
+  if (!payload) return false;
+
+  return (
+    payload.isTrialPeriod === true ||
+    payload.is_trial_period === true ||
+    payload.offerDiscountType?.toUpperCase() === "FREE_TRIAL"
+  );
+}
+
+function decodeJwtPayload<T>(jwt: string): T | null {
+  const payload = jwt.split(".")[1];
+  if (!payload) return null;
+
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(
+      normalized.length + ((4 - (normalized.length % 4)) % 4),
+      "=",
+    );
+    return JSON.parse(atob(padded)) as T;
+  } catch {
+    return null;
+  }
 }

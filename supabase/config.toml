@@ -389,6 +389,9 @@ verify_jwt = false
 [functions.purchases]
 verify_jwt = false
 
+[functions.trial-reminders]
+verify_jwt = false
+
 [functions.account]
 verify_jwt = false
 

@@ -1,18 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth } from '@/lib/auth-context';
 import { colors, spacing } from '@/lib/theme';
 import { SUPERWALL_ENABLED, SUPERWALL_ONBOARDING_PLACEMENT } from '@/lib/superwall-config';
 import { SubscriptionLegalDisclosure } from '@/components/onboarding/SubscriptionLegalDisclosure';
 import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
-import { saveOnboardingProgress } from '@/lib/onboarding-local-state';
-import { resetOnboardingStackNearPaywall } from '@/lib/reset-onboarding-stack-near-paywall';
+import { clearOnboardingProgress, saveOnboardingProgress } from '@/lib/onboarding-local-state';
+import { subscribeTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
 
-let useSuperwall: any = () => ({ registerPlacement: async () => {} });
+let useSuperwall: any = () => ({
+  registerPlacement: async () => {},
+  preloadPaywalls: async () => {},
+  isConfigured: false,
+});
 if (SUPERWALL_ENABLED) {
   try { useSuperwall = require('expo-superwall').useSuperwall; } catch {}
 }
@@ -30,44 +42,78 @@ type PaywallSuperwallProps = {
 
 export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallProps) {
   const router = useRouter();
-  const navigation = useNavigation();
   const { session, signOut, completeOnboarding, hasPremiumAccess, refreshUserState } = useAuth();
 
   const [isOpening, setIsOpening] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  /**
+   * Set true the moment the user taps Continue. The navigate-to-signup effect
+   * below requires this — it stops a passive entitlement grant (e.g. Superwall
+   * detecting an existing sandbox sub during preload) from skipping the paywall
+   * and dumping the user straight into signup before they ever interacted.
+   */
+  const [userOpenedPaywall, setUserOpenedPaywall] = useState(false);
   const lockUntil = useRef(0);
 
   useEffect(() => {
     saveOnboardingProgress({ sport, competitionDate });
   }, [sport, competitionDate]);
 
-  const { registerPlacement } = useSuperwall((s: any) => ({
+  const { registerPlacement, preloadPaywalls, isConfigured } = useSuperwall((s: any) => ({
     registerPlacement: s.registerPlacement,
+    preloadPaywalls: s.preloadPaywalls,
+    isConfigured: s.isConfigured,
   }));
 
-  // When entitlement flips to active (purchase or optimistic grant):
-  // - Authenticated: mark onboarding complete; route guard navigates to /(tabs).
-  // - Unauthenticated: navigate to signup so the user creates an account, then
-  //   the signup handler syncs the purchase and completes onboarding.
-  // We deliberately do NOT navigate from button presses — only from this effect —
-  // so spamming Continue cannot bypass entitlement.
+  // Preload the onboarding paywall whenever this screen mounts and Superwall
+  // is configured. After a sign-out + reset, the SDK's cached paywall config
+  // can go stale — registerPlacement then fires `triggerFire` and
+  // `paywallPresentationRequest` but never `paywallOpen`, so tapping Continue
+  // looks like nothing happens. Calling preloadPaywalls keeps it ready.
+  useEffect(() => {
+    if (!isConfigured || !preloadPaywalls) return;
+    preloadPaywalls([SUPERWALL_ONBOARDING_PLACEMENT]).catch(() => {});
+  }, [isConfigured, preloadPaywalls]);
+
   const navigatedToSignup = useRef(false);
+
+  const navigateToSignup = () => {
+    if (navigatedToSignup.current) return;
+    navigatedToSignup.current = true;
+    router.replace({
+      pathname: '/(onboarding)/signup' as any,
+      params: {
+        postPaywall: 'true',
+        ...(sport ? { sport } : {}),
+        ...(competitionDate ? { competitionDate } : {}),
+      },
+    });
+  };
+
+  // Only a trusted purchase event (emitted from SuperwallInner after the Apple
+  // sheet was observed) may move an unauthenticated user to signup. Raw
+  // `hasPremiumAccess` / ACTIVE state is not enough because monthly sandbox
+  // sticky subscriptions can emit ACTIVE without a new payment sheet.
+  useEffect(() => {
+    return subscribeTrustedPaywallPurchase(() => {
+      if (!userOpenedPaywall) return;
+      if (session) {
+        completeOnboarding({ requireUser: true }).catch(() => {});
+      } else {
+        navigateToSignup();
+      }
+    });
+  }, [userOpenedPaywall, session, completeOnboarding, router, sport, competitionDate]);
+
+  // Authenticated users can still be routed by the normal local entitlement
+  // state. Unauthenticated users are intentionally excluded here to prevent
+  // no-payment monthly ACTIVE events from skipping the paywall.
   useEffect(() => {
     if (!hasPremiumAccess) return;
     if (session) {
       completeOnboarding({ requireUser: true }).catch(() => {});
-    } else if (!navigatedToSignup.current) {
-      navigatedToSignup.current = true;
-      router.replace({
-        pathname: '/(onboarding)/signup' as any,
-        params: {
-          postPaywall: 'true',
-          ...(sport ? { sport } : {}),
-          ...(competitionDate ? { competitionDate } : {}),
-        },
-      });
     }
-  }, [hasPremiumAccess, session, completeOnboarding, router, sport, competitionDate]);
+  }, [hasPremiumAccess, session, completeOnboarding]);
 
   const acquireLock = (): boolean => {
     const now = Date.now();
@@ -77,11 +123,21 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
   };
 
   const openPaywall = () => {
-    if (hasPremiumAccess) return;
+    // Mark that the user actually tapped Continue. The navigate-to-signup
+    // useEffect above keys off this so passive grants can't auto-skip.
+    setUserOpenedPaywall(true);
     if (!acquireLock()) return;
     setIsOpening(true);
     registerPlacement(SUPERWALL_ONBOARDING_PLACEMENT)
-      .catch(() => {})
+      .catch((err: unknown) => {
+        // Previously swallowed silently — a dropped presentation looked like a
+        // frozen Continue button. Surface it so the user knows to retry.
+        const msg =
+          err instanceof Error && err.message
+            ? err.message
+            : 'Could not open the subscription options. Please try again.';
+        Alert.alert('Subscription unavailable', msg, [{ text: 'OK' }]);
+      })
       .finally(() => {
         setTimeout(() => setIsOpening(false), PRESENTATION_LOCK_MS);
       });
@@ -140,7 +196,25 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
     router.push({ pathname: '/(auth)' as any, params: { from: 'app' } });
   };
 
-  const continueDisabled = isOpening || hasPremiumAccess;
+  const continueDisabled = isOpening;
+
+  /**
+   * X always returns the user to competition-date with full back history when possible.
+   * Push from competition-date → router.back() pops cleanly. For replace-style entries
+   * (cold start saved progress, dev "Jump to Paywall"), fall back to a fresh replace.
+   * Clear the saved reachedPaywall flag so the next reload doesn't bounce them back.
+   */
+  const handleClose = () => {
+    void clearOnboardingProgress();
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace({
+      pathname: '/(onboarding)/competition-date' as any,
+      params: sport ? { sport } : {},
+    });
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -148,9 +222,7 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
         <View style={styles.headerSpacer} />
         <TouchableOpacity
           style={styles.closeBtn}
-          onPress={() => {
-            resetOnboardingStackNearPaywall(navigation, { sport });
-          }}
+          onPress={handleClose}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityRole="button"
           accessibilityLabel="Close"

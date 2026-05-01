@@ -257,8 +257,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshUserState = useCallback(async () => {
-    if (!session?.user?.id) return;
-    await fetchUserState(session.user.id);
+    const userId = await getClientUserId(session?.user?.id ?? null);
+    if (!userId) return;
+    await fetchUserState(userId);
   }, [session?.user?.id, fetchUserState]);
 
   const lastForegroundRefresh = useRef(0);
@@ -594,7 +595,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsTrackAthlete(false);
     bustCache();
     clearPendingGainDeltas();
-    await supabase.auth.signOut();
+    // Local-scope sign out clears persisted session synchronously and fires
+    // onAuthStateChange immediately. The default scope ('global') waits on a
+    // network round-trip to revoke the refresh token, which is the lag the
+    // user feels in Profile → Sign Out. Server-side token expiry is fine for
+    // our security model (everything is gated by Supabase RLS on user_id).
+    await supabase.auth.signOut({ scope: 'local' });
   };
 
   const completeOnboarding = useCallback(async (options?: { requireUser?: boolean; userId?: string | null }) => {
