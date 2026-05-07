@@ -21,19 +21,18 @@ export function useSocialSignIn() {
   useEffect(() => {
     if (!session || !attemptedSignIn.current) return;
     if (onboardingComplete && hasPremiumAccess) {
+      attemptedSignIn.current = false;
       router.replace('/(tabs)');
       return;
     }
     if (onboardingComplete && !hasPremiumAccess) {
+      attemptedSignIn.current = false;
       router.replace('/(onboarding)/paywall');
       return;
     }
-    const fallback = setTimeout(() => {
-      if (attemptedSignIn.current) {
-        router.replace('/(onboarding)/welcome');
-      }
-    }, 5000);
-    return () => clearTimeout(fallback);
+    // Session exists, but profile/entitlement state has not resolved yet. Do
+    // not guess "welcome" here: slow reviewer networks can make returning
+    // Apple users look incomplete and bounce them back to the welcome screen.
   }, [session, onboardingComplete, hasPremiumAccess, router]);
 
   const handleSocialSignIn = useCallback(

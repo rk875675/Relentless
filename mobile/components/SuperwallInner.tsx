@@ -25,21 +25,31 @@ if (SUPERWALL_ENABLED) {
 }
 
 function extractOriginalTransactionId(params: Record<string, unknown>): string | undefined {
-  const str = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : undefined);
-  const tx = params.transaction as Record<string, unknown> | undefined;
-  if (tx) {
-    const id = str(tx.originalTransactionIdentifier ?? tx.originalTransactionId ?? tx.original_transaction_id);
-    if (id) return id;
-  }
-  const rt = params.restoreType as Record<string, unknown> | undefined;
-  if (rt) {
-    const stx = rt.storeTransaction as Record<string, unknown> | undefined;
-    if (stx) {
-      const id = str(stx.originalTransactionIdentifier ?? stx.originalTransactionId ?? stx.original_transaction_id);
-      if (id) return id;
+  const seen = new Set<unknown>();
+  const read = (v: unknown): string | undefined => {
+    if (!v || typeof v !== 'object' || seen.has(v)) return undefined;
+    seen.add(v);
+    const obj = v as Record<string, unknown>;
+    // Only accept fields whose name explicitly contains "original" — these are
+    // guaranteed to be the numeric Apple originalTransactionId, not a JWS string.
+    // Fields like storeTransactionId / transactionId can be JWS-signed blobs on
+    // some Superwall SDK versions; passing them to the App Store Server API
+    // causes consistent 404 failures.
+    const id =
+      obj.originalTransactionIdentifier ??
+      obj.originalTransactionIdentifierIOS ??
+      obj.originalTransactionId ??
+      obj.original_transaction_id ??
+      obj.original_transaction_identifier;
+    if (typeof id === 'string' && id.length > 0) return id;
+
+    for (const nested of [obj.transaction, obj.storeTransaction, obj.restoreType, obj.event, obj.params]) {
+      const nestedId = read(nested);
+      if (nestedId) return nestedId;
     }
-  }
-  return undefined;
+    return undefined;
+  };
+  return read(params);
 }
 
 function SuperwallIdentitySync() {
@@ -127,13 +137,16 @@ function SuperwallPurchaseSync() {
         // sandbox subscriptions can emit transactionComplete without that; do
         // not grant locally for those, or both products skip payment.
         const trustedAppleSheetPurchase = sawAppCloseDuringTransaction.current;
+        const oid = extractOriginalTransactionId(merged);
+        if (__DEV__ && trustedAppleSheetPurchase && !oid) {
+          console.log('[Superwall][purchaseMissingOriginalTransactionId]');
+        }
         if (trustedAppleSheetPurchase) {
           optimisticGrantAccess();
-          emitTrustedPaywallPurchase();
+          emitTrustedPaywallPurchase({ originalTransactionId: oid });
         } else if (__DEV__) {
           console.log('[Superwall][purchaseIgnored]', name, 'without Apple sheet');
         }
-        const oid = extractOriginalTransactionId(merged);
         if (trustedAppleSheetPurchase && oid) {
           syncSubscriptionWithBackend(oid).finally(() => { refreshUserState().catch(() => {}); });
         } else if (trustedAppleSheetPurchase) {

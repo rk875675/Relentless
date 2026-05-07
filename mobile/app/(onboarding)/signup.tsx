@@ -18,19 +18,28 @@ import { AuthSocialSignInButtons } from '@/components/auth/AuthSocialSignInButto
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth, type SocialSignInResult } from '@/lib/auth-context';
 import { analytics } from '@/lib/analytics';
+import { bustCache } from '@/lib/api-cache';
 import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { clearOnboardingProgress } from '@/lib/onboarding-local-state';
 import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
+import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
 import { supabase } from '@/lib/supabase';
 import { colors, spacing } from '@/lib/theme';
+import { getLastTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
 
 /** expo-iap getAvailablePurchases() can stall in sandbox; cap so we never block the user. */
 const POST_PAYWALL_RESTORE_TIMEOUT_MS = 8_000;
 
-/** Hard ceiling on the entire post-paywall sync. If anything beyond restore stalls
- *  (slow Supabase, missing profile row, etc.), we still drop the user into the app
- *  and let the route guard reconcile rather than show a forever spinner. */
-const POST_PAYWALL_TOTAL_TIMEOUT_MS = 15_000;
+/**
+ * Hard ceiling on the entire post-paywall sync. Raised from 15 s to 22 s to
+ * accommodate two delay windows that were added to fix sandbox timing:
+ *   • 2 s settle delay before restorePurchasesViaStoreKit (StoreKit can
+ *     return empty purchases immediately after Apple Sign In's native sheet)
+ *   • 4 s retry delay + 6 s final sync attempt when StoreKit restore fails
+ *     (Apple sandbox Server API can take several seconds to index a new
+ *     transaction; the retry succeeds once it is indexed)
+ */
+const POST_PAYWALL_TOTAL_TIMEOUT_MS = 22_000;
 
 /** Supabase email sign-up error when the account already exists (retry with password sign-in). */
 function isAccountAlreadyExistsMessage(msg: string): boolean {
@@ -81,27 +90,63 @@ export default function OnboardingSignupScreen() {
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const [setupError, setSetupError] = useState('');
   const [setupComplete, setSetupComplete] = useState(false);
-
   const syncStarted = useRef(false);
   const justSignedUp = useRef(false);
   const onboardingCompletedFiredRef = useRef(false);
+  const setupNavigationStarted = useRef(false);
+  const setupNavigationRetry = useRef<ReturnType<typeof setInterval> | null>(null);
+  const entitlementVerifiedRef = useRef(false);
 
-  const resetToTabs = useCallback(() => {
-    // Leave the nested onboarding stack before replacing with the root URL.
-    // Reload proves `/` resolves into the app once auth/onboarding/premium are
-    // set, while direct tab URLs from this nested stack have produced black or
-    // not-found intermediate screens.
-    try {
-      router.dismissAll();
-    } catch {
-      // dismissAll is best-effort; replace below is the actual navigation.
-    }
-    router.replace('/' as any);
+  useEffect(() => {
+    if (!isPostPaywall || !syncing || setupComplete || setupError) return;
+    const timer = setTimeout(() => {
+      if (entitlementVerifiedRef.current) {
+        setSetupComplete(true);
+        return;
+      }
+      syncStarted.current = false;
+      setSyncing(false);
+      setSetupError('We could not verify your subscription yet. Please try again.');
+    }, POST_PAYWALL_TOTAL_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [isPostPaywall, syncing, setupComplete, setupError]);
+
+  const navigateToTabsWithRetries = useCallback(() => {
+    if (setupNavigationStarted.current) return;
+    setupNavigationStarted.current = true;
+    bustCache();
+    let attempts = 0;
+    const go = () => {
+      attempts += 1;
+      router.replace('/(tabs)' as any);
+    };
+    go();
+    const retry = setInterval(() => {
+      if (attempts >= 5) {
+        clearInterval(retry);
+        if (setupNavigationRetry.current === retry) setupNavigationRetry.current = null;
+        return;
+      }
+      go();
+    }, 1000);
+    setupNavigationRetry.current = retry;
   }, [router]);
 
   useEffect(() => {
-    if (setupComplete) resetToTabs();
-  }, [setupComplete, resetToTabs]);
+    if (!setupComplete) return;
+    navigateToTabsWithRetries();
+  }, [setupComplete, navigateToTabsWithRetries]);
+
+  useEffect(() => {
+    return () => {
+      if (setupNavigationRetry.current) clearInterval(setupNavigationRetry.current);
+    };
+  }, []);
+
+  const finishSetupNavigation = useCallback(() => {
+    navigateToTabsWithRetries();
+    setSetupComplete(true);
+  }, [navigateToTabsWithRetries]);
 
   /**
    * Post-paywall reliability:
@@ -115,6 +160,7 @@ export default function OnboardingSignupScreen() {
   const finishPostPaywallSetup = useCallback(async () => {
     if (syncStarted.current) return;
     syncStarted.current = true;
+    entitlementVerifiedRef.current = false;
     setSyncing(true);
     setLoading(false);
     setError('');
@@ -123,13 +169,16 @@ export default function OnboardingSignupScreen() {
     let forceNavigated = false;
     const forceNavigateTimer = setTimeout(() => {
       if (syncStarted.current && !forceNavigated) {
+        if (!entitlementVerifiedRef.current) {
+          syncStarted.current = false;
+          setSyncing(false);
+          setSetupError('We could not verify your subscription yet. Please try again.');
+          return;
+        }
         forceNavigated = true;
         // Drop the user into the app even if Supabase writes are still pending.
-        // Reset the root stack to the real `(tabs)` route instead of pushing a
-        // URL from inside the nested onboarding stack; URL redirects here can
-        // leave the navigator on a black intermediate screen.
-        setSetupComplete(true);
-        resetToTabs();
+        // State-driven navigation is more reliable from this nested signup flow.
+        finishSetupNavigation();
       }
     }, POST_PAYWALL_TOTAL_TIMEOUT_MS);
 
@@ -143,23 +192,107 @@ export default function OnboardingSignupScreen() {
         return;
       }
 
+      // Prefer the transaction Superwall saw before signup. This matches the
+      // Google path's timing better and avoids relying only on sandbox restore.
+      const trustedOriginalTransactionId = getLastTrustedPaywallPurchase()?.originalTransactionId;
+      let purchaseSynced = false;
+      let purchaseSyncError: string | null = null;
+      /** True when StoreKit found a purchase but the backend sync still failed — a retry is warranted. */
+      let storeKitFoundPurchase = false;
+      if (trustedOriginalTransactionId) {
+        try {
+          const sync = await Promise.race([
+            syncSubscriptionWithBackend(trustedOriginalTransactionId),
+            new Promise<{ ok: false; error: string }>((resolve) =>
+              setTimeout(() => resolve({ ok: false, error: 'timeout' }), POST_PAYWALL_RESTORE_TIMEOUT_MS),
+            ),
+          ]);
+          if (sync.ok) {
+            purchaseSynced = true;
+            entitlementVerifiedRef.current = true;
+            optimisticGrantAccess();
+          } else {
+            purchaseSyncError = sync.error ?? 'Purchase could not be verified.';
+            if (__DEV__) console.log('[signup][purchaseSyncFailed]', sync.error);
+          }
+        } catch {
+          /* fall through to StoreKit restore */
+        }
+      } else if (__DEV__) {
+        console.log('[signup][purchaseSyncSkipped]', 'missing original transaction id');
+      }
+
       // Post-paywall signup must attach the Apple purchase to the newly
-      // created Supabase user. `hasPremiumAccess` may only be optimistic local
-      // state from Superwall before an account existed, so do not skip this.
-      // Keep it bounded so StoreKit sandbox stalls never trap the spinner.
-      try {
-        const r = await Promise.race([
-          restorePurchasesViaStoreKit(),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('timeout')), POST_PAYWALL_RESTORE_TIMEOUT_MS),
-          ),
-        ]);
-        if (r.ok) optimisticGrantAccess();
-      } catch {
-        /* restore hung or failed — continue; refreshUserState may still reflect entitlement */
+      // created Supabase user. Keep it bounded so StoreKit sandbox stalls never
+      // trap the spinner.
+      if (!purchaseSynced) {
+        // Settle delay: Apple Sign In's native authentication sheet can briefly
+        // leave StoreKit in a state where getAvailablePurchases() returns empty.
+        // Waiting here also gives the Apple Server API a moment to index a
+        // brand-new sandbox transaction before we query it.
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const r = await Promise.race([
+            restorePurchasesViaStoreKit(),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('timeout')), POST_PAYWALL_RESTORE_TIMEOUT_MS),
+            ),
+          ]);
+          if (r.ok) {
+            purchaseSynced = true;
+            entitlementVerifiedRef.current = true;
+            optimisticGrantAccess();
+          } else {
+            // sync_failed means StoreKit found a purchase with a real Apple
+            // transaction id but the backend verification call failed — the
+            // Apple Server API may not have indexed the new transaction yet.
+            storeKitFoundPurchase = r.reason === 'sync_failed';
+            purchaseSyncError = r.error ?? r.reason;
+            if (__DEV__) console.log('[signup][restorePurchasesFailed]', r.reason, r.error ?? '');
+          }
+        } catch (e) {
+          purchaseSyncError = e instanceof Error ? e.message : 'Purchase restore failed.';
+        }
+      }
+
+      // Last-chance retry: if StoreKit found a purchase but the Apple Server
+      // API returned an error (sync_failed), wait a further 4 s and try the
+      // backend sync one more time. The sandbox API is often ready by then.
+      if (!purchaseSynced && storeKitFoundPurchase) {
+        if (__DEV__) console.log('[signup][retryingSync]', 'waiting 4s for Apple API to index transaction');
+        await new Promise((r) => setTimeout(r, 4000));
+        // Try restorePurchasesViaStoreKit one final time — StoreKit gives us
+        // the authoritative numeric originalTransactionIdentifierIOS and by
+        // now the Apple Server API should have the new transaction indexed.
+        try {
+          const r2 = await Promise.race([
+            restorePurchasesViaStoreKit(),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('timeout')), 6_000),
+            ),
+          ]);
+          if (r2.ok) {
+            purchaseSynced = true;
+            entitlementVerifiedRef.current = true;
+            optimisticGrantAccess();
+          } else {
+            purchaseSyncError = r2.error ?? r2.reason;
+          }
+        } catch (e) {
+          purchaseSyncError = e instanceof Error ? e.message : 'Purchase restore failed.';
+        }
+      }
+
+      if (!purchaseSynced) {
+        throw new Error(
+          purchaseSyncError
+            ? `We could not verify your subscription: ${purchaseSyncError}`
+            : 'We could not verify your subscription yet. Please try again.',
+        );
       }
 
       await refreshUserState().catch(() => {});
+      bustCache();
 
       const comp = Array.isArray(competitionDate) ? competitionDate[0] : competitionDate;
       if (comp) await updateCompetitionDate(comp).catch(() => {});
@@ -181,8 +314,7 @@ export default function OnboardingSignupScreen() {
       await clearOnboardingProgress();
       clearTimeout(forceNavigateTimer);
       if (!forceNavigated) {
-        setSetupComplete(true);
-        resetToTabs();
+        finishSetupNavigation();
       }
     } catch (e) {
       clearTimeout(forceNavigateTimer);
@@ -198,9 +330,9 @@ export default function OnboardingSignupScreen() {
     updateCompetitionDate,
     updateSport,
     completeOnboarding,
-    resetToTabs,
     optimisticGrantAccess,
     hasPremiumAccess,
+    finishSetupNavigation,
   ]);
 
   useEffect(() => {

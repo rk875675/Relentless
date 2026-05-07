@@ -23,6 +23,10 @@ const APPLE_PRODUCTION_URL =
   "https://api.storekit.itunes.apple.com/inApps/v1/subscriptions";
 const APPLE_SANDBOX_URL =
   "https://api.storekit-sandbox.itunes.apple.com/inApps/v1/subscriptions";
+const APPLE_PRODUCTION_TRANSACTION_URL =
+  "https://api.storekit.itunes.apple.com/inApps/v1/transactions";
+const APPLE_SANDBOX_TRANSACTION_URL =
+  "https://api.storekit-sandbox.itunes.apple.com/inApps/v1/transactions";
 
 /**
  * Apple App Store Server API subscription status codes.
@@ -118,8 +122,9 @@ Deno.serve(async (req) => {
     return errorResponse(500, "INTERNAL_ERROR", "Failed to build purchase verification token", requestId);
   }
 
-  // Try production; fall back to sandbox on environment mismatch
-  let appleData: AppleSubscriptionResponse | null = null;
+  // Try subscription status first; fall back to direct transaction lookup if
+  // Superwall/StoreKit gave us a transaction id rather than an original id.
+  let resolvedEntitlement: ResolvedEntitlement | null = null;
   let isSandbox = false;
 
   const productionResult = await fetchAppleSubscription(
@@ -129,17 +134,67 @@ Deno.serve(async (req) => {
   );
 
   if (productionResult.ok) {
-    appleData = productionResult.data;
-  } else if (productionResult.environmentMismatch) {
-    const sandboxResult = await fetchAppleSubscription(
+    resolvedEntitlement = resolveEntitlement(productionResult.data);
+  } else if (productionResult.shouldTryOtherEnvironment) {
+    // Try sandbox. For brand-new purchases the Apple sandbox Server API can
+    // take several seconds to index the transaction — retry up to 2 extra
+    // times with a 3 s delay before falling back to transaction lookup.
+    let sandboxResult = await fetchAppleSubscription(
       APPLE_SANDBOX_URL,
       originalTransactionId,
       appleToken,
     );
+    for (let attempt = 1; attempt <= 2 && !sandboxResult.ok && sandboxResult.shouldTryOtherEnvironment; attempt++) {
+      await new Promise<void>((r) => setTimeout(r, 3000));
+      sandboxResult = await fetchAppleSubscription(
+        APPLE_SANDBOX_URL,
+        originalTransactionId,
+        appleToken,
+      );
+    }
     if (sandboxResult.ok) {
-      appleData = sandboxResult.data;
+      resolvedEntitlement = resolveEntitlement(sandboxResult.data);
       isSandbox = true;
     } else {
+      const transactionResult = await verifyViaTransactionLookup(
+        originalTransactionId,
+        appleToken,
+      );
+      if (transactionResult.ok) {
+        resolvedEntitlement = transactionResult.entitlement;
+        isSandbox = transactionResult.isSandbox;
+      } else {
+        console.error("[purchases/restore] Apple verification failed", {
+          requestId,
+          subscriptionStatus: sandboxResult.status,
+          subscriptionErrorCode: sandboxResult.errorCode,
+          transactionStatus: transactionResult.status,
+          transactionErrorCode: transactionResult.errorCode,
+        });
+        return errorResponse(
+          422,
+          "VALIDATION_ERROR",
+          "Purchase could not be verified with Apple",
+          requestId,
+        );
+      }
+    }
+  } else {
+    const transactionResult = await verifyViaTransactionLookup(
+      originalTransactionId,
+      appleToken,
+    );
+    if (transactionResult.ok) {
+      resolvedEntitlement = transactionResult.entitlement;
+      isSandbox = transactionResult.isSandbox;
+    } else {
+      console.error("[purchases/restore] Apple verification failed", {
+        requestId,
+        subscriptionStatus: productionResult.status,
+        subscriptionErrorCode: productionResult.errorCode,
+        transactionStatus: transactionResult.status,
+        transactionErrorCode: transactionResult.errorCode,
+      });
       return errorResponse(
         422,
         "VALIDATION_ERROR",
@@ -147,7 +202,14 @@ Deno.serve(async (req) => {
         requestId,
       );
     }
-  } else {
+  }
+
+  // ---------------------------------------------------------------------------
+  // Determine entitlement status from Apple response
+  // ---------------------------------------------------------------------------
+
+  if (!resolvedEntitlement) {
+    console.error("[purchases/restore] Apple verification did not produce entitlement", { requestId });
     return errorResponse(
       422,
       "VALIDATION_ERROR",
@@ -156,11 +218,7 @@ Deno.serve(async (req) => {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Determine entitlement status from Apple response
-  // ---------------------------------------------------------------------------
-
-  const { entitlementStatus, productId, expiresAt } = resolveEntitlement(appleData);
+  const { entitlementStatus, productId, expiresAt } = resolvedEntitlement;
 
   // ---------------------------------------------------------------------------
   // Update entitlements table
@@ -168,12 +226,14 @@ Deno.serve(async (req) => {
 
   const { error: upsertErr } = await supabase
     .from("entitlements")
-    .update({
+    .upsert({
+      user_id: auth.userId,
       status: entitlementStatus,
       product_id: productId ?? null,
+      starts_at: new Date().toISOString(),
       expires_at: expiresAt ?? null,
-    })
-    .eq("user_id", auth.userId);
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
 
   if (upsertErr) {
     console.error("[purchases/restore] Failed to update entitlements", upsertErr);
@@ -281,9 +341,24 @@ type AppleSubscriptionResponse = {
   }>;
 };
 
+type ResolvedEntitlement = {
+  entitlementStatus: string;
+  productId: string | null;
+  expiresAt: string | null;
+};
+
 type FetchResult =
   | { ok: true; data: AppleSubscriptionResponse }
-  | { ok: false; environmentMismatch: boolean };
+  | {
+      ok: false;
+      shouldTryOtherEnvironment: boolean;
+      status: number;
+      errorCode?: string;
+    };
+
+type TransactionFetchResult =
+  | { ok: true; signedTransactionInfo: string }
+  | { ok: false; shouldTryOtherEnvironment: boolean; status: number; errorCode?: string };
 
 async function fetchAppleSubscription(
   baseUrl: string,
@@ -301,30 +376,95 @@ async function fetchAppleSubscription(
     return { ok: true, data };
   }
 
-  // 4040010 = not found in this environment (try other environment)
+  // Sandbox transactions queried against production can return different 404
+  // bodies across StoreKit/App Store Server API paths. Any production 404 is
+  // safe to retry against sandbox; sandbox failures still return false.
   if (res.status === 404) {
-    let errCode: number | undefined;
+    let errCode: string | undefined;
     try {
-      const body = await res.json() as { errorCode?: number };
-      errCode = body.errorCode;
+      const body = await res.json() as { errorCode?: number | string };
+      errCode = body.errorCode == null ? undefined : String(body.errorCode);
     } catch { /* noop */ }
-    if (errCode === 4040010) {
-      return { ok: false, environmentMismatch: true };
-    }
+    return { ok: false, shouldTryOtherEnvironment: true, status: res.status, errorCode: errCode };
   }
 
-  return { ok: false, environmentMismatch: false };
+  return { ok: false, shouldTryOtherEnvironment: false, status: res.status };
+}
+
+async function fetchAppleTransaction(
+  baseUrl: string,
+  transactionId: string,
+  token: string,
+): Promise<TransactionFetchResult> {
+  const res = await fetch(`${baseUrl}/${transactionId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (res.status === 200) {
+    const data = await res.json() as { signedTransactionInfo?: string };
+    if (typeof data.signedTransactionInfo === "string" && data.signedTransactionInfo.length > 0) {
+      return { ok: true, signedTransactionInfo: data.signedTransactionInfo };
+    }
+    return { ok: false, shouldTryOtherEnvironment: false, status: res.status };
+  }
+
+  if (res.status === 404) {
+    let errCode: string | undefined;
+    try {
+      const body = await res.json() as { errorCode?: number | string };
+      errCode = body.errorCode == null ? undefined : String(body.errorCode);
+    } catch { /* noop */ }
+    return { ok: false, shouldTryOtherEnvironment: true, status: res.status, errorCode: errCode };
+  }
+
+  return { ok: false, shouldTryOtherEnvironment: false, status: res.status };
+}
+
+async function verifyViaTransactionLookup(
+  transactionId: string,
+  token: string,
+): Promise<
+  | { ok: true; entitlement: ResolvedEntitlement; isSandbox: boolean }
+  | { ok: false; status: number; errorCode?: string }
+> {
+  const productionResult = await fetchAppleTransaction(
+    APPLE_PRODUCTION_TRANSACTION_URL,
+    transactionId,
+    token,
+  );
+  if (productionResult.ok) {
+    return {
+      ok: true,
+      entitlement: resolveEntitlementFromSignedTransaction(productionResult.signedTransactionInfo),
+      isSandbox: false,
+    };
+  }
+  if (!productionResult.shouldTryOtherEnvironment) {
+    return { ok: false, status: productionResult.status, errorCode: productionResult.errorCode };
+  }
+
+  const sandboxResult = await fetchAppleTransaction(
+    APPLE_SANDBOX_TRANSACTION_URL,
+    transactionId,
+    token,
+  );
+  if (sandboxResult.ok) {
+    return {
+      ok: true,
+      entitlement: resolveEntitlementFromSignedTransaction(sandboxResult.signedTransactionInfo),
+      isSandbox: true,
+    };
+  }
+  return { ok: false, status: sandboxResult.status, errorCode: sandboxResult.errorCode };
 }
 
 // ---------------------------------------------------------------------------
 // Entitlement resolution from Apple response
 // ---------------------------------------------------------------------------
 
-function resolveEntitlement(data: AppleSubscriptionResponse): {
-  entitlementStatus: string;
-  productId: string | null;
-  expiresAt: string | null;
-} {
+function resolveEntitlement(data: AppleSubscriptionResponse): ResolvedEntitlement {
   const transactions = data.data?.[0]?.lastTransactions ?? [];
 
   // Find most recent transaction — prefer active/grace states
@@ -362,10 +502,35 @@ function resolveEntitlement(data: AppleSubscriptionResponse): {
 }
 
 type AppleTransactionPayload = {
+  bundleId?: string;
+  productId?: string;
+  expiresDate?: number;
   offerDiscountType?: string;
   isTrialPeriod?: boolean;
   is_trial_period?: boolean;
 };
+
+function resolveEntitlementFromSignedTransaction(signedTransactionInfo: string): ResolvedEntitlement {
+  const payload = decodeJwtPayload<AppleTransactionPayload>(signedTransactionInfo);
+  if (!payload || payload.bundleId !== BUNDLE_ID) {
+    return { entitlementStatus: "none", productId: null, expiresAt: null };
+  }
+
+  const expiresAt = payload.expiresDate
+    ? new Date(payload.expiresDate).toISOString()
+    : null;
+  const isActive = payload.expiresDate ? payload.expiresDate > Date.now() : false;
+
+  return {
+    entitlementStatus: isActive
+      ? isFreeTrialTransaction(signedTransactionInfo)
+        ? "trial"
+        : "active"
+      : "expired",
+    productId: payload.productId ?? null,
+    expiresAt,
+  };
+}
 
 function isFreeTrialTransaction(signedTransactionInfo?: string): boolean {
   if (!signedTransactionInfo) return false;

@@ -108,8 +108,14 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
   // Authenticated users can still be routed by the normal local entitlement
   // state. Unauthenticated users are intentionally excluded here to prevent
   // no-payment monthly ACTIVE events from skipping the paywall.
+  // Guard: if this component already sent the user to signup, do not call
+  // completeOnboarding here — signup.tsx owns that step and will only call it
+  // after the purchase is verified. Calling it here first would mark
+  // onboarding_completed=true in the DB before entitlement is confirmed,
+  // trapping the user in a paywall loop on the next cold start.
   useEffect(() => {
     if (!hasPremiumAccess) return;
+    if (navigatedToSignup.current) return;
     if (session) {
       completeOnboarding({ requireUser: true }).catch(() => {});
     }
