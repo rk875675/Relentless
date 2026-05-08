@@ -1,0 +1,138 @@
+{
+  "lesson_number": 28,
+  "title": "Identity Under Pressure",
+  "program_version": "v1",
+  "day_number": 28,
+  "mac_categories": [
+    "commitment"
+  ],
+  "coach": "Coach Grant",
+  "duration_seconds": 181,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_28/lesson_28_seg_01.mp3"
+      ],
+      "total_audio_seconds": 67.3,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "day 28, who are you in a guitar? Not who you are in your best day, not who you want to be,"
+        },
+        {
+          "start_s": 8.38,
+          "text": "who are you when you're behind in the fourth quarter, when you've made two mistakes back to back,"
+        },
+        {
+          "start_s": 13.58,
+          "text": "when the biggest competition of your season is on the line and everything in your body is asking"
+        },
+        {
+          "start_s": 18.38,
+          "text": "you to quit. Think back to where you were when this journey started. There was probably a"
+        },
+        {
+          "start_s": 24.22,
+          "text": "version of you that didn't have an answer for that question. That defaulted to the situation,"
+        },
+        {
+          "start_s": 30.54,
+          "text": "that got swallowed by the moment. You've been building the answer for 28 days."
+        },
+        {
+          "start_s": 36.46,
+          "text": "The mental training doesn't change you in the comfortable moments. It reveals you in the difficult"
+        },
+        {
+          "start_s": 42.38,
+          "text": "ones. Every rep you've put in has been preparing you for exactly that moment, the one that"
+        },
+        {
+          "start_s": 48.77,
+          "text": "used to break you. Today I want you to write your competition identity, not a general statement."
+        },
+        {
+          "start_s": 57.76,
+          "text": "The version of you that shows up when the game is on the line and everything is against you."
+        },
+        {
+          "start_s": 63.22,
+          "text": "On your screen, we're going to take a breath and then we write."
+        }
+      ]
+    },
+    {
+      "type": "timed_exercise",
+      "duration_seconds": 16,
+      "interactive_model": "box_breathing",
+      "visual_cues": [
+        "One full cycle. Settle in.",
+        "Follow the circle."
+      ],
+      "steps": [
+        {
+          "text": "Inhale",
+          "duration_seconds": 4,
+          "haptic": "heavy"
+        },
+        {
+          "text": "Hold",
+          "duration_seconds": 4,
+          "haptic": "light"
+        },
+        {
+          "text": "Exhale",
+          "duration_seconds": 4,
+          "haptic": "heavy"
+        },
+        {
+          "text": "Hold",
+          "duration_seconds": 4,
+          "haptic": "light"
+        }
+      ]
+    },
+    {
+      "type": "prompt_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Write your competition identity statement — specifically for your hardest moment. Who are you when the game is on the line, you're behind, and everything hurts? Present tense. 'I am an athlete who...'",
+          "min_entry_seconds": 0
+        }
+      ],
+      "summary": {
+        "display": "last",
+        "header": "",
+        "hold_seconds": 0
+      }
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_28/lesson_28_seg_02.mp3"
+      ],
+      "total_audio_seconds": 13.69,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "Read that before every competition from here forward."
+        },
+        {
+          "start_s": 3.76,
+          "text": "Not as a wish as a reminder of a decision you've already made."
+        },
+        {
+          "start_s": 8.69,
+          "text": "You have a journal prompt and after you finish day 28 is complete."
+        }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "When was the last time you actually lived out that identity in competition? What made it possible?"
+    }
+  ]
+}

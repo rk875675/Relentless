@@ -1,0 +1,104 @@
+{
+  "lesson_number": 21,
+  "title": "The Fighter Mindset",
+  "program_version": "v1",
+  "day_number": 21,
+  "mac_categories": [
+    "acceptance"
+  ],
+  "coach": "Coach Grant",
+  "duration_seconds": 167,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_21/lesson_21_seg_01.mp3"
+      ],
+      "total_audio_seconds": 92.32,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "day 21. When you face a challenge, a big competition, a moment of adversity, something that"
+        },
+        {
+          "start_s": 8.58,
+          "text": "tests you, your brain does something automatic. It imagines the worst case, embarrassment, failure,"
+        },
+        {
+          "start_s": 16.72,
+          "text": "loss, that fear scenario. That's not weakness. That's your nervous system doing exactly"
+        },
+        {
+          "start_s": 23.55,
+          "text": "what it was designed to do. That threat response is ancient. It was built to keep you"
+        },
+        {
+          "start_s": 29.53,
+          "text": "alive. And it still fires the same way whether you're facing a predator or stepping on"
+        },
+        {
+          "start_s": 35.61,
+          "text": "the starting line. There are two types of athletes in those moments. The victim and the fighter."
+        },
+        {
+          "start_s": 43.13,
+          "text": "The victim acknowledges the fear and becomes it. They make excuses. They shrink. They find"
+        },
+        {
+          "start_s": 50.76,
+          "text": "reasons why the situation is unfair or why they're not ready. And they stay on the safe side of"
+        },
+        {
+          "start_s": 56.81,
+          "text": "the line. The fighter acknowledges the same fear and steps over the line anyway. Because"
+        },
+        {
+          "start_s": 64.12,
+          "text": "they're not afraid because they decided the fear doesn't get to make the call. The difference isn't"
+        },
+        {
+          "start_s": 70.2,
+          "text": "talent. It isn't physical preparation. It's a decision made in the seconds before the whistle"
+        },
+        {
+          "start_s": 76.78,
+          "text": "blows about who gets to be in charge. You or the fear. You've been building the tools to make"
+        },
+        {
+          "start_s": 82.78,
+          "text": "that decision automatically. Today we name it explicitly on your screen to go into identify"
+        },
+        {
+          "start_s": 88.7,
+          "text": "your line and declare which side you choose."
+        }
+      ]
+    },
+    {
+      "type": "prompt_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Describe the fear you feel before your most challenging competitive moments. Be specific — what does it say? What worst-case scenario does your brain go to?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Now name it for what it is — your brain trying to protect you. It's not the truth. It's a signal.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "The fighter steps over the line anyway. What does stepping over the line look like for you — specifically, in the moment that fear arrives?",
+          "min_entry_seconds": 0
+        }
+      ],
+      "summary": {
+        "display": "all",
+        "header": "",
+        "hold_seconds": 0
+      }
+    }
+  ]
+}

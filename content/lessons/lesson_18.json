@@ -1,0 +1,126 @@
+{
+  "lesson_number": 18,
+  "title": "The If-Then Plan",
+  "program_version": "v1",
+  "day_number": 18,
+  "mac_categories": [
+    "acceptance",
+    "commitment"
+  ],
+  "coach": "Coach Grant",
+  "duration_seconds": 161,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_18/lesson_18_seg_01.mp3"
+      ],
+      "total_audio_seconds": 70.27,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "18. One of the biggest reasons athletes break in big moments is that they've never planned"
+        },
+        {
+          "start_s": 6.48,
+          "text": "for them. Not the success, the worst case. What happens if you fall behind early? What happens"
+        },
+        {
+          "start_s": 13.65,
+          "text": "if you make a visible error in front of the biggest crowd you've ever competed in front of?"
+        },
+        {
+          "start_s": 18.37,
+          "text": "What happens if your body starts to give out before the competition is over? Most athletes avoid"
+        },
+        {
+          "start_s": 23.5,
+          "text": "those questions. They think planning for failure invites it. That's backwards."
+        },
+        {
+          "start_s": 29.18,
+          "text": "Planning for adversity is what makes you dangerous because now you have a response ready"
+        },
+        {
+          "start_s": 33.98,
+          "text": "before the moment hits. This is the then plan. If x happens, then I do y. It's not pessimism,"
+        },
+        {
+          "start_s": 42.3,
+          "text": "it's preparation. Research is clear on this. Athletes who pre-planned responses to adversity"
+        },
+        {
+          "start_s": 49.47,
+          "text": "recover faster and perform more consistently than athletes who respond in the moment without a"
+        },
+        {
+          "start_s": 55.71,
+          "text": "plan. You're not hoping the bad thing doesn't happen. You're deciding in advance that it"
+        },
+        {
+          "start_s": 60.98,
+          "text": "doesn't own you. On your screen, you're going to build your if-then plan for the three most likely"
+        },
+        {
+          "start_s": 67.23,
+          "text": "adversity scenarios in your sport."
+        }
+      ]
+    },
+    {
+      "type": "prompt_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "What is the most likely thing to go wrong in your next competition — the one that typically starts your mental spiral? Describe the scenario and write your exact response: breath, reset word, refocus.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Second most likely adversity scenario — and your response.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Third scenario — and your response.",
+          "min_entry_seconds": 0
+        }
+      ],
+      "summary": {
+        "display": "all",
+        "header": "",
+        "hold_seconds": 0
+      }
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_18/lesson_18_seg_02.mp3"
+      ],
+      "total_audio_seconds": 16.69,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "You just made three decisions in advance."
+        },
+        {
+          "start_s": 3.6,
+          "text": "When those moments arrive and they will,"
+        },
+        {
+          "start_s": 6.68,
+          "text": "your brain already has the answer."
+        },
+        {
+          "start_s": 9.08,
+          "text": "No freeze, no spiral, just the plan."
+        },
+        {
+          "start_s": 13.62,
+          "text": "Now let you finish, day 18 is complete."
+        }
+      ]
+    }
+  ]
+}

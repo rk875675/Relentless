@@ -1,0 +1,161 @@
+{
+  "lesson_number": 25,
+  "title": "The Mistake Protocol",
+  "program_version": "v1",
+  "day_number": 25,
+  "mac_categories": [
+    "mindfulness",
+    "acceptance"
+  ],
+  "coach": "Coach Grant",
+  "duration_seconds": 229,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_25/lesson_25_seg_01.mp3"
+      ],
+      "total_audio_seconds": 65.55,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "Day 25"
+        },
+        {
+          "start_s": 2.19,
+          "text": "What happens in the five seconds after a mistake determines more about your performance than the mistake itself"
+        },
+        {
+          "start_s": 9.49,
+          "text": "Here's the pattern"
+        },
+        {
+          "start_s": 11.55,
+          "text": "Athlete makes error"
+        },
+        {
+          "start_s": 12.91,
+          "text": "Brain fires immediately"
+        },
+        {
+          "start_s": 14.91,
+          "text": "Replays the mistake"
+        },
+        {
+          "start_s": 17.01,
+          "text": "Catastrophises"
+        },
+        {
+          "start_s": 19.17,
+          "text": "The consequences"
+        },
+        {
+          "start_s": 22.26,
+          "text": "Athlete carries that weight into the next play"
+        },
+        {
+          "start_s": 25.71,
+          "text": "Next play breaks down spiral"
+        },
+        {
+          "start_s": 28.39,
+          "text": "The mistake didn't cost them the five seconds after did"
+        },
+        {
+          "start_s": 34.13,
+          "text": "Your job in those five seconds is one thing"
+        },
+        {
+          "start_s": 37.09,
+          "text": "Interruption you are not processing the mistake. You are not evaluating what went wrong. You have one job get back to the next play"
+        },
+        {
+          "start_s": 46.1,
+          "text": "Three steps"
+        },
+        {
+          "start_s": 47.54,
+          "text": "Reset word say it physical cue"
+        },
+        {
+          "start_s": 50.82,
+          "text": "Run it focus anchor return to it five seconds back in the game"
+        },
+        {
+          "start_s": 57.17,
+          "text": "Today you're drilling that sequence three times back to back until it's locked"
+        },
+        {
+          "start_s": 61.65,
+          "text": "On your screen you're going to walk through it right now"
+        }
+      ]
+    },
+    {
+      "type": "prompt_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "A mistake just happened. 5 seconds. Step 1 — your reset word. Say it now.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Step 2 — your physical cue. Run it right now.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Step 3 — your focus anchor. Return to it. You're here. Next play.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Again. Mistake. Reset word. Physical cue. Focus anchor.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "One more time. All three steps. Locked.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Describe what running that sequence felt like. Did it interrupt the spiral? What was hardest to execute?",
+          "min_entry_seconds": 0
+        }
+      ],
+      "summary": {
+        "display": "last",
+        "header": "",
+        "hold_seconds": 0
+      }
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_25/lesson_25_seg_02.mp3"
+      ],
+      "total_audio_seconds": 13.93,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "Drill that protocol and practice this week."
+        },
+        {
+          "start_s": 3.23,
+          "text": "Make an intentional error and run it."
+        },
+        {
+          "start_s": 6.69,
+          "text": "Make it automatic before competition demands it."
+        },
+        {
+          "start_s": 10.05,
+          "text": "After you finish, day 25 is complete."
+        }
+      ]
+    }
+  ]
+}

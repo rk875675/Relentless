@@ -1,0 +1,127 @@
+{
+  "lesson_number": 26,
+  "title": "Reframe — What You Would Do Differently",
+  "program_version": "v1",
+  "day_number": 26,
+  "mac_categories": [
+    "mindfulness",
+    "acceptance"
+  ],
+  "coach": "Coach Grant",
+  "duration_seconds": 242,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_26/lesson_26_seg_01.mp3"
+      ],
+      "total_audio_seconds": 69.18,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "Day 26"
+        },
+        {
+          "start_s": 2.1,
+          "text": "We did a reframe exercise earlier in the series. Today. We go deeper"
+        },
+        {
+          "start_s": 7.3,
+          "text": "You've added tool since then like your reset word your if then plan yourself talk replacements"
+        },
+        {
+          "start_s": 14.7,
+          "text": "Your mistake protocol the fighter mindset your focus anchors trained"
+        },
+        {
+          "start_s": 20.86,
+          "text": "I want you to go back to a different moment"
+        },
+        {
+          "start_s": 24.14,
+          "text": "Competition that didn't go the way you wanted where your mind got in the way"
+        },
+        {
+          "start_s": 28.26,
+          "text": "When you've carried as a failure"
+        },
+        {
+          "start_s": 30.7,
+          "text": "We're going to replay it not to relive the pain but to rewrite the response"
+        },
+        {
+          "start_s": 36.81,
+          "text": "This is a specific skill"
+        },
+        {
+          "start_s": 39.21,
+          "text": "You're not pretending the bad moment didn't happen"
+        },
+        {
+          "start_s": 42.49,
+          "text": "You're showing your nervous system that you now have a trained answer to the moment that used to have none"
+        },
+        {
+          "start_s": 49.65,
+          "text": "Every time you do this that memory loses its charge and the next time something similar arrives your brain looks for the trained response"
+        },
+        {
+          "start_s": 58.69,
+          "text": "Not the old pattern think of a moment that still stings a little yeah, that's the one on your screen you're gonna walk through it"
+        }
+      ]
+    },
+    {
+      "type": "prompt_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Describe the moment — the situation, what happened, what your mind did, and how it affected your performance.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "At what exact point did the spiral begin? What was the trigger thought?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Replay it with your full toolkit. From that exact moment — walk through what you would have done. Every step. Reset word, physical cue, focus anchor, self-talk replacement. Be specific.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Read your reframed response back. This is your trained answer to that moment now.",
+          "min_entry_seconds": 0
+        }
+      ],
+      "summary": {
+        "display": "all",
+        "header": "",
+        "hold_seconds": 0
+      }
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_26/lesson_26_seg_02.mp3"
+      ],
+      "total_audio_seconds": 12.94,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "So look that memory just became an actual rep and the next time something like it arrives"
+        },
+        {
+          "start_s": 5.52,
+          "text": "look you've already been there with a plan next you've got a journal and after you finish day 26 is complete"
+        }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "How did it feel to give your brain a trained response for that moment? Did the weight of that memory change at all?"
+    }
+  ]
+}

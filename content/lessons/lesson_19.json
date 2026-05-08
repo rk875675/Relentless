@@ -1,0 +1,186 @@
+{
+  "lesson_number": 19,
+  "title": "Reframe — When Your Mind Broke",
+  "program_version": "v1",
+  "day_number": 19,
+  "mac_categories": [
+    "mindfulness",
+    "acceptance"
+  ],
+  "coach": "Coach Grant",
+  "duration_seconds": 171,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_19/lesson_19_seg_01.mp3"
+      ],
+      "total_audio_seconds": 80.9,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "A19, today we do something different."
+        },
+        {
+          "start_s": 3.68,
+          "text": "There's a moment in your competitive career"
+        },
+        {
+          "start_s": 6.4,
+          "text": "where your mind completely broke on you."
+        },
+        {
+          "start_s": 10.0,
+          "text": "Your focus left, the spiral started."
+        },
+        {
+          "start_s": 12.96,
+          "text": "You couldn't come back."
+        },
+        {
+          "start_s": 14.56,
+          "text": "And the performance suffered because of it."
+        },
+        {
+          "start_s": 17.71,
+          "text": "You've probably replayed that moment as a failure."
+        },
+        {
+          "start_s": 20.99,
+          "text": "What if you replayed it as a training opportunity instead?"
+        },
+        {
+          "start_s": 24.63,
+          "text": "You cannot achieve greatness without mistakes."
+        },
+        {
+          "start_s": 28.03,
+          "text": "The question isn't whether you make errors."
+        },
+        {
+          "start_s": 30.83,
+          "text": "Bill Bezick puts it this way."
+        },
+        {
+          "start_s": 32.87,
+          "text": "You cannot achieve greatness without mistakes."
+        },
+        {
+          "start_s": 35.55,
+          "text": "The question isn't whether you make errors."
+        },
+        {
+          "start_s": 37.95,
+          "text": "The question is whether you're big enough to accept them,"
+        },
+        {
+          "start_s": 40.63,
+          "text": "learn from them, and refuse to let them define you."
+        },
+        {
+          "start_s": 44.11,
+          "text": "That's what we're doing today."
+        },
+        {
+          "start_s": 45.87,
+          "text": "Retrospective reframing."
+        },
+        {
+          "start_s": 48.47,
+          "text": "Not pretending that bad moments didn't happen."
+        },
+        {
+          "start_s": 51.67,
+          "text": "Updating your brain's response to it"
+        },
+        {
+          "start_s": 53.55,
+          "text": "with the tools you now have."
+        },
+        {
+          "start_s": 55.93,
+          "text": "Every time you do this, that memory loses a little more"
+        },
+        {
+          "start_s": 59.21,
+          "text": "of its charge."
+        },
+        {
+          "start_s": 60.61,
+          "text": "And the next time something similar happens in competition,"
+        },
+        {
+          "start_s": 63.89,
+          "text": "your brain looks for the train response,"
+        },
+        {
+          "start_s": 66.29,
+          "text": "not the old panic pattern."
+        },
+        {
+          "start_s": 69.46,
+          "text": "Think of a specific moment."
+        },
+        {
+          "start_s": 72.1,
+          "text": "One that still has some weight to it."
+        },
+        {
+          "start_s": 74.54,
+          "text": "This caused you a lot of pain, a lot of anguish."
+        },
+        {
+          "start_s": 77.38,
+          "text": "Oh, next on your screen, you're going to walk right through it."
+        }
+      ]
+    },
+    {
+      "type": "prompt_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Describe the moment — the situation, what happened, what your mind did, and how it affected your performance.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "At what exact point did the spiral begin? What was the first thought that started the chain?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "With the tools you have now — your reset word, your reset protocol, your focus anchor, your If-Then plan — what would you have done differently? Walk through it step by step.",
+          "min_entry_seconds": 0
+        }
+      ],
+      "summary": {
+        "display": "all",
+        "header": "",
+        "hold_seconds": 0
+      }
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_19/lesson_19_seg_02.mp3"
+      ],
+      "total_audio_seconds": 15.46,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "that moment just became a rep. The next time something like that arrives in competition,"
+        },
+        {
+          "start_s": 6.06,
+          "text": "your brain already has a response. You've been there. And now you come out the other side."
+        },
+        {
+          "start_s": 12.38,
+          "text": "Now that you're finished, day 19 is complete."
+        }
+      ]
+    }
+  ]
+}

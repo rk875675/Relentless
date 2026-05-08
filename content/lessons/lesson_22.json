@@ -1,0 +1,162 @@
+{
+  "lesson_number": 22,
+  "title": "Visualization — See the Outcome",
+  "program_version": "v1",
+  "day_number": 22,
+  "mac_categories": [
+    "commitment"
+  ],
+  "coach": "Coach Grant",
+  "duration_seconds": 280,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_22/lesson_22_seg_01.mp3"
+      ],
+      "total_audio_seconds": 59.61,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "Today we start with visualization and this was one of the highest leverage tools in the entire program."
+        },
+        {
+          "start_s": 8.0,
+          "text": "Research shows that mental imagery activates the same neural pathways as physical execution."
+        },
+        {
+          "start_s": 16.32,
+          "text": "Your brain doesn't cleanly distinguish between a vivid visualization and the real thing."
+        },
+        {
+          "start_s": 23.38,
+          "text": "Every visualization rep is a real training rep."
+        },
+        {
+          "start_s": 27.64,
+          "text": "I build custom visualization scripts for every athlete I coach one on one, built specifically around your sport position and competitive scenarios."
+        },
+        {
+          "start_s": 36.64,
+          "text": "We start with outcome visualization."
+        },
+        {
+          "start_s": 38.64,
+          "text": "You need to be able to see yourself succeeding before you can train yourself to execute the process that gives you there."
+        },
+        {
+          "start_s": 45.67,
+          "text": "The more sensory detail you build, the sights, the sounds, the physical sensations, the more powerful it becomes."
+        },
+        {
+          "start_s": 53.67,
+          "text": "On your screen we start with one breath and then you're going to close your eyes and build the scene."
+        }
+      ]
+    },
+    {
+      "type": "timed_exercise",
+      "duration_seconds": 16,
+      "interactive_model": "box_breathing",
+      "visual_cues": [
+        "One full cycle. Settle in.",
+        "Follow the circle."
+      ],
+      "steps": [
+        {
+          "text": "Inhale",
+          "duration_seconds": 4,
+          "haptic": "heavy"
+        },
+        {
+          "text": "Hold",
+          "duration_seconds": 4,
+          "haptic": "light"
+        },
+        {
+          "text": "Exhale",
+          "duration_seconds": 4,
+          "haptic": "heavy"
+        },
+        {
+          "text": "Hold",
+          "duration_seconds": 4,
+          "haptic": "light"
+        }
+      ]
+    },
+    {
+      "type": "prompt_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Close your eyes. Place yourself in your next competition. Build every detail of the environment.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "What do you hear? The crowd, your teammates, the sounds specific to your sport.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Feel your body. What does it feel like to be moving well? What does that sensation feel like?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "See the moment — the execution, the result. Watch yourself succeed. Hold it.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "How does it feel when it happens? Stay there.",
+          "min_entry_seconds": 0
+        }
+      ],
+      "summary": {
+        "display": "all",
+        "header": "",
+        "hold_seconds": 0
+      }
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_22/lesson_22_seg_02.mp3"
+      ],
+      "total_audio_seconds": 19.7,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "Your brain just treated that as a real performance rep."
+        },
+        {
+          "start_s": 3.78,
+          "text": "Do this before every competition."
+        },
+        {
+          "start_s": 6.23,
+          "text": "Build the image until it feels familiar."
+        },
+        {
+          "start_s": 8.87,
+          "text": "Because when it's familiar, it's less threatening."
+        },
+        {
+          "start_s": 12.31,
+          "text": "And when it's less threatening, you compete free."
+        },
+        {
+          "start_s": 16.44,
+          "text": "Hit the journal and after you finish, day 22 is complete."
+        }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "How vivid was the visualization? What detail made it feel most real — and what was hardest to hold?"
+    }
+  ]
+}

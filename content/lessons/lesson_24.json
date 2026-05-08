@@ -1,0 +1,197 @@
+{
+  "lesson_number": 24,
+  "title": "Raise Your Bottom Line",
+  "program_version": "v1",
+  "day_number": 24,
+  "mac_categories": [
+    "commitment"
+  ],
+  "coach": "Coach Grant",
+  "duration_seconds": 231,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_24/lesson_24_seg_01.mp3"
+      ],
+      "total_audio_seconds": 86.1,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "They 24 most athletes aim for perfection."
+        },
+        {
+          "start_s": 4.68,
+          "text": "And I understand why, but perfection as a standard"
+        },
+        {
+          "start_s": 8.12,
+          "text": "is actually one of the most damaging things"
+        },
+        {
+          "start_s": 10.52,
+          "text": "you can chase because the gap between your best"
+        },
+        {
+          "start_s": 13.64,
+          "text": "and your average becomes a constant source of shame."
+        },
+        {
+          "start_s": 18.38,
+          "text": "Here's a better target."
+        },
+        {
+          "start_s": 19.98,
+          "text": "Raise your bottom line."
+        },
+        {
+          "start_s": 23.1,
+          "text": "Here's what that means."
+        },
+        {
+          "start_s": 24.62,
+          "text": "Every athlete has a range."
+        },
+        {
+          "start_s": 26.94,
+          "text": "They're best days and they're worst days."
+        },
+        {
+          "start_s": 29.82,
+          "text": "The question isn't how high your ceiling is."
+        },
+        {
+          "start_s": 32.56,
+          "text": "The question is, how high is your floor?"
+        },
+        {
+          "start_s": 37.19,
+          "text": "If your worst competitive performance"
+        },
+        {
+          "start_s": 39.35,
+          "text": "is operating at 60% of your capability,"
+        },
+        {
+          "start_s": 42.59,
+          "text": "that's your bottom line."
+        },
+        {
+          "start_s": 44.62,
+          "text": "And what I've seen working with athletes at every level"
+        },
+        {
+          "start_s": 46.94,
+          "text": "is that the ones who compound over time"
+        },
+        {
+          "start_s": 50.02,
+          "text": "are the ones who commit to the fundamentals so consistently"
+        },
+        {
+          "start_s": 54.22,
+          "text": "that their floor rises, not their ceiling, their floor."
+        },
+        {
+          "start_s": 58.76,
+          "text": "Their worst days become 75%, then 85%."
+        },
+        {
+          "start_s": 64.16,
+          "text": "That compounding happens not through heroic efforts"
+        },
+        {
+          "start_s": 67.32,
+          "text": "on game day."
+        },
+        {
+          "start_s": 68.52,
+          "text": "It happens through the daily behaviors."
+        },
+        {
+          "start_s": 70.88,
+          "text": "The routine, the evidence log, the mental reps"
+        },
+        {
+          "start_s": 74.12,
+          "text": "that you build when nobody's watching."
+        },
+        {
+          "start_s": 77.02,
+          "text": "The commitment isn't to be perfect."
+        },
+        {
+          "start_s": 79.26,
+          "text": "It's to be reliable."
+        },
+        {
+          "start_s": 81.7,
+          "text": "On your screen, you're gonna look at your current floor"
+        },
+        {
+          "start_s": 84.14,
+          "text": "and commit to raising it."
+        }
+      ]
+    },
+    {
+      "type": "prompt_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Honestly — what does your worst competitive performance look like right now? Not your fear of what it could be. What does it actually look like on a bad day?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "What are the specific daily behaviors that, if you did them consistently, would raise that floor? Not the big things — the small, repeatable ones.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Commit to one behavior from that list that you will do every single day for the rest of this program — not because you feel like it, but because that's how the floor rises.",
+          "min_entry_seconds": 0
+        }
+      ],
+      "summary": {
+        "display": "all",
+        "header": "",
+        "hold_seconds": 0
+      }
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_24/lesson_24_seg_02.mp3"
+      ],
+      "total_audio_seconds": 10.74,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "Commit to your worst day being good enough."
+        },
+        {
+          "start_s": 3.08,
+          "text": "Because when your floor is solid,"
+        },
+        {
+          "start_s": 4.88,
+          "text": "your ceiling takes care of itself."
+        },
+        {
+          "start_s": 7.12,
+          "text": "Go hit the journal and when you finish,"
+        },
+        {
+          "start_s": 9.24,
+          "text": "day 24 is complete."
+        }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "What would change about how you compete if you stopped chasing your best day and started committing to your most reliable day?"
+    }
+  ]
+}

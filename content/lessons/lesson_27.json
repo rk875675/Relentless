@@ -1,0 +1,125 @@
+{
+  "lesson_number": 27,
+  "title": "What's Next?",
+  "program_version": "v1",
+  "day_number": 27,
+  "mac_categories": [
+    "commitment"
+  ],
+  "coach": "Coach Grant",
+  "duration_seconds": 166,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_27/lesson_27_seg_01.mp3"
+      ],
+      "total_audio_seconds": 77.38,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "day 27. I want to leave you with a question that I want you to carry for the rest of your career."
+        },
+        {
+          "start_s": 6.78,
+          "text": "What's next? Not what did I achieve? What's next? Here's why this matters. One of the biggest"
+        },
+        {
+          "start_s": 16.27,
+          "text": "performance killers in sport is complacency after success. You achieve something, you make the team,"
+        },
+        {
+          "start_s": 24.03,
+          "text": "you get the starting spot, you hit a personal best, and without realizing it,"
+        },
+        {
+          "start_s": 28.43,
+          "text": "your standards quietly drop. Because part of your brain thinks the job is done."
+        },
+        {
+          "start_s": 33.95,
+          "text": "The what's next habit prevents that. It builds the mindset of continuous growth."
+        },
+        {
+          "start_s": 40.27,
+          "text": "Of setting new limits the moment you reach the old ones. Of understanding that achievement is"
+        },
+        {
+          "start_s": 44.91,
+          "text": "not a destination, it's a direction. The athletes who sustain elite performance over years and"
+        },
+        {
+          "start_s": 51.54,
+          "text": "seasons are not the ones who were satisfied with what they built. They were the ones who used"
+        },
+        {
+          "start_s": 56.98,
+          "text": "each achievement as a launching pad for the next standard. You're three days from completing"
+        },
+        {
+          "start_s": 64.16,
+          "text": "this whole program. And the most important thing that can tell you is this. Finishing is not the goal."
+        },
+        {
+          "start_s": 70.4,
+          "text": "The next chapter is on your screen. You're going to answer the prompted question."
+        }
+      ]
+    },
+    {
+      "type": "prompt_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "What have you built over the last 27 days that you didn't have when you started?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "What is the next standard you're committing to? Not a wish — a specific, behavioral commitment that starts the day after this program ends.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "What's next? Write it as a declaration. 'After this program, I commit to...'",
+          "min_entry_seconds": 0
+        }
+      ],
+      "summary": {
+        "display": "all",
+        "header": "",
+        "hold_seconds": 0
+      }
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_27/lesson_27_seg_02.mp3"
+      ],
+      "total_audio_seconds": 14.06,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "What's next?"
+        },
+        {
+          "start_s": 2.13,
+          "text": "Keep asking that question."
+        },
+        {
+          "start_s": 4.13,
+          "text": "Every achievement, every season, every milestone."
+        },
+        {
+          "start_s": 7.16,
+          "text": "The answer to that question is where the growth lives."
+        },
+        {
+          "start_s": 10.16,
+          "text": "Now that you're finished, day 27 is complete."
+        }
+      ]
+    }
+  ]
+}

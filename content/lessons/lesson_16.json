@@ -1,0 +1,182 @@
+{
+  "lesson_number": 16,
+  "title": "The Traffic Light System",
+  "program_version": "v1",
+  "day_number": 16,
+  "mac_categories": [
+    "mindfulness"
+  ],
+  "coach": "Coach Grant",
+  "duration_seconds": 259,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_16/lesson_16_seg_01.mp3"
+      ],
+      "total_audio_seconds": 82.76,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "Day 16, one of the most practical tools I've ever come across in sports psychology, comes"
+        },
+        {
+          "start_s": 7.0,
+          "text": "from the great Bill Bessie."
+        },
+        {
+          "start_s": 9.76,
+          "text": "He calls it the traffic light system, green, amber, red."
+        },
+        {
+          "start_s": 15.76,
+          "text": "Green is where you want to compete, relaxed in the flow."
+        },
+        {
+          "start_s": 20.6,
+          "text": "System one is running the show."
+        },
+        {
+          "start_s": 22.56,
+          "text": "You're executing without overthinking."
+        },
+        {
+          "start_s": 25.56,
+          "text": "Your body trusts your training."
+        },
+        {
+          "start_s": 27.88,
+          "text": "This is what flow state looks like."
+        },
+        {
+          "start_s": 30.38,
+          "text": "Amber or yellow is the warning state."
+        },
+        {
+          "start_s": 33.26,
+          "text": "You're starting to feel the fatigue, the frustration, the pressure, and your focus is starting"
+        },
+        {
+          "start_s": 37.9,
+          "text": "to drift."
+        },
+        {
+          "start_s": 39.42,
+          "text": "You're not in the red yet, but you're heading there."
+        },
+        {
+          "start_s": 42.18,
+          "text": "So yellow are amber is where the tools matter most."
+        },
+        {
+          "start_s": 45.66,
+          "text": "Because if you catch yourself here, you can course correct before the spiral starts."
+        },
+        {
+          "start_s": 51.1,
+          "text": "That is where performance goes to die, dominated by a negative self-talk, poor decisions,"
+        },
+        {
+          "start_s": 56.66,
+          "text": "emotional reactions instead of train responses."
+        },
+        {
+          "start_s": 60.86,
+          "text": "So once you're in the red in competition, it takes significant effort to come back."
+        },
+        {
+          "start_s": 66.26,
+          "text": "Most athletes don't know where they are."
+        },
+        {
+          "start_s": 68.06,
+          "text": "They just feel bad and can't explain why."
+        },
+        {
+          "start_s": 70.9,
+          "text": "The traffic light gives you a language for your own psychological state and a plan for"
+        },
+        {
+          "start_s": 75.54,
+          "text": "each one."
+        },
+        {
+          "start_s": 77.27,
+          "text": "On your screen, you're going to learn what each state looks and feels like specifically"
+        },
+        {
+          "start_s": 81.87,
+          "text": "for you."
+        }
+      ]
+    },
+    {
+      "type": "prompt_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Describe what GREEN feels like for you in competition — physically, mentally, emotionally. What are the specific signs that you are in your optimal performance state?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Describe AMBER — the warning signs that tell you your state is slipping. What do you notice first? Is it physical tension, a specific thought, a change in your breathing?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Describe RED — what it looks and feels like when you've lost the mental battle. What are the unmistakable signs for you specifically?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "For AMBER only — when you notice those warning signs, what is your first move? Which tool do you use to bring yourself back before you hit red?",
+          "min_entry_seconds": 0
+        }
+      ],
+      "summary": {
+        "display": "all",
+        "header": "",
+        "hold_seconds": 0
+      }
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_16/lesson_16_seg_02.mp3"
+      ],
+      "total_audio_seconds": 16.72,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "The goal isn't always to be in the green."
+        },
+        {
+          "start_s": 3.45,
+          "text": "That's just not realistic."
+        },
+        {
+          "start_s": 5.41,
+          "text": "The goal is to recognize Amber Yellow before it becomes red"
+        },
+        {
+          "start_s": 10.05,
+          "text": "and to have a tool ready when it does."
+        },
+        {
+          "start_s": 12.75,
+          "text": "Check out the journal in after you finish,"
+        },
+        {
+          "start_s": 14.45,
+          "text": "Day 16 is complete."
+        }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "In your last competition, were you mostly green, amber, or red? At what point did your state shift — and what caused it?"
+    }
+  ]
+}

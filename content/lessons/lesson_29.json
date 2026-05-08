@@ -1,0 +1,158 @@
+{
+  "lesson_number": 29,
+  "title": "Reframe — Turning Adversity Into Fuel",
+  "program_version": "v1",
+  "day_number": 29,
+  "mac_categories": [
+    "acceptance"
+  ],
+  "coach": "Coach Grant",
+  "duration_seconds": 189,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_29/lesson_29_seg_01.mp3"
+      ],
+      "total_audio_seconds": 75.11,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "Day 29, one last reframe, and this one goes the broadest."
+        },
+        {
+          "start_s": 6.89,
+          "text": "The first two reframe exercises were about specific moments."
+        },
+        {
+          "start_s": 11.29,
+          "text": "Today I want you to think bigger."
+        },
+        {
+          "start_s": 13.09,
+          "text": "A period in your athletic career, a season, a stretch of months, maybe longer, where"
+        },
+        {
+          "start_s": 18.81,
+          "text": "it felt like everything was working against you, injuries, a coaching change, losing your"
+        },
+        {
+          "start_s": 24.7,
+          "text": "position, a performance slump you couldn't climb out of."
+        },
+        {
+          "start_s": 29.18,
+          "text": "First athletes carry that period as evidence against themselves."
+        },
+        {
+          "start_s": 33.48,
+          "text": "That's when I found out I wasn't as good as I thought."
+        },
+        {
+          "start_s": 36.36,
+          "text": "That's when things started going wrong."
+        },
+        {
+          "start_s": 39.1,
+          "text": "And here's what I've seen working with athletes who've been through that."
+        },
+        {
+          "start_s": 41.9,
+          "text": "The ones who'd come out on the other side and competed at a higher level, they didn't"
+        },
+        {
+          "start_s": 45.86,
+          "text": "avoid the adversity."
+        },
+        {
+          "start_s": 47.82,
+          "text": "They extracted from it."
+        },
+        {
+          "start_s": 49.73,
+          "text": "The hard period didn't break them."
+        },
+        {
+          "start_s": 52.01,
+          "text": "It built the part of them that's unbreakable."
+        },
+        {
+          "start_s": 55.32,
+          "text": "You cannot achieve greatness without going through the difficult parts."
+        },
+        {
+          "start_s": 59.44,
+          "text": "The suffering isn't a detour."
+        },
+        {
+          "start_s": 61.76,
+          "text": "It's the training."
+        },
+        {
+          "start_s": 63.67,
+          "text": "Think about your hardest stretch."
+        },
+        {
+          "start_s": 65.99,
+          "text": "Not to relive it to extract what it actually built."
+        },
+        {
+          "start_s": 71.1,
+          "text": "On your screen, go ahead and walk through it more time."
+        }
+      ]
+    },
+    {
+      "type": "prompt_cards",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Describe the hardest stretch of your athletic career. What was happening? What made it difficult?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "What did that period demand of you mentally that nothing else had before?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "What did you prove about yourself by getting through it — even if it didn't feel that way at the time?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Write one sentence: what that period built in you that you now compete with.",
+          "min_entry_seconds": 0
+        }
+      ],
+      "summary": {
+        "display": "all",
+        "header": "",
+        "hold_seconds": 0
+      }
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_29/lesson_29_seg_02.mp3"
+      ],
+      "total_audio_seconds": 14.35,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "That adversity it was an evidence against you. It was the training and it's in your evidence log now"
+        },
+        {
+          "start_s": 7.56,
+          "text": "Not history"
+        },
+        {
+          "start_s": 9.2,
+          "text": "Just ammunition now that you're finished day 29 is complete"
+        }
+      ]
+    }
+  ]
+}

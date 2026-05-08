@@ -1,0 +1,155 @@
+{
+  "lesson_number": 30,
+  "title": "The Evidence",
+  "program_version": "v1",
+  "day_number": 30,
+  "mac_categories": [
+    "mindfulness",
+    "acceptance",
+    "commitment"
+  ],
+  "coach": "Coach Grant",
+  "duration_seconds": 308,
+  "blocks": [
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_30/lesson_30_seg_01.mp3"
+      ],
+      "total_audio_seconds": 86.91,
+      "timed_text": [
+        {
+          "start_s": 0.02,
+          "text": "Day 30 you made it and I want to gloss over that because most people quit somewhere around day eight or 15"
+        },
+        {
+          "start_s": 9.38,
+          "text": "Right when the novelty wears off and it starts feeling like work"
+        },
+        {
+          "start_s": 13.34,
+          "text": "You kept showing up every single day. That is not a small thing"
+        },
+        {
+          "start_s": 19.15,
+          "text": "Think about where you were when you started this"
+        },
+        {
+          "start_s": 21.75,
+          "text": "What you didn't have yet? No reset word no reset protocol no if then plan"
+        },
+        {
+          "start_s": 28.15,
+          "text": "No visualization practice no evidence log no traffic light system no physical anchor"
+        },
+        {
+          "start_s": 34.79,
+          "text": "No language for what was happening in your head when the pressure hit no connection to your why"
+        },
+        {
+          "start_s": 40.74,
+          "text": "You have all of it now not because someone gave you to you"
+        },
+        {
+          "start_s": 45.02,
+          "text": "Because you built it"
+        },
+        {
+          "start_s": 46.46,
+          "text": "Rep by rep day by day"
+        },
+        {
+          "start_s": 48.82,
+          "text": "Lesson by lesson the question. I want you to carry from here forward and the one that keeps athletes going"
+        },
+        {
+          "start_s": 55.89,
+          "text": "After any program ends is this"
+        },
+        {
+          "start_s": 58.81,
+          "text": "What's next not how much did I improve not was it worth it? What's next?"
+        },
+        {
+          "start_s": 66.27,
+          "text": "Take that question into every season competition or every time you feel yourself starting to plateau"
+        },
+        {
+          "start_s": 73.24,
+          "text": "Before you journal one last time. I want you to do one thing"
+        },
+        {
+          "start_s": 76.6,
+          "text": "Open that visualization board"
+        },
+        {
+          "start_s": 78.68,
+          "text": "Look at the athlete you committed to becoming then read your evidence log and see what you've actually done"
+        }
+      ]
+    },
+    {
+      "type": "program_completion",
+      "ambient_audio": "ambient/ambient_music.mp3",
+      "cards": [
+        {
+          "source": "profile.visualization_board",
+          "caption": "Open your visualization board. The athlete you committed to becoming on Day 23. Take your time."
+        },
+        {
+          "source": "profile.evidence_log",
+          "caption": "Now your evidence log. Read it from the beginning. Not to compare — to see."
+        },
+        {
+          "source": "static",
+          "text": "The distance between that board and where you stand right now? That's the work. And you've already started closing it."
+        },
+        {
+          "source": "static",
+          "text": "What's next?"
+        }
+      ]
+    },
+    {
+      "type": "voiceover",
+      "audio_files": [
+        "lesson_30/lesson_30_seg_02.mp3"
+      ],
+      "total_audio_seconds": 41.78,
+      "timed_text": [
+        {
+          "start_s": 0.0,
+          "text": "You don't need a score to know it's changed. You know it and how you showed up to practice"
+        },
+        {
+          "start_s": 4.51,
+          "text": "this week, how you handled the last competition, how quickly you recovered after the last mistake,"
+        },
+        {
+          "start_s": 10.83,
+          "text": "how differently you talked to yourself now than you did 30 days ago. That's the evidence."
+        },
+        {
+          "start_s": 17.06,
+          "text": "Keep the log, run the routine, use the tools, build on why you wrote on day 17."
+        },
+        {
+          "start_s": 25.09,
+          "text": "And when competition gets hard and it will, remember that you've already been to the"
+        },
+        {
+          "start_s": 29.65,
+          "text": "difficult places in here and you came out with a plan every single time. That's it,"
+        },
+        {
+          "start_s": 36.85,
+          "text": "programs over, but your training isn't. Go compete like it."
+        }
+      ]
+    },
+    {
+      "type": "journal_prompt",
+      "prompt": "What is different about the way you think about competing now compared to where you started? What does the next chapter look like — and what's your first move?"
+    }
+  ]
+}

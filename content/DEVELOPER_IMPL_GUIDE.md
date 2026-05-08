@@ -53,6 +53,22 @@ anywhere. Use the next available row in each category.
 | 12  | The Evidence Log                          | `d0000000-0000-0000-0000-000000000012` | 11         | ✅ DONE  |
 | 13  | Building Your Daily Routine               | `d0000000-0000-0000-0000-000000000013` | 12         | ✅ DONE  |
 | 14  | Using Your Anchor In Competition          | `d0000000-0000-0000-0000-000000000014` | 13         | ✅ DONE  |
+| 15  | The Anchor Check                          | `d0000000-0000-0000-0000-000000000015` | 14         | ✅ DONE  |
+| 16  | The Traffic Light System                  | `d0000000-0000-0000-0000-000000000016` | 15         | ✅ DONE  |
+| 17  | First Things First                        | `d0000000-0000-0000-0000-000000000017` | 16         | ✅ DONE  |
+| 18  | The If-Then Plan                          | `d0000000-0000-0000-0000-000000000018` | 17         | ✅ DONE  |
+| 19  | Reframe — When Your Mind Broke            | `d0000000-0000-0000-0000-000000000019` | 18         | ✅ DONE  |
+| 20  | Embracing the Suffer                      | `d0000000-0000-0000-0000-000000000020` | 19         | ✅ DONE  |
+| 21  | The Fighter Mindset                       | `d0000000-0000-0000-0000-000000000021` | 20         | ✅ DONE  |
+| 22  | Visualization — See the Outcome           | `d0000000-0000-0000-0000-000000000022` | 21         | ✅ DONE  |
+| 23  | Your Visualization Board                  | `d0000000-0000-0000-0000-000000000023` | 22         | ✅ DONE  |
+| 24  | Raise Your Bottom Line                    | `d0000000-0000-0000-0000-000000000024` | 23         | ✅ DONE  |
+| 25  | The Mistake Protocol                      | `d0000000-0000-0000-0000-000000000025` | 24         | ✅ DONE  |
+| 26  | Reframe — What You Would Do Differently   | `d0000000-0000-0000-0000-000000000026` | 25         | ✅ DONE  |
+| 27  | What's Next?                              | `d0000000-0000-0000-0000-000000000027` | 26         | ✅ DONE  |
+| 28  | Identity Under Pressure                   | `d0000000-0000-0000-0000-000000000028` | 27         | ✅ DONE  |
+| 29  | Reframe — Turning Adversity Into Fuel     | `d0000000-0000-0000-0000-000000000029` | 28         | ✅ DONE  |
+| 30  | The Evidence                              | `d0000000-0000-0000-0000-000000000030` | 29         | ✅ DONE  |
 
 **Sort order pattern:** 0-indexed by day number (Day 1 = 0, Day 2 = 1, …)
 
@@ -337,6 +353,68 @@ are tap-to-advance. Used in WOD Day 7 (focus-anchor selection + hold).
 - `continue_label` — button label that ends the block
 - Saved to the journal entry as `Anchor: <typed value>`
 
+### `multi_field_entry`
+Fixed list of labelled fields — some descriptive (no input), some requiring text entry — presented as a single screen with a Save button. **Tap-to-advance only**, no min-time gate. Used in WOD Days 9, 12, 13, 14 (reset builder, evidence log entry, daily routine builder, anchor-in-competition builder).
+
+```json
+{
+  "type": "multi_field_entry",
+  "ambient_audio": "ambient/ambient_music.mp3",
+  "header": "Build Your 30-Second Reset",
+  "fields": [
+    {
+      "label": "Your breath — one box breath. 4 seconds in, hold 4, out 4, hold 4. This is your default.",
+      "input": false
+    },
+    {
+      "label": "Your physical cue — what movement signals the reset?",
+      "input": true
+    },
+    {
+      "label": "Your word — one word that brings you back to the present moment.",
+      "input": true
+    }
+  ],
+  "submit_label": "Save",
+  "summary_header": "Build Your 30-Second Reset",
+  "continue_label": "Continue"
+}
+```
+
+- `header` — title shown at the top of the screen
+- `fields` — ordered list of field objects; `input: false` renders as read-only descriptive text, `input: true` renders as an editable text field
+- `submit_label` — Save button label
+- `summary_header` — header shown on the post-save summary screen
+- `continue_label` — button label on the summary screen
+- All entered field values are appended to the journal entry under their labels
+
+### `physiological_sigh`
+Interactive guided breathing block: user follows a double-inhale + long-exhale cycle. Can be repeated as many times as needed; user taps Done when ready. Used in WOD Day 11 (The Physiological Sigh).
+
+```json
+{
+  "type": "physiological_sigh",
+  "first_inhale_seconds": 3,
+  "sneak_inhale_seconds": 1,
+  "exhale_seconds": 8,
+  "phase_cues": {
+    "first_inhale": "Breathe in fully through your nose.",
+    "sneak_inhale": "Sneak in one more small breath on top.",
+    "exhale": "Slow release through your mouth. All the way out."
+  },
+  "done_label": "Done",
+  "estimated_duration_seconds": 60
+}
+```
+
+- `first_inhale_seconds` — duration of the primary inhale phase
+- `sneak_inhale_seconds` — duration of the secondary top-up inhale phase
+- `exhale_seconds` — duration of the long exhale phase
+- `phase_cues` — verbatim on-screen coaching text for each of the three phases
+- `done_label` — label for the button that ends the block (user can tap after completing at least one cycle)
+- `estimated_duration_seconds` — used for lesson duration estimate only; actual time is user-paced
+- No haptics defined for this type (the phases are visually cued by the on-screen text transitions)
+
 ### `flash_cards`
 Tap-to-flip cards. User taps card to reveal back, taps Next to advance.
 Ambient music plays. All 3 MAC definitions in Day 1 use this.
@@ -498,6 +576,61 @@ Task-selection screen followed by a full-screen countdown ring. Used in C-03.
 - `task_list` — scrollable list of suggested tasks; user taps one to select before starting
 - `completion_message` — text shown on the completion screen after the timer finishes
 - `completion_hold_seconds` — hold time on the completion screen before journal prompt appears
+
+### `visualization_board`
+In-app canvas builder where the athlete adds text (goals, identity statements, Core Why from Day 17) and selects or uploads images, then arranges them freely. The completed board is saved to the athlete's profile and displayed as a persistent widget on the app home screen. Used in WOD Day 23.
+
+**UI implementation required** — requires canvas renderer, image upload/library picker, profile storage, and home screen widget. Until implemented, the block renders a placeholder screen.
+
+```json
+{
+  "type": "visualization_board",
+  "ambient_audio": "ambient/ambient_music.mp3",
+  "prompt": "Build a picture of the athlete you're committing to becoming. Your goals. Your why. Your future. Make it specific enough that looking at it every day means something.",
+  "pull_from_profile": ["identity_statement", "core_why"],
+  "save_to_profile": true
+}
+```
+
+- `prompt` — verbatim on-screen instruction shown above the canvas
+- `pull_from_profile` — array of profile field keys whose saved values are offered as pre-populated text tiles on the canvas (currently `identity_statement` and `core_why`)
+- `save_to_profile` — when true the completed board is persisted to the athlete's profile and shown on the home screen widget
+
+### `program_completion`
+Sequential full-screen cards that surface the athlete's own profile data inline: (1) their visualization board at full size, (2) their Evidence Log entries displayed chronologically, (3) any number of static motivational text cards. Used in WOD Day 30.
+
+**UI implementation required** — reads profile data at render time; renders the board and log inline within the lesson player. Until implemented, shows static text cards only.
+
+```json
+{
+  "type": "program_completion",
+  "ambient_audio": "ambient/ambient_music.mp3",
+  "cards": [
+    {
+      "source": "profile.visualization_board",
+      "caption": "Open your visualization board. The athlete you committed to becoming on Day 23. Take your time."
+    },
+    {
+      "source": "profile.evidence_log",
+      "caption": "Now your evidence log. Read it from the beginning. Not to compare — to see."
+    },
+    {
+      "source": "static",
+      "text": "The distance between that board and where you stand right now? That's the work. And you've already started closing it."
+    },
+    {
+      "source": "static",
+      "text": "What's next?"
+    }
+  ]
+}
+```
+
+- `cards` — ordered array of card objects; each card has a `source` field:
+  - `"profile.visualization_board"` — renders the athlete's saved visualization board full-screen; `caption` is shown below
+  - `"profile.evidence_log"` — renders all Evidence Log entries (from journal entries tagged as evidence log) chronologically; `caption` is shown above
+  - `"static"` — renders the `text` value as a full-screen motivational text card; no user entry
+- Ambient music plays throughout; user taps to advance each card
 
 ### `journal_prompt`
 Full-screen journal entry. User writes freely, then saves and finishes the lesson.
@@ -719,10 +852,12 @@ full URL.
 
 The following block types are defined in content but need renderer implementation in the mobile app:
 
-| Block type        | Used in      | Notes |
-|-------------------|--------------|-------|
-| `prompt_cards`    | A-03 – A-06, C-01 | Sequential flip cards with timed text entry and summary screen |
-| `bubble_sort`     | A-01         | Animated bubble entry → tap-to-pop → flash-card action phase |
-| `two_column_sort` | A-02         | Split-screen sort → close uncontrollable column → action prompts |
-| `list_builder`    | C-02         | Stacking list entry with profile save |
-| `countdown_timer` | C-03         | Task selector + 60 s countdown ring + completion hold |
+| Block type             | Used in              | Notes |
+|------------------------|----------------------|-------|
+| `prompt_cards`         | A-03 – A-06, C-01, WOD Days 8–30 | Sequential flip cards with timed text entry and summary screen |
+| `bubble_sort`          | A-01                 | Animated bubble entry → tap-to-pop → flash-card action phase |
+| `two_column_sort`      | A-02                 | Split-screen sort → close uncontrollable column → action prompts |
+| `list_builder`         | C-02                 | Stacking list entry with profile save |
+| `countdown_timer`      | C-03                 | Task selector + 60 s countdown ring + completion hold |
+| `visualization_board`  | WOD Day 23           | Free-form canvas builder; board saved to profile + home screen widget |
+| `program_completion`   | WOD Day 30           | Profile-data cards: visualization board + evidence log + static text |
