@@ -160,7 +160,7 @@ JOURNAL PROMPT  (optional unless your day design requires it)
 
 The **VOICEOVER** text must **match** what you **record** on each **mp3**. Integration aligns on-screen lines to the audio (internal tools such as Whisper may be used). **Clean** voice track, **no** loud music on the coach file; exercises often use **separate** ambient in the app.
 
-For the in-app `timed_text` display, keep each cue short enough to read as **1–2 on-screen lines**. If a spoken sentence is too long, do **not** split it into extra timed cues just to fit the screen; keep the existing timing slot and use a short display phrase that preserves the meaning. Do not paraphrase exercise prompts, option labels, step text, or journal prompts.
+For the in-app `timed_text` display, each cue must be a **complete sentence or natural clause** from the spoken audio — never a mid-sentence fragment. Target **1–2 on-screen lines** per cue; up to **3 lines** is acceptable for a complete sentence. Minimize 4-line cues. If a sentence is genuinely too long to read comfortably, **minimally paraphrase** it to 2–3 lines — keep as many verbatim words as possible and preserve the coach's voice and rhythm. Do **not** fragment a sentence mid-stream just to hit a character limit. The `start_s` for each cue is the timestamp of the first spoken word of that sentence in the audio. Do not paraphrase exercise prompts, option labels, step text, or journal prompts.
 
 ### On-screen text: exercise
 
@@ -345,6 +345,142 @@ biggest weakness right now? Why?
 3. Fill the **template** in Docs → **export PDF**; record **mp3s** (§7).  
 4. Upload **PDF + audio** to **Google Drive**.  
 5. Run **§8** checklist.  
+
+---
+
+## 12. Developer integration workflow (for the engineer / AI implementing new content)
+
+This section documents the **exact process** for implementing a new batch of WOD days from coach-delivered scripts and audio files. Follow every step in order.
+
+---
+
+### 12a. What arrives from the coach
+
+| Deliverable | Format | Notes |
+|---|---|---|
+| Script | `.md` or `.pdf` per day | Verbatim exercise copy, voiceover text, journal prompts |
+| Audio | `lesson_NN_seg_SS.mp3` flat in one folder | One file per voiceover segment; some days have 1 segment (coach recorded combined), most have 2 |
+
+Check for missing audio segments before starting. If a day is missing a `seg_02`, confirm with the coach whether the outro was recorded as part of `seg_01` — if so, merge both voiceover blocks into a single block pointing at `seg_01`.
+
+---
+
+### 12b. Script → JSON (lesson files)
+
+For each day create `content/lessons/lesson_NN.json` following the same structure as existing files (e.g. `content/lessons/lesson_15.json`). Key decisions:
+
+**Exercise type mapping (script → block type)**
+
+| Script says | Block type in JSON |
+|---|---|
+| Flash Cards + Text Entry | `prompt_cards` |
+| Breath Circle (one cycle as warm-up) | `timed_exercise` with `"interactive_model": "box_breathing"`, `"duration_seconds": 16` |
+| Physiological Sigh | `physiological_sigh` |
+| Reset builder / field form | `multi_field_entry` |
+| Visualization Board | `visualization_board` *(new — UI pending)* |
+| Program completion review (Day 30) | `program_completion` *(new — UI pending)* |
+| Free reflection entry | `prompt_cards` (1 card) |
+
+For `prompt_cards`, always set `"intro_hold_seconds": 0` and `"min_entry_seconds": 0` on every card. Use `"summary": {"display": "all", "header": "", "hold_seconds": 0}` for multi-card exercises; `"display": "last"` for single-card or drill-style (e.g. Day 25 mistake protocol).
+
+Use **placeholder** `timed_text` values (one entry at `start_s: 0.0`) and the approximate `total_audio_seconds` from the script annotations — Whisper replaces these in step 12d.
+
+Refer to `content/DEVELOPER_IMPL_GUIDE.md` §3 for the full block type reference including all fields.
+
+---
+
+### 12c. Upload audio to Supabase Storage
+
+Use the Python REST API upload script (NOT `supabase storage cp`, which requires an unreliable `--experimental` flag). Template: `scripts/upload_audio_15_30.py`. Adapt for the new batch:
+
+```python
+SUPABASE_URL = "https://tnetahaviblrrjixzvbd.supabase.co"
+SERVICE_ROLE_KEY = "..."  # from: npx supabase projects api-keys
+BUCKET = "lesson-audio"
+
+UPLOADS = [
+    ("lesson_31_seg_01.MP3", "lesson_31/lesson_31_seg_01.mp3"),
+    ("lesson_31_seg_02.MP3", "lesson_31/lesson_31_seg_02.mp3"),
+    # ...
+]
+```
+
+The storage path must match the `audio_files` value in the lesson JSON exactly (lowercase `.mp3`, `lesson_NN/` subfolder).
+
+---
+
+### 12d. Generate timed_text with Whisper
+
+Template: `scripts/gen_sentence_cues_15_30.py`. Adapt for the new batch. Key settings that must not change:
+
+```python
+model = WhisperModel("base.en", device="cpu", compute_type="int8")
+segments, _info = model.transcribe(
+    local_path,
+    word_timestamps=True,
+    language='en',
+    beam_size=5,
+    vad_filter=False,    # grouping is handled by the sentence algorithm
+)
+```
+
+The sentence grouping algorithm commits a cue when: (a) the last accumulated word ends in `.`, `?`, or `!`, OR (b) there is a silence gap ≥ `GAP_THRESHOLD` (1.2 s) between words. `start_s` is the start time of the first word in each group.
+
+After running, the script prints all cues over `MAX_CHARS` (120). Add minimal paraphrases to `OVERRIDES = {}` keyed by `(day, start_s)`, then re-run. Keep verbatim words wherever possible — the goal is to paraphrase as little as the constraint requires.
+
+---
+
+### 12e. Enforce the 75-char display limit
+
+After Whisper, run `scripts/check_line_lengths.py` (set `MAX_CHARS = 75`). Any cue over 75 chars needs a paraphrase. Template: `scripts/fix_cue_length_15_30.py`. Adapt the `OVERRIDES` dict for the new days.
+
+**75 chars ≈ 3 lines at ~25 chars/line on iPhone.** This is the hard maximum — no cue should ever render as 4+ lines.
+
+Rules:
+- Keep complete sentences / natural clauses — never cut a sentence mid-stream
+- Paraphrase minimally; keep as many verbatim words as possible
+- A 76-77 char limit miss from a previous override means the override itself needs to be shorter
+- Re-run `check_line_lengths.py` after each fix pass until the count is zero
+
+**Day 15 edge case:** both `seg_01` and `seg_02` have a long cue at `start_s = 0.0`. Use a list value for that key and apply in segment order:
+```python
+(15, 0.0): ["replacement for seg_01 cue", "replacement for seg_02 cue"]
+```
+
+---
+
+### 12f. Create the SQL migration
+
+Migration naming: `YYYYMMDDHHMMSS_wod_days_NN_through_MM.sql`
+
+Each lesson needs:
+1. `INSERT INTO public.lessons … ON CONFLICT DO UPDATE` with full `content_blocks` JSONB
+2. `DELETE FROM public.lesson_categories WHERE lesson_id IN (…)` then re-insert
+3. `UPDATE public.program_schedule SET lesson_id = … WHERE program_version = 'v1' AND day_number = N`
+
+SQL escaping: all `'` in the JSONB string must be doubled (`''`). The Python scripts handle this automatically via `sql_escape()`. Do NOT use the CLI `supabase storage cp` — it has `--experimental` issues; use the REST API script instead.
+
+---
+
+### 12g. Push and verify
+
+```
+npx supabase db push
+```
+
+Spot-check with `scripts/spot_check_cues.py` — confirm all cues are natural sentences at correct timestamps.
+
+---
+
+### 12h. Known edge cases
+
+| Situation | Fix |
+|---|---|
+| Coach delivered only 1 audio segment for a 2-voiceover lesson | Merge both voiceover blocks into one block pointing at `seg_01`; scale timed_text across the full duration |
+| Whisper transcribes "Day 16" as "A 16" or similar | Add to `OVERRIDES` with the corrected text |
+| Whisper merges two sentences into one long cue (>120 chars) | Add to `OVERRIDES`; if multiple sentences are merged, condense to the first sentence's key point |
+| Whisper `seg_02` stutter or run-on at the end | Trim trailing fragments in `OVERRIDES`; common pattern is "After you finish [name] is complete" appearing garbled |
+| New exercise type not in block reference | Define the new block type schema in `DEVELOPER_IMPL_GUIDE.md` §3 and flag as "UI implementation required" |
 
 ---
 
