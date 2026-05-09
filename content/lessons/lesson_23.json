@@ -7,101 +7,186 @@
     "commitment"
   ],
   "coach": "Coach Grant",
-  "duration_seconds": 215,
+  "duration_seconds": 225,
   "blocks": [
     {
       "type": "voiceover",
       "audio_files": [
         "lesson_23/lesson_23_seg_01.mp3"
       ],
-      "total_audio_seconds": 76.98,
+      "total_audio_seconds": 106.45,
       "timed_text": [
         {
           "start_s": 0.0,
-          "text": "Day 23. Commitment: directing your behavior toward your values, every day."
+          "text": "A23."
         },
         {
-          "start_s": 9.82,
-          "text": "The most powerful way to stay anchored to your values: make them visible."
+          "start_s": 1.46,
+          "text": "Today we're doing something I do with every athlete I work with."
         },
         {
-          "start_s": 16.42,
-          "text": "Build a picture of the athlete you're becoming — see it every day."
+          "start_s": 13.88,
+          "text": "So I want you to go somewhere most athletes never let themselves go."
         },
         {
-          "start_s": 23.72,
-          "text": "Repeated exposure to a desired image changes what the brain prioritizes."
+          "start_s": 18.42,
+          "text": "Five to ten years from now — the life where the work paid off."
         },
         {
-          "start_s": 38.18,
-          "text": "Your attention starts to organize around what you see consistently."
+          "start_s": 24.78,
+          "text": "Think about that."
         },
         {
-          "start_s": 43.14,
-          "text": "What you see consistently, you move toward."
+          "start_s": 25.58,
+          "text": "Where the goals you've been chasing actually happened."
         },
         {
-          "start_s": 46.4,
-          "text": "This only works if it's real — specific goals, your why, your identity."
+          "start_s": 32.46,
+          "text": "Not a vague idea of success."
         },
         {
-          "start_s": 59.24,
-          "text": "Use Canva, use images, use words — build something that pulls you."
+          "start_s": 35.08,
+          "text": "A very specific detail picture, right?"
         },
         {
-          "start_s": 71.32,
-          "text": "On your screen, you'll find the visualization board tool."
+          "start_s": 39.08,
+          "text": "So think about this."
         },
         {
-          "start_s": 75.74,
-          "text": "Take your time."
+          "start_s": 41.02,
+          "text": "Where are you?"
+        },
+        {
+          "start_s": 42.5,
+          "text": "What does your surroundings look like?"
+        },
+        {
+          "start_s": 45.74,
+          "text": "What do you see?"
+        },
+        {
+          "start_s": 47.96,
+          "text": "What do you smell?"
+        },
+        {
+          "start_s": 50.02,
+          "text": "What do you hear?"
+        },
+        {
+          "start_s": 52.26,
+          "text": "What can you taste?"
+        },
+        {
+          "start_s": 54.46,
+          "text": "What are the specific things you observe that tell you?"
+        },
+        {
+          "start_s": 58.26,
+          "text": "This is it."
+        },
+        {
+          "start_s": 59.96,
+          "text": "This is the life I built."
+        },
+        {
+          "start_s": 61.74,
+          "text": "Sit inside that moment and feel it."
+        },
+        {
+          "start_s": 64.36,
+          "text": "Now what it looks like, what it actually feels like."
+        },
+        {
+          "start_s": 68.6,
+          "text": "Pride, satisfaction, gratitude — you didn't quit when it was hard."
+        },
+        {
+          "start_s": 75.48,
+          "text": "Why is this goal significant to you?"
+        },
+        {
+          "start_s": 77.5,
+          "text": "Why does reaching this version of your life matter?"
+        },
+        {
+          "start_s": 81.08,
+          "text": "Then, rewind."
+        },
+        {
+          "start_s": 83.34,
+          "text": "Come all the way back to today."
+        },
+        {
+          "start_s": 85.86,
+          "text": "The goal is there."
+        },
+        {
+          "start_s": 87.52,
+          "text": "What is one step you can take today that moves the needle?"
+        },
+        {
+          "start_s": 97.08,
+          "text": "On your screen, you'll build this visualization in your journal."
+        },
+        {
+          "start_s": 100.62,
+          "text": "So take your time with each prompt."
+        },
+        {
+          "start_s": 102.76,
+          "text": "This is one of the most important things we've done in this program."
         }
       ]
     },
     {
-      "type": "visualization_board",
+      "type": "prompt_cards",
       "ambient_audio": "ambient/ambient_music.mp3",
-      "prompt": "Build a picture of the athlete you're committing to becoming. Your goals. Your why. Your future. Make it specific enough that looking at it every day means something.",
-      "pull_from_profile": [
-        "identity_statement",
-        "core_why"
+      "cards": [
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Time frame and goal — five to ten years from now, what have you achieved? Write the specific goal and exactly when it happens.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "The environment — describe exactly where you are. What do you see, smell, hear, taste, and observe around you? Build every detail.",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "The feeling — you've reached it. What are the specific emotions you feel knowing you accomplished this? Describe the pride, the satisfaction, the gratitude. Why is this moment significant to you specifically?",
+          "min_entry_seconds": 0
+        },
+        {
+          "intro_hold_seconds": 0,
+          "prompt": "Rewind to today. One step. What is one single thing you can do today that moves the needle toward that moment?",
+          "min_entry_seconds": 0
+        }
       ],
-      "save_to_profile": true
+      "summary": {
+        "display": "all",
+        "header": "",
+        "hold_seconds": 0
+      }
     },
     {
       "type": "voiceover",
       "audio_files": [
         "lesson_23/lesson_23_seg_02.mp3"
       ],
-      "total_audio_seconds": 18.18,
+      "total_audio_seconds": 19.23,
       "timed_text": [
         {
           "start_s": 0.0,
-          "text": "That board lives on your home screen now."
+          "text": "That visualization lives in your journal. Come back to it."
         },
         {
-          "start_s": 2.92,
-          "text": "Look at it every morning before you train."
+          "start_s": 12.14,
+          "text": "The moment you just build, that's what all of this is for."
         },
         {
-          "start_s": 5.34,
-          "text": "Look at it the night before competition."
-        },
-        {
-          "start_s": 7.32,
-          "text": "Look at it when the work gets hard and the results aren't showing up yet."
-        },
-        {
-          "start_s": 11.48,
-          "text": "That's not decoration."
-        },
-        {
-          "start_s": 13.34,
-          "text": "That's a commitment device."
-        },
-        {
-          "start_s": 15.7,
-          "text": "After you finish, day 23 is complete."
+          "start_s": 16.2,
+          "text": "And after you finish, day 23 is complete."
         }
       ]
     }
