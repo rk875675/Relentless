@@ -91,19 +91,22 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
   };
 
   // Only a trusted purchase event (emitted from SuperwallInner after the Apple
-  // sheet was observed) may move an unauthenticated user to signup. Raw
-  // `hasPremiumAccess` / ACTIVE state is not enough because monthly sandbox
-  // sticky subscriptions can emit ACTIVE without a new payment sheet.
+  // sheet was observed) may move a user to signup. Raw `hasPremiumAccess` /
+  // ACTIVE state is not enough because monthly sandbox sticky subscriptions
+  // can emit ACTIVE without a new payment sheet.
+  //
+  // Both authenticated and unauthenticated users go through signup.tsx so the
+  // subscription is synced to the DB before onboarding is marked complete. The
+  // previous session-branch called completeOnboarding() immediately without
+  // awaiting the sync, causing `onboarding_completed=true` + `status='none'`
+  // in the DB for new accounts where the Apple Server API is slow to index the
+  // first transaction — resulting in 403s on every tab API call.
   useEffect(() => {
     return subscribeTrustedPaywallPurchase(() => {
       if (!userOpenedPaywall) return;
-      if (session) {
-        completeOnboarding({ requireUser: true }).catch(() => {});
-      } else {
-        navigateToSignup();
-      }
+      navigateToSignup();
     });
-  }, [userOpenedPaywall, session, completeOnboarding, router, sport, competitionDate]);
+  }, [userOpenedPaywall, router, sport, competitionDate]);
 
   // Authenticated users can still be routed by the normal local entitlement
   // state. Unauthenticated users are intentionally excluded here to prevent

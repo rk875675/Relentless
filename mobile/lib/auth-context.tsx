@@ -85,6 +85,8 @@ type AuthState = {
   isTrackAthlete: boolean;
   entitlementStatus: string | null;
   hasPremiumAccess: boolean;
+  /** True while an optimistic entitlement grant is active and the DB hasn't confirmed the subscription yet. */
+  isOptimisticGrant: boolean;
   signIn: (email: string, password: string) => Promise<SignInResult>;
   signInWithGoogle: () => Promise<SocialSignInResult>;
   signInWithApple: () => Promise<SocialSignInResult>;
@@ -120,6 +122,7 @@ const AuthContext = createContext<AuthState>({
   isTrackAthlete: false,
   entitlementStatus: null,
   hasPremiumAccess: false,
+  isOptimisticGrant: false,
   signIn: async () => ({ ok: false, error: '' }),
   signInWithGoogle: async () => ({ ok: false, error: 'Not in provider.' }),
   signInWithApple: async () => ({ ok: false, error: 'Not in provider.' }),
@@ -149,6 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isTrackAthlete, setIsTrackAthlete] = useState(false);
   const [entitlementStatus, setEntitlementStatus] = useState<string | null>(null);
   const [entitlementExpiresAt, setEntitlementExpiresAt] = useState<string | null>(null);
+  const [isOptimisticGrant, setIsOptimisticGrant] = useState(false);
   const [devPremiumBypass, setDevPremiumBypass] = useState(false);
   /** When true, is_dev accounts behave like non-subscribers for route guard (paywall QA). */
   const [suppressDevPremium, setSuppressDevPremium] = useState(false);
@@ -235,6 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (dbEntitlementActive) optimisticGrantActiveRef.current = false;
       setEntitlementStatus(entStatus);
       setEntitlementExpiresAt(entExpires);
+      setIsOptimisticGrant(false);
     }
 
     // Return effective values so postSignInPath sees the optimistic grant if active.
@@ -586,6 +591,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     await clearOnboardingProgress();
     optimisticGrantActiveRef.current = false;
+    setIsOptimisticGrant(false);
     setIsDevAccount(false);
     setProfileOnboardingCompleted(false);
     setDevReplayOnboarding(false);
@@ -677,6 +683,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const optimisticGrantAccess = useCallback(() => {
     optimisticGrantActiveRef.current = true;
     setSuppressDevPremium(false);
+    setIsOptimisticGrant(true);
     setEntitlementStatus('active');
     setEntitlementExpiresAt(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString());
   }, []);
@@ -739,6 +746,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isTrackAthlete,
       entitlementStatus,
       hasPremiumAccess,
+      isOptimisticGrant,
       signIn,
       signInWithGoogle,
       signInWithApple,

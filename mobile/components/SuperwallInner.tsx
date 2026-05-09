@@ -52,6 +52,35 @@ function extractOriginalTransactionId(params: Record<string, unknown>): string |
   return read(params);
 }
 
+/**
+ * Extract a JWS-signed transaction info string from Superwall's event data.
+ * In some Superwall SDK versions, fields like `storeTransactionId` or
+ * `transactionId` carry the full Apple-signed JWS blob (3 dot-separated
+ * base64url segments). Passing this directly to the server lets it decode
+ * the entitlement locally without calling Apple's App Store Server API,
+ * which is unreliable in the sandbox environment.
+ */
+function extractSignedTransactionInfo(params: Record<string, unknown>): string | undefined {
+  const isJws = (v: unknown): v is string =>
+    typeof v === 'string' && v.split('.').length === 3 && v.length > 50;
+
+  const seen = new Set<unknown>();
+  const read = (v: unknown): string | undefined => {
+    if (!v || typeof v !== 'object' || seen.has(v)) return undefined;
+    seen.add(v);
+    const obj = v as Record<string, unknown>;
+    for (const key of ['signedTransactionInfo', 'storeTransactionId', 'transactionId', 'jwsRepresentation']) {
+      if (isJws(obj[key])) return obj[key] as string;
+    }
+    for (const nested of [obj.transaction, obj.storeTransaction, obj.restoreType, obj.event, obj.params]) {
+      const found = read(nested);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  return read(params);
+}
+
 function SuperwallIdentitySync() {
   const { session } = useAuth();
   const { identify, signOut: superwallSignOut } = useUser();
@@ -138,17 +167,21 @@ function SuperwallPurchaseSync() {
         // not grant locally for those, or both products skip payment.
         const trustedAppleSheetPurchase = sawAppCloseDuringTransaction.current;
         const oid = extractOriginalTransactionId(merged);
+        const signedTx = extractSignedTransactionInfo(merged);
         if (__DEV__ && trustedAppleSheetPurchase && !oid) {
           console.log('[Superwall][purchaseMissingOriginalTransactionId]');
         }
+        if (__DEV__ && trustedAppleSheetPurchase) {
+          console.log('[Superwall][purchase]', { hasOid: Boolean(oid), hasSignedTx: Boolean(signedTx) });
+        }
         if (trustedAppleSheetPurchase) {
           optimisticGrantAccess();
-          emitTrustedPaywallPurchase({ originalTransactionId: oid });
+          emitTrustedPaywallPurchase({ originalTransactionId: oid, signedTransactionInfo: signedTx });
         } else if (__DEV__) {
           console.log('[Superwall][purchaseIgnored]', name, 'without Apple sheet');
         }
         if (trustedAppleSheetPurchase && oid) {
-          syncSubscriptionWithBackend(oid).finally(() => { refreshUserState().catch(() => {}); });
+          syncSubscriptionWithBackend(oid, signedTx).finally(() => { refreshUserState().catch(() => {}); });
         } else if (trustedAppleSheetPurchase) {
           refreshUserState().catch(() => {});
         }

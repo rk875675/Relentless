@@ -42,6 +42,8 @@ const APPLE_STATUS = {
 
 const RestoreBodySchema = z.object({
   originalTransactionId: z.string().min(1).max(256),
+  /** Apple-signed JWS from StoreKit. Used as a fallback when Apple's REST API is unavailable. */
+  signedTransactionInfo: z.string().min(1).max(16384).optional(),
 }).strict();
 
 // ---------------------------------------------------------------------------
@@ -91,7 +93,7 @@ Deno.serve(async (req) => {
     );
   }
 
-  const { originalTransactionId } = parsed.data;
+  const { originalTransactionId, signedTransactionInfo: clientSignedTx } = parsed.data;
 
   const idempotencyKey = req.headers.get("Idempotency-Key");
   if (!idempotencyKey) {
@@ -164,19 +166,33 @@ Deno.serve(async (req) => {
         resolvedEntitlement = transactionResult.entitlement;
         isSandbox = transactionResult.isSandbox;
       } else {
-        console.error("[purchases/restore] Apple verification failed", {
-          requestId,
-          subscriptionStatus: sandboxResult.status,
-          subscriptionErrorCode: sandboxResult.errorCode,
-          transactionStatus: transactionResult.status,
-          transactionErrorCode: transactionResult.errorCode,
-        });
-        return errorResponse(
-          422,
-          "VALIDATION_ERROR",
-          "Purchase could not be verified with Apple",
-          requestId,
-        );
+        // All Apple REST API paths failed. If the client sent the StoreKit-issued
+        // signed transaction info (JWS), decode it as a last-resort fallback.
+        // The JWS is signed by Apple and carries the bundleId — it cannot be
+        // forged without Apple's private key.
+        if (clientSignedTx) {
+          const directResult = resolveEntitlementFromSignedTransaction(clientSignedTx);
+          if (directResult.entitlementStatus !== "none") {
+            resolvedEntitlement = directResult;
+            isSandbox = true;
+            console.warn("[purchases/restore] Used client signedTransactionInfo fallback (Apple API unavailable)", { requestId });
+          }
+        }
+        if (!resolvedEntitlement) {
+          console.error("[purchases/restore] Apple verification failed", {
+            requestId,
+            subscriptionStatus: sandboxResult.status,
+            subscriptionErrorCode: sandboxResult.errorCode,
+            transactionStatus: transactionResult.status,
+            transactionErrorCode: transactionResult.errorCode,
+          });
+          return errorResponse(
+            422,
+            "VALIDATION_ERROR",
+            "Purchase could not be verified with Apple",
+            requestId,
+          );
+        }
       }
     }
   } else {
@@ -188,19 +204,30 @@ Deno.serve(async (req) => {
       resolvedEntitlement = transactionResult.entitlement;
       isSandbox = transactionResult.isSandbox;
     } else {
-      console.error("[purchases/restore] Apple verification failed", {
-        requestId,
-        subscriptionStatus: productionResult.status,
-        subscriptionErrorCode: productionResult.errorCode,
-        transactionStatus: transactionResult.status,
-        transactionErrorCode: transactionResult.errorCode,
-      });
-      return errorResponse(
-        422,
-        "VALIDATION_ERROR",
-        "Purchase could not be verified with Apple",
-        requestId,
-      );
+      // All Apple REST API paths failed. Try the client-provided JWS fallback.
+      if (clientSignedTx) {
+        const directResult = resolveEntitlementFromSignedTransaction(clientSignedTx);
+        if (directResult.entitlementStatus !== "none") {
+          resolvedEntitlement = directResult;
+          isSandbox = false;
+          console.warn("[purchases/restore] Used client signedTransactionInfo fallback (Apple API unavailable)", { requestId });
+        }
+      }
+      if (!resolvedEntitlement) {
+        console.error("[purchases/restore] Apple verification failed", {
+          requestId,
+          subscriptionStatus: productionResult.status,
+          subscriptionErrorCode: productionResult.errorCode,
+          transactionStatus: transactionResult.status,
+          transactionErrorCode: transactionResult.errorCode,
+        });
+        return errorResponse(
+          422,
+          "VALIDATION_ERROR",
+          "Purchase could not be verified with Apple",
+          requestId,
+        );
+      }
     }
   }
 

@@ -29,7 +29,7 @@ function firstParam(v: string | string[] | undefined): string | undefined {
 }
 
 function RouteGuard() {
-  const { session, loading, onboardingComplete, hasPremiumAccess, completeOnboarding } = useAuth();
+  const { session, loading, onboardingComplete, hasPremiumAccess, isOptimisticGrant, completeOnboarding } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const globalParams = useGlobalSearchParams();
@@ -158,14 +158,17 @@ function RouteGuard() {
       router.replace('/(onboarding)/paywall');
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
       router.replace('/(tabs)');
-    } else if (session && !onboardingComplete && hasPremiumAccess && onPaywall) {
-      // Safety net: paywall only. Post-paywall signup handles its own completion in
-      // signup.tsx — running this on signup races finishPostPaywallSetup and can hang.
+    } else if (session && !onboardingComplete && hasPremiumAccess && !isOptimisticGrant && onPaywall) {
+      // Safety net: paywall only, DB-confirmed subscription only (not optimistic grant).
+      // Post-paywall signup handles its own completion in signup.tsx — running this on
+      // signup races finishPostPaywallSetup and can hang. When isOptimisticGrant is true
+      // the purchase hasn't been synced to the DB yet; PaywallSuperwall routes to
+      // signup.tsx which syncs first before completing onboarding.
       completeOnboarding().then(() => router.replace('/(tabs)')).catch(() => {});
     }
 
     setTimeout(hideSplash, 50);
-  }, [session, loading, onboardingComplete, hasPremiumAccess, segments, allowAuthHub, completeOnboarding]);
+  }, [session, loading, onboardingComplete, hasPremiumAccess, isOptimisticGrant, segments, allowAuthHub, completeOnboarding]);
 
   if (!initialLoadDone.current && loading) return null;
 

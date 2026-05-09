@@ -19,7 +19,7 @@ import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth, type SocialSignInResult } from '@/lib/auth-context';
 import { analytics } from '@/lib/analytics';
 import { bustCache } from '@/lib/api-cache';
-import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
+import { fetchJwsForTransaction, restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { clearOnboardingProgress } from '@/lib/onboarding-local-state';
 import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
 import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
@@ -27,19 +27,37 @@ import { supabase } from '@/lib/supabase';
 import { colors, spacing } from '@/lib/theme';
 import { getLastTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
 
-/** expo-iap getAvailablePurchases() can stall in sandbox; cap so we never block the user. */
-const POST_PAYWALL_RESTORE_TIMEOUT_MS = 8_000;
+/**
+ * Per-attempt timeout for a single call to the backend (syncSubscriptionWithBackend
+ * or restorePurchasesViaStoreKit). Must be long enough for the server's own Apple
+ * retry loop to complete: the /purchases/restore edge function retries the Apple
+ * Sandbox Server API up to 3 times with 3 s gaps (~11-14 s total server time).
+ * The previous value of 8 s cut off the server mid-retry; 15 s lets the full
+ * server cycle finish on the very first client attempt.
+ */
+const POST_PAYWALL_RESTORE_TIMEOUT_MS = 15_000;
 
 /**
- * Hard ceiling on the entire post-paywall sync. Raised from 15 s to 22 s to
- * accommodate two delay windows that were added to fix sandbox timing:
- *   • 2 s settle delay before restorePurchasesViaStoreKit (StoreKit can
- *     return empty purchases immediately after Apple Sign In's native sheet)
- *   • 4 s retry delay + 6 s final sync attempt when StoreKit restore fails
- *     (Apple sandbox Server API can take several seconds to index a new
- *     transaction; the retry succeeds once it is indexed)
+ * Hard ceiling on the entire post-paywall sync. Budget breakdown (worst case):
+ *   • 5 s AUTHENTICATED_SETTLE_MS (authenticated path only — spinner already showing)
+ *   • 15 s first sync attempt (server retries Apple up to 3× internally)
+ *   • 2 s settle before restorePurchasesViaStoreKit
+ *   • 15 s second sync attempt via StoreKit (Apple indexed by now)
+ *   • 4 s retry delay + 6 s final attempt (only if StoreKit path also fails)
+ * Total: 5 + 15 + 2 + 15 = 37 s typical; 47 s absolute worst case.
+ * Set to 40 s so the second StoreKit attempt always completes before the hard cap.
  */
-const POST_PAYWALL_TOTAL_TIMEOUT_MS = 22_000;
+const POST_PAYWALL_TOTAL_TIMEOUT_MS = 40_000;
+
+/**
+ * Settle delay before the first sync attempt for authenticated users who
+ * auto-start the post-paywall setup without a natural form-filling pause.
+ * Apple's sandbox Server API can take several seconds to index a brand-new
+ * transaction; this window lets it catch up before the first verify call.
+ * POST_PAYWALL_TOTAL_TIMEOUT_MS is raised by the same amount so the effective
+ * sync window (35 s) stays proportional.
+ */
+const AUTHENTICATED_SETTLE_MS = 5_000;
 
 /** Supabase email sign-up error when the account already exists (retry with password sign-in). */
 function isAccountAlreadyExistsMessage(msg: string): boolean {
@@ -96,6 +114,8 @@ export default function OnboardingSignupScreen() {
   const setupNavigationStarted = useRef(false);
   const setupNavigationRetry = useRef<ReturnType<typeof setInterval> | null>(null);
   const entitlementVerifiedRef = useRef(false);
+  /** Prevents the already-authenticated auto-start effect from firing more than once. */
+  const didAutoStartSetup = useRef(false);
 
   useEffect(() => {
     if (!isPostPaywall || !syncing || setupComplete || setupError) return;
@@ -194,15 +214,32 @@ export default function OnboardingSignupScreen() {
 
       // Prefer the transaction Superwall saw before signup. This matches the
       // Google path's timing better and avoids relying only on sandbox restore.
-      const trustedOriginalTransactionId = getLastTrustedPaywallPurchase()?.originalTransactionId;
+      const trustedPurchase = getLastTrustedPaywallPurchase();
+      let oid = trustedPurchase?.originalTransactionId;
+      let signedTx = trustedPurchase?.signedTransactionInfo;
+
+      // If Superwall didn't provide the JWS (common in sandbox), fetch it from
+      // StoreKit before the first sync so we don't burn 15 s on a doomed
+      // Apple-API-only attempt that will 404.
+      if (!signedTx) {
+        try {
+          const jwsResult = await fetchJwsForTransaction(oid);
+          if (jwsResult) {
+            signedTx = jwsResult.signedTransactionInfo;
+            if (!oid) oid = jwsResult.originalTransactionId;
+            if (__DEV__) console.log('[signup][jwsFetched]', { oid: Boolean(oid), jws: Boolean(signedTx) });
+          }
+        } catch { /* degrade gracefully */ }
+      }
+
       let purchaseSynced = false;
       let purchaseSyncError: string | null = null;
       /** True when StoreKit found a purchase but the backend sync still failed — a retry is warranted. */
       let storeKitFoundPurchase = false;
-      if (trustedOriginalTransactionId) {
+      if (oid) {
         try {
           const sync = await Promise.race([
-            syncSubscriptionWithBackend(trustedOriginalTransactionId),
+            syncSubscriptionWithBackend(oid, signedTx || undefined),
             new Promise<{ ok: false; error: string }>((resolve) =>
               setTimeout(() => resolve({ ok: false, error: 'timeout' }), POST_PAYWALL_RESTORE_TIMEOUT_MS),
             ),
@@ -338,6 +375,28 @@ export default function OnboardingSignupScreen() {
   useEffect(() => {
     if (!isPostPaywall || !justSignedUp.current || !session || syncStarted.current) return;
     void finishPostPaywallSetup();
+  }, [isPostPaywall, session, finishPostPaywallSetup]);
+
+  // Auto-trigger for users who are already authenticated when they arrive here
+  // with isPostPaywall=true. This handles the path where a signed-in user
+  // purchased on the paywall and was routed to signup.tsx via the trusted
+  // purchase event (instead of calling completeOnboarding() immediately).
+  //
+  // We show the spinner immediately (setSyncing) but delay the actual first
+  // sync attempt by AUTHENTICATED_SETTLE_MS to give Apple's Server API time
+  // to index the brand-new transaction. Unauthenticated users naturally spend
+  // time filling out the signup form, so they don't need this delay.
+  // POST_PAYWALL_TOTAL_TIMEOUT_MS is raised by the same amount so the
+  // effective sync window (22 s) stays the same.
+  useEffect(() => {
+    if (!isPostPaywall || !session || didAutoStartSetup.current || syncStarted.current) return;
+    didAutoStartSetup.current = true;
+    setSyncing(true);
+    const settleTimer = setTimeout(() => {
+      justSignedUp.current = true;
+      void finishPostPaywallSetup();
+    }, AUTHENTICATED_SETTLE_MS);
+    return () => clearTimeout(settleTimer);
   }, [isPostPaywall, session, finishPostPaywallSetup]);
 
   const handleSignup = async () => {

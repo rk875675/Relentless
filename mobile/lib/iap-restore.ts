@@ -10,6 +10,11 @@ type IosPurchaseLike = {
   originalTransactionIdentifierIOS?: string | null;
   transactionDate?: number | null;
   expirationDateIOS?: number | null;
+  /** expo-iap's unified purchase token — on iOS this is the Apple-signed JWS. */
+  purchaseToken?: string | null;
+  transactionReceipt?: string | null;
+  jwsRepresentation?: string | null;
+  signedTransactionInfo?: string | null;
 };
 
 /**
@@ -72,7 +77,18 @@ export async function restorePurchasesViaStoreKit(): Promise<RestoreResult> {
       return { ok: false, reason: 'no_original_tx_id' };
     }
 
-    const sync = await syncSubscriptionWithBackend(latest.originalTransactionIdentifierIOS);
+    const signedTx =
+      (typeof latest.purchaseToken === 'string' && latest.purchaseToken) ||
+      (typeof latest.signedTransactionInfo === 'string' && latest.signedTransactionInfo) ||
+      (typeof latest.jwsRepresentation === 'string' && latest.jwsRepresentation) ||
+      undefined;
+
+    if (__DEV__) {
+      const segments = signedTx?.split('.').length ?? 0;
+      console.log('[iap-restore][jws]', { hasJws: Boolean(signedTx), segments, source: signedTx ? (latest.purchaseToken ? 'purchaseToken' : 'fallback') : 'none' });
+    }
+
+    const sync = await syncSubscriptionWithBackend(latest.originalTransactionIdentifierIOS, signedTx || undefined);
     if (!sync.ok) {
       return { ok: false, reason: 'sync_failed', error: sync.error ?? 'Unknown sync error' };
     }
@@ -80,5 +96,56 @@ export async function restorePurchasesViaStoreKit(): Promise<RestoreResult> {
     return { ok: true, productId: latest.productId ?? null, entitlementStatus: 'active' };
   } catch (e) {
     return { ok: false, reason: 'sync_failed', error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export type FetchJwsResult = {
+  originalTransactionId: string;
+  signedTransactionInfo: string;
+} | undefined;
+
+/**
+ * Lightweight helper that fetches the Apple-signed JWS for a given
+ * originalTransactionId (or the most recent purchase if none specified)
+ * via expo-iap's getAvailablePurchases(). Returns undefined on any failure
+ * so callers can degrade gracefully.
+ */
+export async function fetchJwsForTransaction(
+  originalTransactionId?: string,
+): Promise<FetchJwsResult> {
+  if (Platform.OS !== 'ios') return undefined;
+
+  const iap = loadExpoIap();
+  if (!iap) return undefined;
+
+  try {
+    await iap.initConnection();
+    const purchases = (await iap.getAvailablePurchases()) as unknown as IosPurchaseLike[];
+    if (!Array.isArray(purchases) || purchases.length === 0) return undefined;
+
+    const candidates = purchases
+      .filter((p) => typeof p.originalTransactionIdentifierIOS === 'string' && p.originalTransactionIdentifierIOS.length > 0)
+      .sort((a, b) => (b.transactionDate ?? 0) - (a.transactionDate ?? 0));
+
+    const match = originalTransactionId
+      ? candidates.find((p) => p.originalTransactionIdentifierIOS === originalTransactionId) ?? candidates[0]
+      : candidates[0];
+
+    if (!match?.originalTransactionIdentifierIOS) return undefined;
+
+    const jws =
+      (typeof match.purchaseToken === 'string' && match.purchaseToken) ||
+      (typeof match.signedTransactionInfo === 'string' && match.signedTransactionInfo) ||
+      (typeof match.jwsRepresentation === 'string' && match.jwsRepresentation) ||
+      undefined;
+
+    if (!jws) return undefined;
+
+    return {
+      originalTransactionId: match.originalTransactionIdentifierIOS,
+      signedTransactionInfo: jws,
+    };
+  } catch {
+    return undefined;
   }
 }

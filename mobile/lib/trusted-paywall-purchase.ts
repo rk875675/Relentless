@@ -1,5 +1,7 @@
 export type TrustedPaywallPurchase = {
   originalTransactionId?: string;
+  /** Apple-signed JWS from StoreKit — lets the server verify without calling Apple's REST API. */
+  signedTransactionInfo?: string;
 };
 
 type TrustedPaywallPurchaseListener = (purchase: TrustedPaywallPurchase) => void;
