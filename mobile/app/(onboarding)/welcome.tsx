@@ -3,8 +3,19 @@ import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
-import { loadOnboardingScreen } from '@/lib/onboarding-local-state';
+import { clearOnboardingProgress, loadOnboardingScreen } from '@/lib/onboarding-local-state';
 import { colors, spacing } from '@/lib/theme';
+
+const VALID_ONBOARDING_SCREENS = new Set([
+  'relentless-intro', 'onboarding-intake', 'unlocked-potential',
+  'mac-framework', 'mac-question', 'mac-detail', 'mac-setup',
+  'we-can-train', 'tutorial', 'tutorial-home', 'tutorial-home-detail',
+  'tutorial-library', 'tutorial-library-detail', 'tutorial-profile',
+  'sport-selection', 'competition-date', 'paywall', 'signup',
+  'what-you-get', 'exercise-a', 'exercise-m', 'exercise-c',
+  'study-a', 'study-b', 'social-proof', 'effort-response',
+  'why-relentless', 'how-it-works',
+]);
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -16,11 +27,12 @@ export default function WelcomeScreen() {
 
   useEffect(() => {
     loadOnboardingScreen().then((s) => {
-      if (s) {
+      if (s && VALID_ONBOARDING_SCREENS.has(s)) {
         setSavedScreen(s);
         router.push(`/(onboarding)/${s}` as any);
         setTimeout(() => setShowUI(true), 500);
       } else {
+        if (s) clearOnboardingProgress();
         setShowUI(true);
       }
     });

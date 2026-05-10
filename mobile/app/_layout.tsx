@@ -182,14 +182,18 @@ function RouteGuard() {
   const prevNavPhase = useRef(navPhase);
   const [transitioning, setTransitioning] = useState(false);
 
+  // Detect phase change synchronously during render so the black screen
+  // appears on the SAME frame — not one frame late (which causes a flash).
+  if (prevNavPhase.current !== navPhase) {
+    prevNavPhase.current = navPhase;
+    if (!transitioning) setTransitioning(true);
+  }
+
   useEffect(() => {
-    if (prevNavPhase.current !== navPhase) {
-      prevNavPhase.current = navPhase;
-      setTransitioning(true);
-      const t = setTimeout(() => setTransitioning(false), 350);
-      return () => clearTimeout(t);
-    }
-  }, [navPhase]);
+    if (!transitioning) return;
+    const t = setTimeout(() => setTransitioning(false), 150);
+    return () => clearTimeout(t);
+  }, [transitioning]);
 
   if (transitioning || (!initialLoadDone.current && loading)) {
     return <View style={{ flex: 1, backgroundColor: '#000' }} />;

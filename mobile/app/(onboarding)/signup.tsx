@@ -562,7 +562,7 @@ export default function OnboardingSignupScreen() {
     );
   }
 
-  if (syncing || setupError) {
+  if (syncing || setupError || (isPostPaywall && syncStarted.current)) {
     return (
       <View style={styles.container}>
         <View style={styles.inner}>

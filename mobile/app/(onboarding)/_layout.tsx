@@ -1,4 +1,4 @@
-import { Stack, usePathname } from 'expo-router';
+import { Stack, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { saveOnboardingScreen } from '@/lib/onboarding-local-state';
 
@@ -8,16 +8,15 @@ export const unstable_settings = {
 };
 
 export default function OnboardingLayout() {
-  const pathname = usePathname();
+  const segments = useSegments();
 
   useEffect(() => {
-    if (pathname && pathname !== '/') {
-      const screenName = pathname.replace(/^\//, '');
-      if (screenName && screenName !== 'welcome') {
-        saveOnboardingScreen(screenName);
-      }
+    if (segments[0] !== '(onboarding)' || !segments[1]) return;
+    const screenName = segments[1];
+    if (screenName !== 'welcome') {
+      saveOnboardingScreen(screenName);
     }
-  }, [pathname]);
+  }, [segments]);
 
   return (
     <Stack screenOptions={{ headerShown: false, animation: 'fade', gestureEnabled: false }}>
