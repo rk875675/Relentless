@@ -64,5 +64,22 @@ Deno.serve(async (req) => {
     );
   }
 
-  return successResponse({ ...streakRes.data, freebie_used }, requestId);
+  const streak = streakRes.data;
+  const lastDate = streak.last_activity_date;
+
+  if (lastDate && localYmd) {
+    const last = new Date(lastDate + "T00:00:00");
+    const today = new Date(localYmd + "T00:00:00");
+    const diffDays = Math.floor((today.getTime() - last.getTime()) / 86_400_000);
+    const maxGap = freebie_used ? 1 : 2;
+    if (diffDays > maxGap) {
+      return successResponse({
+        ...streak,
+        current_streak: 0,
+        freebie_used,
+      }, requestId);
+    }
+  }
+
+  return successResponse({ ...streak, freebie_used }, requestId);
 });
