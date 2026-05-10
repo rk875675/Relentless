@@ -9,15 +9,25 @@ import { colors, spacing } from '@/lib/theme';
 export default function WelcomeScreen() {
   const router = useRouter();
   const [savedScreen, setSavedScreen] = useState<string | null>(null);
+  const [showUI, setShowUI] = useState(false);
   const fadeTitle = useRef(new Animated.Value(0)).current;
   const fadeTagline = useRef(new Animated.Value(0)).current;
   const fadeCta = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    loadOnboardingScreen().then((s) => { if (s) setSavedScreen(s); });
-  }, []);
+    loadOnboardingScreen().then((s) => {
+      if (s) {
+        setSavedScreen(s);
+        router.push(`/(onboarding)/${s}` as any);
+        setTimeout(() => setShowUI(true), 500);
+      } else {
+        setShowUI(true);
+      }
+    });
+  }, [router]);
 
   useEffect(() => {
+    if (!showUI) return;
     const seq = Animated.stagger(250, [
       Animated.timing(fadeTitle, { toValue: 1, duration: 500, useNativeDriver: true }),
       Animated.timing(fadeTagline, { toValue: 1, duration: 400, useNativeDriver: true }),
@@ -30,7 +40,11 @@ export default function WelcomeScreen() {
       fadeTagline.stopAnimation();
       fadeCta.stopAnimation();
     };
-  }, [fadeCta, fadeTagline, fadeTitle]);
+  }, [showUI, fadeCta, fadeTagline, fadeTitle]);
+
+  if (!showUI) {
+    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
