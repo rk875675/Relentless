@@ -3,7 +3,7 @@ import { Stack, useGlobalSearchParams, useRouter, useSegments } from 'expo-route
 import * as SplashScreen from 'expo-splash-screen';
 import * as Linking from 'expo-linking';
 import { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { LogBox, View } from 'react-native';
 import { AnalyticsScreenTracker } from '@/components/AnalyticsScreenTracker';
 import { PostHogIdentitySync } from '@/components/PostHogIdentitySync';
 import { PostHogRoot } from '@/components/PostHogRoot';
@@ -21,6 +21,8 @@ export const unstable_settings = {
 };
 
 SplashScreen.preventAutoHideAsync();
+
+LogBox.ignoreLogs([/The action 'REPLACE' with payload .* was not handled/]);
 
 const SPLASH_SAFETY_MS = 4000;
 
