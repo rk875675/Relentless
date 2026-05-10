@@ -3,6 +3,7 @@ import { Stack, useGlobalSearchParams, useRouter, useSegments } from 'expo-route
 import * as SplashScreen from 'expo-splash-screen';
 import * as Linking from 'expo-linking';
 import { useEffect, useRef, useState } from 'react';
+import { View } from 'react-native';
 import { AnalyticsScreenTracker } from '@/components/AnalyticsScreenTracker';
 import { PostHogIdentitySync } from '@/components/PostHogIdentitySync';
 import { PostHogRoot } from '@/components/PostHogRoot';
@@ -157,7 +158,7 @@ function RouteGuard() {
     } else if (session && onboardingComplete && !hasPremiumAccess && !onPaywall && !inAuth) {
       router.replace('/(onboarding)/paywall');
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
-      router.replace('/(tabs)');
+      try { router.replace('/(tabs)'); } catch { /* navPhase key change handles this */ }
     } else if (session && !onboardingComplete && hasPremiumAccess && !isOptimisticGrant && onPaywall) {
       // Safety net: paywall only, DB-confirmed subscription only (not optimistic grant).
       // Post-paywall signup handles its own completion in signup.tsx — running this on
@@ -183,12 +184,14 @@ function RouteGuard() {
     if (prevNavPhase.current !== navPhase) {
       prevNavPhase.current = navPhase;
       setTransitioning(true);
-      const t = setTimeout(() => setTransitioning(false), 50);
+      const t = setTimeout(() => setTransitioning(false), 350);
       return () => clearTimeout(t);
     }
   }, [navPhase]);
 
-  if (transitioning || (!initialLoadDone.current && loading)) return null;
+  if (transitioning || (!initialLoadDone.current && loading)) {
+    return <View style={{ flex: 1, backgroundColor: '#000' }} />;
+  }
 
   return (
     <Stack key={navPhase} screenOptions={{ headerShown: false, animation: 'fade' }}>
