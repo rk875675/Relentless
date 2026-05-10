@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
 import { MAX_SPORT_LEN, OTHER_SENTINEL, PRESET_SPORTS } from '@/lib/sport-presets';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
@@ -29,6 +30,13 @@ export default function SportSelectionScreen() {
   useEffect(() => {
     fade.setValue(0);
     Animated.timing(fade, { toValue: 1, duration: 350, useNativeDriver: true }).start();
+    loadOnboardingAnswers().then((saved) => {
+      if (saved.sport) {
+        const isPreset = PRESET_SPORTS.includes(saved.sport as any);
+        setSelected(isPreset ? saved.sport : OTHER_SENTINEL);
+        if (!isPreset) setOtherText(saved.sport);
+      }
+    });
   }, []);
 
   const isOther = selected === OTHER_SENTINEL;
@@ -41,12 +49,16 @@ export default function SportSelectionScreen() {
   const pick = (opt: string) => {
     Haptics.selectionAsync();
     setSelected(opt);
-    if (opt !== OTHER_SENTINEL) setOtherText('');
+    if (opt !== OTHER_SENTINEL) {
+      setOtherText('');
+      saveOnboardingAnswers({ sport: opt.trim() });
+    }
   };
 
   const handleContinue = () => {
     if (!canContinue) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    saveOnboardingAnswers({ sport: resolvedSport.slice(0, MAX_SPORT_LEN) });
     router.push({
       pathname: '/(onboarding)/competition-date' as any,
       params: { sport: resolvedSport.slice(0, MAX_SPORT_LEN) },

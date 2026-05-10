@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
@@ -29,11 +30,20 @@ export default function CompetitionDateScreen() {
   const [date, setDate] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState(Platform.OS === 'ios');
 
+  useEffect(() => {
+    loadOnboardingAnswers().then((saved) => {
+      if (saved.competitionDate) setDate(new Date(saved.competitionDate));
+    });
+  }, []);
+
   const today = new Date();
 
   const onChange = (_event: DateTimePickerEvent, selected?: Date) => {
     if (Platform.OS === 'android') setShowPicker(false);
-    if (selected) setDate(selected);
+    if (selected) {
+      setDate(selected);
+      saveOnboardingAnswers({ competitionDate: toISODate(selected) });
+    }
   };
 
   const goToPaywall = (compDate?: string) => {

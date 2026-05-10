@@ -17,6 +17,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
 import { colors, spacing } from '@/lib/theme';
 import { useWizardSwipeBackRight } from '@/lib/use-wizard-swipe-back';
 
@@ -678,6 +679,17 @@ export default function OnboardingIntakeScreen() {
   questionIndexRef.current = questionIndex;
   const backingRef = useRef(false);
   const transitionDirRef = useRef<'fwd' | 'back'>('fwd');
+  const restoredRef = useRef(false);
+
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    loadOnboardingAnswers().then((saved) => {
+      if (saved.intakeAnswers?.length) setAnswers(saved.intakeAnswers);
+      if (typeof saved.intakeStep === 'number' && saved.intakeStep > 0) setQuestionIndex(saved.intakeStep);
+    });
+  }, []);
+
   useEffect(() => {
     holdInteractingRef.current = holdInteracting;
   }, [holdInteracting]);
@@ -697,7 +709,9 @@ export default function OnboardingIntakeScreen() {
   const goNext = useCallback(
     (fromIndex: number) => {
       if (fromIndex < STEPS.length - 1) {
-        setQuestionIndex((i) => i + 1);
+        const next = fromIndex + 1;
+        setQuestionIndex(next);
+        saveOnboardingAnswers({ intakeStep: next });
       } else {
         router.push('/(onboarding)/unlocked-potential' as any);
       }
@@ -709,6 +723,7 @@ export default function OnboardingIntakeScreen() {
     setAnswers((prev) => {
       const next = [...prev];
       next[questionIndexRef.current] = 'Committed';
+      saveOnboardingAnswers({ intakeAnswers: next });
       return next;
     });
     transitionDirRef.current = 'fwd';
@@ -778,6 +793,7 @@ export default function OnboardingIntakeScreen() {
     setAnswers((prev) => {
       const next = [...prev];
       next[questionIndex] = opt;
+      saveOnboardingAnswers({ intakeAnswers: next });
       return next;
     });
   };

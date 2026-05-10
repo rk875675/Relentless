@@ -1,15 +1,21 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
+import { loadOnboardingScreen } from '@/lib/onboarding-local-state';
 import { colors, spacing } from '@/lib/theme';
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const [savedScreen, setSavedScreen] = useState<string | null>(null);
   const fadeTitle = useRef(new Animated.Value(0)).current;
   const fadeTagline = useRef(new Animated.Value(0)).current;
   const fadeCta = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    loadOnboardingScreen().then((s) => { if (s) setSavedScreen(s); });
+  }, []);
 
   useEffect(() => {
     const seq = Animated.stagger(250, [
@@ -42,9 +48,12 @@ export default function WelcomeScreen() {
         <Animated.View style={[styles.bottom, { opacity: fadeCta }]}>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => router.push('/(onboarding)/relentless-intro' as any)}
+            onPress={() => {
+              const target = savedScreen || 'relentless-intro';
+              router.push(`/(onboarding)/${target}` as any);
+            }}
           >
-            <Text style={styles.buttonText}>Get Started</Text>
+            <Text style={styles.buttonText}>{savedScreen ? 'Continue' : 'Get Started'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.signInLink}

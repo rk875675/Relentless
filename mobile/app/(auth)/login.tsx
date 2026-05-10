@@ -9,14 +9,24 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleLogin = async () => {
-    if (!email || !password) return;
+    setError('');
+    if (!email || !password) {
+      setError('Enter your email and password.');
+      return;
+    }
     setLoading(true);
     try {
       const result = await signIn(email.trim(), password);
-      if (!result.ok) return;
+      if (!result.ok) {
+        setError(result.error || 'Invalid email or password.');
+        return;
+      }
       if (result.path) router.replace(result.path as any);
+    } catch {
+      setError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -62,6 +72,8 @@ export default function LoginScreen() {
             <Text style={styles.forgotText}>Forgot password?</Text>
           </TouchableOpacity>
 
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
           <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
             {loading ? (
               <ActivityIndicator color="#000" />
@@ -73,13 +85,7 @@ export default function LoginScreen() {
           <TouchableOpacity
             style={styles.linkButton}
             onPress={() => {
-              // If we were pushed here from (onboarding)/signup, just pop back to it.
-              // Otherwise (entered from welcome via replace), fall back to welcome.
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.replace('/(onboarding)/welcome' as any);
-              }
+              router.replace('/(onboarding)/welcome' as any);
             }}
           >
             <Text style={styles.linkText}>Don't have an account? Sign Up</Text>
@@ -137,6 +143,12 @@ const styles = StyleSheet.create({
   forgotText: {
     color: '#888',
     fontSize: 14,
+  },
+  error: {
+    color: '#ef4444',
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 8,
   },
   button: {
     backgroundColor: '#fff',

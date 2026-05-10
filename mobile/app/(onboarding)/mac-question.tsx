@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
@@ -22,6 +23,9 @@ export default function MacQuestionScreen() {
 
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+    loadOnboardingAnswers().then((saved) => {
+      if (saved.macTag) setSelected(saved.macTag);
+    });
   }, []);
 
   return (
@@ -50,6 +54,7 @@ export default function MacQuestionScreen() {
                 onPress={() => {
                   Haptics.selectionAsync();
                   setSelected(opt.tag);
+                  saveOnboardingAnswers({ macTag: opt.tag });
                 }}
               >
                 <Text

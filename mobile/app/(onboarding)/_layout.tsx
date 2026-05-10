@@ -1,4 +1,6 @@
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
+import { useEffect } from 'react';
+import { saveOnboardingScreen } from '@/lib/onboarding-local-state';
 
 /** First matched group sub-route is not `welcome` by default; set explicit entry for cold start. */
 export const unstable_settings = {
@@ -6,6 +8,17 @@ export const unstable_settings = {
 };
 
 export default function OnboardingLayout() {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (pathname && pathname !== '/') {
+      const screenName = pathname.replace(/^\//, '');
+      if (screenName && screenName !== 'welcome') {
+        saveOnboardingScreen(screenName);
+      }
+    }
+  }, [pathname]);
+
   return (
     <Stack screenOptions={{ headerShown: false, animation: 'fade', gestureEnabled: false }}>
       <Stack.Screen name="signup" options={{ gestureEnabled: false }} />
