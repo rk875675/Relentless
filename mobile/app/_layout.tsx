@@ -92,6 +92,7 @@ function RouteGuard() {
   }, []);
 
   useEffect(() => {
+    if (__DEV__ && !loading && session) console.log('[RouteGuard] effect', { onboardingComplete, hasPremiumAccess, isOptimisticGrant, seg0: (segments as string[])[0] });
     if (loading) return;
     // Avoid mis-routing while the root navigator hasn't reported a segment yet (common after refresh).
     const rootSegment = (segments as string[])[0];
@@ -157,6 +158,7 @@ function RouteGuard() {
     } else if (session && onboardingComplete && !hasPremiumAccess && !onPaywall && !inAuth) {
       router.replace('/(onboarding)/paywall');
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
+      if (__DEV__) console.log('[RouteGuard] → /(tabs)', { rootSegment, onboardingComplete, hasPremiumAccess, inOnboarding, segments });
       router.replace('/(tabs)');
     } else if (session && !onboardingComplete && hasPremiumAccess && !isOptimisticGrant && onPaywall) {
       // Safety net: paywall only, DB-confirmed subscription only (not optimistic grant).
@@ -170,10 +172,17 @@ function RouteGuard() {
     setTimeout(hideSplash, 50);
   }, [session, loading, onboardingComplete, hasPremiumAccess, isOptimisticGrant, segments, allowAuthHub, completeOnboarding]);
 
+  // When the user completes signup with a premium subscription, force the
+  // navigation tree to remount. router.replace('/(tabs)') is silently
+  // swallowed by the nested (onboarding) navigator after OAuth return.
+  // Changing the key unmounts the stuck Stack and mounts a fresh one —
+  // the same thing a manual reload does.
+  const navPhase = session && onboardingComplete && hasPremiumAccess ? 'app' : 'onboarding';
+
   if (!initialLoadDone.current && loading) return null;
 
   return (
-    <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
+    <Stack key={navPhase} screenOptions={{ headerShown: false, animation: 'fade' }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="(onboarding)" />
       <Stack.Screen name="(auth)" />

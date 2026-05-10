@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthSocialSignInButtons } from '@/components/auth/AuthSocialSignInButtons';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
@@ -76,6 +77,7 @@ function isSocialCancelled(r: SocialSignInResult): boolean {
 
 export default function OnboardingSignupScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { competitionDate, sport: sportParam, postPaywall } = useLocalSearchParams<{
     competitionDate?: string | string[];
     sport?: string | string[];
@@ -135,10 +137,25 @@ export default function OnboardingSignupScreen() {
     if (setupNavigationStarted.current) return;
     setupNavigationStarted.current = true;
     bustCache();
+
+    // Full navigation reset instead of router.replace — after OAuth deep link
+    // return (Google/Apple sign-in), router.replace silently fails because
+    // expo-router's navigation context is corrupted by the deep link handler.
+    // CommonActions.reset clears the entire stack reliably.
+    const root = navigation.getParent() ?? navigation;
+    const resetAction = CommonActions.reset({
+      index: 0,
+      routes: [{ name: '(tabs)' }],
+    });
+
     let attempts = 0;
     const go = () => {
       attempts += 1;
-      router.replace('/(tabs)' as any);
+      try {
+        root.dispatch(resetAction);
+      } catch {
+        router.replace('/(tabs)' as any);
+      }
     };
     go();
     const retry = setInterval(() => {
@@ -150,7 +167,7 @@ export default function OnboardingSignupScreen() {
       go();
     }, 1000);
     setupNavigationRetry.current = retry;
-  }, [router]);
+  }, [router, navigation]);
 
   useEffect(() => {
     if (!setupComplete) return;
@@ -328,15 +345,22 @@ export default function OnboardingSignupScreen() {
         );
       }
 
-      await refreshUserState().catch(() => {});
+      // Navigate immediately — sync verified the entitlement. Post-sync
+      // cleanup (profile queries, onboarding flag) runs after navigation so
+      // stalled Supabase queries after OAuth code exchange cannot block it.
+      clearTimeout(forceNavigateTimer);
+      if (!forceNavigated) {
+        finishSetupNavigation();
+      }
+
       bustCache();
-
       const comp = Array.isArray(competitionDate) ? competitionDate[0] : competitionDate;
-      if (comp) await updateCompetitionDate(comp).catch(() => {});
+      if (comp) updateCompetitionDate(comp).catch(() => {});
       const sportTrim = sportArg?.trim();
-      if (sportTrim) await updateSport(sportTrim).catch(() => {});
-
-      await completeOnboarding({ requireUser: true });
+      if (sportTrim) updateSport(sportTrim).catch(() => {});
+      refreshUserState().catch(() => {});
+      completeOnboarding({ requireUser: true }).catch(() => {});
+      clearOnboardingProgress().catch(() => {});
 
       if (!onboardingCompletedFiredRef.current) {
         onboardingCompletedFiredRef.current = true;
@@ -346,12 +370,6 @@ export default function OnboardingSignupScreen() {
           source_route: '/signup',
           post_paywall: true,
         });
-      }
-
-      await clearOnboardingProgress();
-      clearTimeout(forceNavigateTimer);
-      if (!forceNavigated) {
-        finishSetupNavigation();
       }
     } catch (e) {
       clearTimeout(forceNavigateTimer);
