@@ -2,7 +2,7 @@ import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useGlobalSearchParams, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Linking from 'expo-linking';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnalyticsScreenTracker } from '@/components/AnalyticsScreenTracker';
 import { PostHogIdentitySync } from '@/components/PostHogIdentitySync';
 import { PostHogRoot } from '@/components/PostHogRoot';
@@ -92,7 +92,6 @@ function RouteGuard() {
   }, []);
 
   useEffect(() => {
-    if (__DEV__ && !loading && session) console.log('[RouteGuard] effect', { onboardingComplete, hasPremiumAccess, isOptimisticGrant, seg0: (segments as string[])[0] });
     if (loading) return;
     // Avoid mis-routing while the root navigator hasn't reported a segment yet (common after refresh).
     const rootSegment = (segments as string[])[0];
@@ -158,7 +157,6 @@ function RouteGuard() {
     } else if (session && onboardingComplete && !hasPremiumAccess && !onPaywall && !inAuth) {
       router.replace('/(onboarding)/paywall');
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
-      if (__DEV__) console.log('[RouteGuard] → /(tabs)', { rootSegment, onboardingComplete, hasPremiumAccess, inOnboarding, segments });
       router.replace('/(tabs)');
     } else if (session && !onboardingComplete && hasPremiumAccess && !isOptimisticGrant && onPaywall) {
       // Safety net: paywall only, DB-confirmed subscription only (not optimistic grant).
@@ -178,8 +176,19 @@ function RouteGuard() {
   // Changing the key unmounts the stuck Stack and mounts a fresh one —
   // the same thing a manual reload does.
   const navPhase = session && onboardingComplete && hasPremiumAccess ? 'app' : 'onboarding';
+  const prevNavPhase = useRef(navPhase);
+  const [transitioning, setTransitioning] = useState(false);
 
-  if (!initialLoadDone.current && loading) return null;
+  useEffect(() => {
+    if (prevNavPhase.current !== navPhase) {
+      prevNavPhase.current = navPhase;
+      setTransitioning(true);
+      const t = setTimeout(() => setTransitioning(false), 50);
+      return () => clearTimeout(t);
+    }
+  }, [navPhase]);
+
+  if (transitioning || (!initialLoadDone.current && loading)) return null;
 
   return (
     <Stack key={navPhase} screenOptions={{ headerShown: false, animation: 'fade' }}>

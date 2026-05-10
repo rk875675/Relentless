@@ -60,6 +60,14 @@ const POST_PAYWALL_TOTAL_TIMEOUT_MS = 40_000;
  */
 const AUTHENTICATED_SETTLE_MS = 5_000;
 
+const LOADING_PHRASES = [
+  'Setting up your account...',
+  'Preparing your training plan...',
+  'Loading your dashboard...',
+  'Almost there...',
+  'Getting everything ready...',
+];
+
 /** Supabase email sign-up error when the account already exists (retry with password sign-in). */
 function isAccountAlreadyExistsMessage(msg: string): boolean {
   const m = msg.toLowerCase();
@@ -118,6 +126,13 @@ export default function OnboardingSignupScreen() {
   const entitlementVerifiedRef = useRef(false);
   /** Prevents the already-authenticated auto-start effect from firing more than once. */
   const didAutoStartSetup = useRef(false);
+  const [loadingPhraseIdx, setLoadingPhraseIdx] = useState(0);
+
+  useEffect(() => {
+    if (!syncing || setupError) return;
+    const t = setInterval(() => setLoadingPhraseIdx((i) => (i + 1) % LOADING_PHRASES.length), 2500);
+    return () => clearInterval(t);
+  }, [syncing, setupError]);
 
   useEffect(() => {
     if (!isPostPaywall || !syncing || setupComplete || setupError) return;
@@ -345,21 +360,26 @@ export default function OnboardingSignupScreen() {
         );
       }
 
-      // Navigate immediately — sync verified the entitlement. Post-sync
-      // cleanup (profile queries, onboarding flag) runs after navigation so
-      // stalled Supabase queries after OAuth code exchange cannot block it.
+      // Complete onboarding first (triggers the navPhase key change in
+      // _layout.tsx that remounts the Stack). Bounded to 3 s so a stalled
+      // query doesn't trap the spinner. refreshUserState is fire-and-forget
+      // because it can stall after OAuth code exchange.
+      bustCache();
+      await Promise.race([
+        completeOnboarding({ requireUser: true }),
+        new Promise<void>((r) => setTimeout(r, 3_000)),
+      ]).catch(() => {});
+
       clearTimeout(forceNavigateTimer);
       if (!forceNavigated) {
         finishSetupNavigation();
       }
 
-      bustCache();
       const comp = Array.isArray(competitionDate) ? competitionDate[0] : competitionDate;
       if (comp) updateCompetitionDate(comp).catch(() => {});
       const sportTrim = sportArg?.trim();
       if (sportTrim) updateSport(sportTrim).catch(() => {});
       refreshUserState().catch(() => {});
-      completeOnboarding({ requireUser: true }).catch(() => {});
       clearOnboardingProgress().catch(() => {});
 
       if (!onboardingCompletedFiredRef.current) {
@@ -548,7 +568,7 @@ export default function OnboardingSignupScreen() {
         <View style={styles.inner}>
           <Text style={styles.logo}>RELENTLESS</Text>
           <Text style={styles.tagline}>
-            {setupError ? 'Setup needs another try' : 'Setting up your account...'}
+            {setupError ? 'Setup needs another try' : LOADING_PHRASES[loadingPhraseIdx]}
           </Text>
           {setupError ? (
             <>
