@@ -20,6 +20,20 @@ export type OnboardingTestimonial = {
 export const ONBOARDING_TESTIMONIALS: OnboardingTestimonial[] = [
   {
     quote:
+      "In a sport like pole vault, the greatest limiting factor is the athlete's mind. Mental training is a necessity at all levels and can even affect the best vaulters.",
+    name: 'Beau Domingue',
+    detail: 'D1 Pole Vaulter',
+    avatar: require('@/assets/images/testimonials/beau-domingue.jpg'),
+  },
+  {
+    quote:
+      "Mentality is something I've always struggled with, especially going into races. Relentless has helped me feel more confident going into races to perform better.",
+    name: 'Svenya Stoyanoff',
+    detail: 'D1 Runner at LSU',
+    avatar: require('@/assets/images/testimonials/svenya-stoyanoff.jpg'),
+  },
+  {
+    quote:
       'In a sport where the mind can prevent the body from its potential, Relentless reframes training as something that is not only physical, but highly psychological.',
     name: 'Mats Swanson',
     detail: 'D1 Runner at LSU',
@@ -38,19 +52,5 @@ export const ONBOARDING_TESTIMONIALS: OnboardingTestimonial[] = [
     name: 'Brock Kelly',
     detail: '2:31 marathoner',
     avatar: require('@/assets/images/testimonials/brock-kelly.jpg'),
-  },
-  {
-    quote:
-      "In a sport like pole vault, the greatest limiting factor is the athlete's mind. Mental training is a necessity at all levels and can even affect the best vaulters.",
-    name: 'Beau Domingue',
-    detail: 'D1 Pole Vaulter',
-    avatar: require('@/assets/images/testimonials/beau-domingue.jpg'),
-  },
-  {
-    quote:
-      "Mentality is something I've always struggled with, especially going into races. Relentless has helped me feel more confident going into races to perform better.",
-    name: 'Svenya Stoyanoff',
-    detail: 'D1 Runner at LSU',
-    avatar: require('@/assets/images/testimonials/svenya-stoyanoff.jpg'),
   },
 ];

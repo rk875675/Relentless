@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth } from '@/lib/auth-context';
+import { analytics } from '@/lib/analytics';
 import { colors, spacing } from '@/lib/theme';
 import { SUPERWALL_ENABLED, SUPERWALL_ONBOARDING_PLACEMENT } from '@/lib/superwall-config';
 import { SubscriptionLegalDisclosure } from '@/components/onboarding/SubscriptionLegalDisclosure';
@@ -137,6 +138,11 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
     setUserOpenedPaywall(true);
     if (!acquireLock()) return;
     setIsOpening(true);
+    // Fire paywall_presented here — after the lock is acquired — so it always
+    // matches exactly one registerPlacement call. Using the tap as the trigger
+    // is more reliable than listening for Superwall's paywallOpen event, which
+    // can be delayed or absent depending on SDK version.
+    analytics.capture('paywall_presented');
     registerPlacement(SUPERWALL_ONBOARDING_PLACEMENT)
       .catch((err: unknown) => {
         // Previously swallowed silently — a dropped presentation looked like a

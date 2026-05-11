@@ -28,6 +28,7 @@ import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
+import { trackPartnerReferralCtaClicked } from '@/lib/core-analytics';
 
 type Lesson = {
   id: string;
@@ -113,6 +114,9 @@ function safePct(n: number | undefined): number {
   return Math.min(100, Math.max(0, n));
 }
 
+/** Outbound Grant Chiasson sessions page (referral partner). */
+const GRANT_CHIASSON_REFERRAL_URL = 'https://grantchiasson.com/home';
+
 /** For gains, return the base (pre-gain) so purple stops before the green overlay. */
 function ringBasePct(score: number | undefined, delta: ScoreDelta | undefined | null): number {
   const s = score ?? 0;
@@ -121,7 +125,12 @@ function ringBasePct(score: number | undefined, delta: ScoreDelta | undefined | 
 }
 
 export default function HomeScreen() {
-  const { competitionDate, session } = useAuth();
+  const {
+    competitionDate,
+    session,
+    onboardingComplete,
+    hasPremiumAccess,
+  } = useAuth();
   const currentUserId = session?.user?.id ?? null;
   const router = useRouter();
   const [lesson, setLesson] = useState<Lesson | null>(null);
@@ -224,14 +233,15 @@ export default function HomeScreen() {
         setLoading(false);
         initialLoadDone.current = true;
 
-        const missJournalRes = await apiFetch<MissReflectionJournalListResponse>(
-          MISS_REFLECTION_JOURNAL_PATH,
-          { headers: homeHeaders },
-        );
-        const freebieAckYmd =
+        const [missJournalRes, freebieAckYmd] = await Promise.all([
+          apiFetch<MissReflectionJournalListResponse>(
+            MISS_REFLECTION_JOURNAL_PATH,
+            { headers: homeHeaders },
+          ),
           currentUserId != null
-            ? await AsyncStorage.getItem(streakFreebieModalAckKey(currentUserId))
-            : null;
+            ? AsyncStorage.getItem(streakFreebieModalAckKey(currentUserId))
+            : Promise.resolve(null),
+        ]);
         applyMissReflectionFromStreakAndJournal(cachedStreak, missJournalRes, freebieAckYmd);
         setRefreshing(false);
         return;
@@ -239,11 +249,14 @@ export default function HomeScreen() {
       if (!initialLoadDone.current) setLoading(true);
     }
 
-    const [lessonRes, progressRes, streakRes, missJournalRes] = await Promise.all([
+    const [lessonRes, progressRes, streakRes, missJournalRes, freebieAckYmd] = await Promise.all([
       apiFetch<Lesson>('/lessons/next', { headers: homeHeaders }),
       apiFetch<Progress>('/progress', { headers: homeHeaders }),
       apiFetch<Streak>('/streak', { headers: homeHeaders }),
       apiFetch<MissReflectionJournalListResponse>(MISS_REFLECTION_JOURNAL_PATH, { headers: homeHeaders }),
+      currentUserId != null
+        ? AsyncStorage.getItem(streakFreebieModalAckKey(currentUserId))
+        : Promise.resolve(null),
     ]);
 
     if (lessonRes.error) {
@@ -265,10 +278,6 @@ export default function HomeScreen() {
     const streakData = streakRes.error ? emptyStreak : (streakRes.data ?? emptyStreak);
     setStreak(streakData);
 
-    const freebieAckYmd =
-      currentUserId != null
-        ? await AsyncStorage.getItem(streakFreebieModalAckKey(currentUserId))
-        : null;
     applyMissReflectionFromStreakAndJournal(streakData, missJournalRes, freebieAckYmd);
 
     const today = getDeviceLocalCalendarYmd();
@@ -680,7 +689,15 @@ export default function HomeScreen() {
         activeOpacity={0.8}
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          Linking.openURL('https://grantchiasson.com/home');
+          trackPartnerReferralCtaClicked({
+            referral_partner_key: 'grant_chiasson',
+            cta_placement: 'home_sessions_card',
+            outbound_url: GRANT_CHIASSON_REFERRAL_URL,
+            authenticated: Boolean(session),
+            onboarding_completed: onboardingComplete,
+            premium: hasPremiumAccess,
+          });
+          void Linking.openURL(GRANT_CHIASSON_REFERRAL_URL);
         }}
       >
         <Text style={styles.ctaTitle}>Want to go deeper?</Text>

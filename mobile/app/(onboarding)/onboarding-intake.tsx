@@ -357,7 +357,7 @@ const holdStyles = StyleSheet.create({
   lockTextSuccess: {
     fontSize: 32,
     fontWeight: '800',
-    color: colors.success,
+    color: colors.white,
     textAlign: 'center',
     lineHeight: 40,
   },

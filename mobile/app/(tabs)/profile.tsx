@@ -28,6 +28,8 @@ import { SUPERWALL_ENABLED } from '@/lib/superwall-config';
 import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { supabase } from '@/lib/supabase';
 
+const MAX_DISPLAY_NAME_LEN = 80;
+
 type Streak = {
   current_streak: number;
   longest_streak: number;
@@ -56,8 +58,10 @@ export default function ProfileScreen() {
     signOut,
     competitionDate,
     sport,
+    displayName,
     updateCompetitionDate,
     updateSport,
+    updateDisplayName,
     refreshUserState,
     resetOnboarding,
     revokePremiumForTesting,
@@ -73,6 +77,9 @@ export default function ProfileScreen() {
   const [pendingDate, setPendingDate] = useState<Date>(new Date());
   const [dateSaving, setDateSaving] = useState(false);
   const [sportSaving, setSportSaving] = useState(false);
+  const [nameModalVisible, setNameModalVisible] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [nameSaving, setNameSaving] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [devToolsVisible, setDevToolsVisible] = useState(false);
@@ -125,6 +132,24 @@ export default function ProfileScreen() {
       setSportSaving(false);
     }
   }, [sportPickSelected, sportPickOther, updateSport]);
+
+  const openNameEditor = useCallback(() => {
+    const email = session?.user?.email ?? '';
+    const fallback = email.includes('@') ? email.split('@')[0] : '';
+    setNameDraft(displayName?.trim() ?? fallback);
+    setNameModalVisible(true);
+  }, [session?.user?.email, displayName]);
+
+  const persistDisplayName = useCallback(async () => {
+    setNameSaving(true);
+    try {
+      const err = await updateDisplayName(nameDraft.trim() ? nameDraft : null);
+      if (err) Alert.alert('Could not save', err);
+      else setNameModalVisible(false);
+    } finally {
+      setNameSaving(false);
+    }
+  }, [nameDraft, updateDisplayName]);
 
   const [devDay, setDevDay] = useState<number | null>(null);
   const [devDayBusy, setDevDayBusy] = useState(false);
@@ -255,7 +280,8 @@ export default function ProfileScreen() {
   };
 
   const email = session?.user?.email ?? '';
-  const displayName = email ? email.split('@')[0] : 'Account';
+  const emailLocal = email.includes('@') ? email.split('@')[0] : '';
+  const heroDisplayName = displayName?.trim() || emailLocal || 'Account';
   const heroSportLine = sport?.trim() ?? '';
 
   const sportResolvedForSave =
@@ -309,7 +335,7 @@ export default function ProfileScreen() {
             <Ionicons name="person" size={38} color={colors.accent} />
           </View>
         </View>
-        <Text style={styles.userName}>{displayName}</Text>
+        <Text style={styles.userName}>{heroDisplayName}</Text>
         {heroSportLine ? (
           <Text style={styles.userSport}>{heroSportLine}</Text>
         ) : (
@@ -386,6 +412,15 @@ export default function ProfileScreen() {
       {/* Settings Section */}
       <Text style={styles.sectionLabel}>SETTINGS</Text>
       <View style={styles.rowsContainer}>
+        <ProfileRow
+          icon="person-outline"
+          label="Name"
+          value={displayName?.trim() ? displayName.trim() : '—'}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            openNameEditor();
+          }}
+        />
         <ProfileRow
           icon="calendar-outline"
           label="Competition Date"
@@ -598,6 +633,62 @@ export default function ProfileScreen() {
                 onPress={() => void persistSport()}
               >
                 <Text style={styles.dateSaveText}>{sportSaving ? 'Saving…' : 'Save'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    )}
+
+    {nameModalVisible && (
+      <Modal
+        visible
+        transparent
+        animationType="fade"
+        onRequestClose={() => !nameSaving && setNameModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.sportOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          pointerEvents="box-none"
+        >
+          <Pressable
+            style={styles.trackBackdrop}
+            accessibilityRole="button"
+            accessibilityLabel="Close name editor"
+            onPress={() => !nameSaving && setNameModalVisible(false)}
+          />
+          <View style={styles.sportSheet}>
+            <Text style={styles.sportSheetTitle}>Your name</Text>
+            <Text style={styles.sportSheetBody}>
+              Shown at the top of your profile. Clear the field and save to use your sign-in email prefix again.
+            </Text>
+            <TextInput
+              style={styles.sportOtherInput}
+              placeholder="Your name"
+              placeholderTextColor={colors.textMuted}
+              value={nameDraft}
+              onChangeText={(t) => setNameDraft(t.slice(0, MAX_DISPLAY_NAME_LEN))}
+              maxLength={MAX_DISPLAY_NAME_LEN}
+              autoCapitalize="words"
+              autoCorrect={false}
+              editable={!nameSaving}
+              textContentType="name"
+            />
+            <View style={styles.sportActions}>
+              <TouchableOpacity
+                style={styles.dateClearBtn}
+                disabled={nameSaving}
+                onPress={() => setNameModalVisible(false)}
+              >
+                <Text style={styles.dateClearText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.dateSaveBtn, nameSaving && styles.dateSaveBtnDisabled]}
+                disabled={nameSaving}
+                onPress={() => void persistDisplayName()}
+              >
+                <Text style={styles.dateSaveText}>{nameSaving ? 'Saving…' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
           </View>

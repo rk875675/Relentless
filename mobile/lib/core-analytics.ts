@@ -47,6 +47,11 @@ export function trackProgressRingViewed(properties?: CoreProps): void {
   captureCoreEvent('progress_ring_viewed', properties);
 }
 
+/** Outbound referral partner (e.g. sports psych) — no PII beyond flags already safe for analytics */
+export function trackPartnerReferralCtaClicked(properties: CoreProps): void {
+  captureCoreEvent('partner_referral_cta_clicked', properties);
+}
+
 /** Reflections — never include journal body text */
 export function trackReflectionPromptViewed(properties?: CoreProps): void {
   captureCoreEvent('reflection_prompt_viewed', properties);

@@ -251,12 +251,21 @@ Deno.serve(async (req) => {
   // Update entitlements table
   // ---------------------------------------------------------------------------
 
+  // Read current status before overwriting — used below to detect first-ever subscription.
+  const { data: existingEnt } = await supabase
+    .from("entitlements")
+    .select("status")
+    .eq("user_id", auth.userId)
+    .maybeSingle();
+  const previousStatus: string | null = existingEnt?.status ?? null;
+
   const { error: upsertErr } = await supabase
     .from("entitlements")
     .upsert({
       user_id: auth.userId,
       status: entitlementStatus,
       product_id: productId ?? null,
+      original_transaction_id: originalTransactionId,
       starts_at: new Date().toISOString(),
       expires_at: expiresAt ?? null,
       updated_at: new Date().toISOString(),
@@ -279,6 +288,25 @@ Deno.serve(async (req) => {
       expires_at: expiresAt ?? null,
     },
   });
+
+  // Fire trial_started exactly once: only when transitioning from a non-active
+  // state into trial or active. Re-syncs (e.g. app restarts) will see the DB
+  // already at trial/active and skip the event.
+  const isNewSubscription =
+    previousStatus === null || previousStatus === "none" || previousStatus === "expired";
+  if (isNewSubscription && (entitlementStatus === "trial" || entitlementStatus === "active")) {
+    await capturePostHogEvent(auth.userId, "trial_started", {
+      product_id: productId ?? null,
+      is_trial: entitlementStatus === "trial",
+      original_transaction_id: originalTransactionId,
+      is_sandbox: isSandbox,
+      // $set keeps the PostHog person record in sync without waiting for the next app open.
+      $set: {
+        entitlement_status: entitlementStatus,
+        premium: true,
+      },
+    });
+  }
 
   const responseBody = {
     entitlement_status: entitlementStatus,
@@ -570,6 +598,34 @@ function isFreeTrialTransaction(signedTransactionInfo?: string): boolean {
     payload.is_trial_period === true ||
     payload.offerDiscountType?.toUpperCase() === "FREE_TRIAL"
   );
+}
+
+// ---------------------------------------------------------------------------
+// PostHog server-side capture
+// ---------------------------------------------------------------------------
+
+async function capturePostHogEvent(
+  distinctId: string,
+  event: string,
+  properties: Record<string, unknown>,
+): Promise<void> {
+  const apiKey = Deno.env.get("POSTHOG_API_KEY") ?? "";
+  const host = (Deno.env.get("POSTHOG_HOST") ?? "https://us.i.posthog.com").replace(/\/$/, "");
+  if (!apiKey) return;
+  try {
+    await fetch(`${host}/capture/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        event,
+        distinct_id: distinctId,
+        properties: { ...properties, $lib: "supabase-edge-function" },
+      }),
+    });
+  } catch {
+    // Analytics must never break the purchase flow.
+  }
 }
 
 function decodeJwtPayload<T>(jwt: string): T | null {

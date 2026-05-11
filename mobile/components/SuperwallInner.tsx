@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 import { SUPERWALL_ENABLED, SUPERWALL_IOS_API_KEY } from '@/lib/superwall-config';
 import { useAuth } from '@/lib/auth-context';
+import { analytics } from '@/lib/analytics';
 import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
 import { emitTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
 
@@ -101,6 +102,10 @@ function SuperwallPurchaseSync() {
   const { refreshUserState, optimisticGrantAccess } = useAuth();
   const transactionInFlight = useRef(false);
   const sawAppCloseDuringTransaction = useRef(false);
+  // Track whether a trusted purchase happened within the current paywall session.
+  // Reset on paywallOpen, set on trusted transactionComplete.
+  // Used to distinguish a post-purchase paywallClose from a no-purchase dismiss.
+  const sessionPurchasedRef = useRef(false);
 
   useSuperwallEvents({
     onSuperwallEvent: (eventInfo: { event?: unknown; params?: Record<string, unknown> }) => {
@@ -141,6 +146,11 @@ function SuperwallPurchaseSync() {
           ...(reasonType ? { reason: reasonType } : {}),
         });
       }
+
+      // -----------------------------------------------------------------------
+      // Metric 1 — paywall_dismissed: sheet closed without a trusted purchase.
+      // Does NOT fire after a successful purchase (sessionPurchasedRef guards it).
+      // -----------------------------------------------------------------------
       if (name === 'transactionStart') {
         transactionInFlight.current = true;
         sawAppCloseDuringTransaction.current = false;
@@ -149,6 +159,10 @@ function SuperwallPurchaseSync() {
         sawAppCloseDuringTransaction.current = true;
       }
       if (name === 'paywallClose') {
+        if (!sessionPurchasedRef.current) {
+          analytics.capture('paywall_dismissed');
+        }
+        sessionPurchasedRef.current = false;
         transactionInFlight.current = false;
         sawAppCloseDuringTransaction.current = false;
       }
@@ -175,6 +189,7 @@ function SuperwallPurchaseSync() {
           console.log('[Superwall][purchase]', { hasOid: Boolean(oid), hasSignedTx: Boolean(signedTx) });
         }
         if (trustedAppleSheetPurchase) {
+          sessionPurchasedRef.current = true;
           optimisticGrantAccess();
           emitTrustedPaywallPurchase({ originalTransactionId: oid, signedTransactionInfo: signedTx });
         } else if (__DEV__) {

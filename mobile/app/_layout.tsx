@@ -12,6 +12,7 @@ import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { parseAuthParamsFromUrl } from '@/lib/auth-redirects';
 import { clearInAppAuthHubEntry, takeInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { loadOnboardingProgress } from '@/lib/onboarding-local-state';
+import { prefetchHomeData } from '@/lib/api-cache';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -140,6 +141,7 @@ function RouteGuard() {
       redirectToPaywallOrWelcome(false);
     } else if (session && inAuth && !inPasswordRecovery) {
       if (onboardingComplete && hasPremiumAccess) {
+        prefetchHomeData();
         router.replace('/(tabs)');
       } else if (onboardingComplete && !hasPremiumAccess) {
         router.replace('/(onboarding)/paywall');
@@ -160,6 +162,7 @@ function RouteGuard() {
     } else if (session && onboardingComplete && !hasPremiumAccess && !onPaywall && !inAuth) {
       router.replace('/(onboarding)/paywall');
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
+      prefetchHomeData();
       try { router.replace('/(tabs)'); } catch { /* navPhase key change handles this */ }
     } else if (session && !onboardingComplete && hasPremiumAccess && !isOptimisticGrant && onPaywall) {
       // Safety net: paywall only, DB-confirmed subscription only (not optimistic grant).
@@ -167,7 +170,7 @@ function RouteGuard() {
       // signup races finishPostPaywallSetup and can hang. When isOptimisticGrant is true
       // the purchase hasn't been synced to the DB yet; PaywallSuperwall routes to
       // signup.tsx which syncs first before completing onboarding.
-      completeOnboarding().then(() => router.replace('/(tabs)')).catch(() => {});
+      completeOnboarding().then(() => { prefetchHomeData(); router.replace('/(tabs)'); }).catch(() => {});
     }
 
     setTimeout(hideSplash, 50);

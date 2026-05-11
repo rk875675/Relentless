@@ -17,6 +17,7 @@ import { clearOnboardingProgress } from './onboarding-local-state';
 const FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000;
 /** If profile/entitlement queries stall (common on first OAuth after code exchange), still resolve the sign-in promise. Session is already persisted; background fetch + RouteGuard corrects routing. */
 const POST_SIGNIN_PROFILE_BUDGET_MS = 12_000;
+const MAX_PROFILE_DISPLAY_NAME_LEN = 80;
 
 /** Use the Supabase client (not React `session`) so Skip works on the first tap in Expo Go / after fast refresh. */
 async function getClientUserId(hint?: string | null): Promise<string | null> {
@@ -82,6 +83,8 @@ type AuthState = {
   onboardingComplete: boolean;
   competitionDate: string | null;
   sport: string | null;
+  /** User-chosen label on Profile; empty in DB ⇒ client falls back to email local-part. */
+  displayName: string | null;
   isTrackAthlete: boolean;
   entitlementStatus: string | null;
   hasPremiumAccess: boolean;
@@ -102,6 +105,7 @@ type AuthState = {
   refreshUserState: () => Promise<void>;
   updateCompetitionDate: (date: string | null) => Promise<string | null>;
   updateSport: (sport: string | null) => Promise<string | null>;
+  updateDisplayName: (name: string | null) => Promise<string | null>;
   updateIsTrackAthlete: (value: boolean) => Promise<string | null>;
   /**
    * Optimistically marks the user as having active entitlement in local state,
@@ -119,6 +123,7 @@ const AuthContext = createContext<AuthState>({
   onboardingComplete: false,
   competitionDate: null,
   sport: null,
+  displayName: null,
   isTrackAthlete: false,
   entitlementStatus: null,
   hasPremiumAccess: false,
@@ -135,6 +140,7 @@ const AuthContext = createContext<AuthState>({
   refreshUserState: async () => {},
   updateCompetitionDate: async () => null,
   updateSport: async () => null,
+  updateDisplayName: async () => null,
   updateIsTrackAthlete: async () => null,
   optimisticGrantAccess: () => {},
 });
@@ -149,6 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [devReplayOnboarding, setDevReplayOnboarding] = useState(false);
   const [competitionDate, setCompetitionDate] = useState<string | null>(null);
   const [sport, setSport] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [isTrackAthlete, setIsTrackAthlete] = useState(false);
   const [entitlementStatus, setEntitlementStatus] = useState<string | null>(null);
   const [entitlementExpiresAt, setEntitlementExpiresAt] = useState<string | null>(null);
@@ -177,23 +184,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserState = useCallback(async (userId: string): Promise<FetchedUserSnapshot> => {
     const profileSelectAttempts = [
+      'onboarding_completed, competition_date, is_dev, sport, is_track_athlete, display_name',
       'onboarding_completed, competition_date, is_dev, sport, is_track_athlete',
       'onboarding_completed, competition_date, is_dev, sport',
       'onboarding_completed, competition_date, is_dev, is_track_athlete',
       'onboarding_completed, competition_date, is_dev',
     ] as const;
 
-    const entRes = await supabase
-      .from('entitlements')
-      .select('status, expires_at')
-      .eq('user_id', userId)
-      .maybeSingle();
+    const [entRes, initialProfileRes] = await Promise.all([
+      supabase
+        .from('entitlements')
+        .select('status, expires_at')
+        .eq('user_id', userId)
+        .maybeSingle(),
+      supabase
+        .from('profiles')
+        .select(profileSelectAttempts[0])
+        .eq('id', userId)
+        .maybeSingle(),
+    ]);
 
-    let profileRes = await supabase
-      .from('profiles')
-      .select(profileSelectAttempts[0])
-      .eq('id', userId)
-      .maybeSingle();
+    let profileRes = initialProfileRes;
 
     for (let i = 1; i < profileSelectAttempts.length && profileRes.error; i++) {
       const msg = `${profileRes.error.message ?? ''} ${profileRes.error.details ?? ''}`.toLowerCase();
@@ -222,6 +233,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const profileCompleted = profile?.onboarding_completed ?? false;
     const compDate = profile?.competition_date ?? null;
     const sportVal = (profile as { sport?: string | null } | null)?.sport ?? null;
+    const displayNameVal =
+      (profile as { display_name?: string | null } | null)?.display_name?.trim() || null;
     const trackVal = (profile as { is_track_athlete?: boolean | null } | null)?.is_track_athlete === true;
     const entStatus = ent?.status ?? 'none';
     const entExpires = ent?.expires_at ?? null;
@@ -230,6 +243,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfileOnboardingCompleted(profileCompleted);
     setCompetitionDate(compDate);
     setSport(sportVal);
+    setDisplayName(displayNameVal);
     setIsTrackAthlete(trackVal);
 
     const dbEntitlementActive = entStatus === 'trial' || entStatus === 'active';
@@ -323,6 +337,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setDevReplayOnboarding(false);
           setCompetitionDate(null);
           setSport(null);
+          setDisplayName(null);
           setIsTrackAthlete(false);
           setEntitlementStatus(null);
           setEntitlementExpiresAt(null);
@@ -720,6 +735,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return null;
   }, []);
 
+  const updateDisplayName = useCallback(async (raw: string | null): Promise<string | null> => {
+    const { data: { session: active } } = await supabase.auth.getSession();
+    const userId = active?.user?.id;
+    if (!userId) return 'Not authenticated';
+    const trimmed = raw?.trim() ? raw.trim().slice(0, MAX_PROFILE_DISPLAY_NAME_LEN) : null;
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ display_name: trimmed })
+      .eq('id', userId)
+      .select('display_name');
+    if (error) return error.message;
+    if (!data?.length) return 'Could not save name';
+    const saved = (data[0] as { display_name?: string | null })?.display_name?.trim() || null;
+    setDisplayName(saved);
+    return null;
+  }, []);
+
   const updateIsTrackAthlete = useCallback(async (value: boolean): Promise<string | null> => {
     const { data: { session: active } } = await supabase.auth.getSession();
     const userId = active?.user?.id;
@@ -743,6 +775,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       onboardingComplete,
       competitionDate,
       sport,
+      displayName,
       isTrackAthlete,
       entitlementStatus,
       hasPremiumAccess,
@@ -759,6 +792,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshUserState,
       updateCompetitionDate,
       updateSport,
+      updateDisplayName,
       updateIsTrackAthlete,
       optimisticGrantAccess,
     }}>

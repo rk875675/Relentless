@@ -1773,14 +1773,14 @@ export default function LessonPlayerScreen() {
     doneScale.setValue(0.3);
     glowPulse.setValue(1);
 
-    Animated.stagger(120, [
+    Animated.stagger(80, [
       Animated.parallel([
-        Animated.timing(doneAnim1, { toValue: 1, duration: 150, useNativeDriver: true }),
+        Animated.timing(doneAnim1, { toValue: 1, duration: 120, useNativeDriver: true }),
         Animated.spring(doneScale, { toValue: 1, friction: 5, tension: 80, useNativeDriver: true }),
       ]),
-      Animated.timing(doneAnim2, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.timing(doneAnim3, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.timing(doneAnim4, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.timing(doneAnim2, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(doneAnim3, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(doneAnim4, { toValue: 1, duration: 200, useNativeDriver: true }),
     ]).start();
 
     // Pulsing glow on the trophy
