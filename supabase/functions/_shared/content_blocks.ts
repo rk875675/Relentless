@@ -97,10 +97,19 @@ const TapThroughTextBlockSchema = z.object({
   paragraphs: z.array(z.string().min(1)).min(1),
 }).strict();
 
+const PromptJournalLinkSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("program_day"),
+    program_day: z.number().int().min(1).max(30),
+  }).strict(),
+  z.object({ kind: z.literal("session_entries") }).strict(),
+]);
+
 const PromptCardItemSchema = z.object({
   intro_hold_seconds: z.number().min(0),
   prompt: z.string().min(1),
   min_entry_seconds: z.number().min(0),
+  journal_link: PromptJournalLinkSchema.optional(),
 }).strict();
 
 const PromptCardsSummarySchema = z.object({

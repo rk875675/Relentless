@@ -105,7 +105,16 @@ type TapThroughTextBlock = {
   paragraphs: string[];
 };
 
-type PromptCardItem = { intro_hold_seconds: number; prompt: string; min_entry_seconds: number };
+type PromptJournalLink =
+  | { kind: 'program_day'; program_day: number }
+  | { kind: 'session_entries' };
+
+type PromptCardItem = {
+  intro_hold_seconds: number;
+  prompt: string;
+  min_entry_seconds: number;
+  journal_link?: PromptJournalLink;
+};
 type PromptCardsSummary = { display: 'last' | 'all'; header: string; hold_seconds: number; save_to_profile?: boolean };
 type PromptCardsBlock = {
   type: 'prompt_cards';

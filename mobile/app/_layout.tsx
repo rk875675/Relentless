@@ -211,6 +211,36 @@ function RouteGuard() {
       <Stack.Screen name="lesson/[id]" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
       <Stack.Screen name="journal/index" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen
+        name="journal/wod-day/[day]"
+        options={{
+          headerShown: true,
+          animation: 'slide_from_right',
+          headerBackTitle: 'Lesson',
+          headerStyle: { backgroundColor: '#000' },
+          headerTintColor: '#a78bfa',
+          headerTitleStyle: {
+            fontSize: 17,
+            fontWeight: '600',
+            color: '#f5f5f5',
+          },
+        }}
+      />
+      <Stack.Screen
+        name="journal/session-log"
+        options={{
+          headerShown: true,
+          animation: 'slide_from_right',
+          headerBackTitle: 'Lesson',
+          headerStyle: { backgroundColor: '#000' },
+          headerTintColor: '#a78bfa',
+          headerTitleStyle: {
+            fontSize: 17,
+            fontWeight: '600',
+            color: '#f5f5f5',
+          },
+        }}
+      />
+      <Stack.Screen
         name="category/[id]"
         options={{
           headerShown: true,

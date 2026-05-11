@@ -33,6 +33,13 @@ const ListQuerySchema = PaginationSchema.extend({
 
 const UuidSchema = z.string().uuid();
 
+/** Matches `program_schedule.program_version` / lessons edge (v1 program). */
+const PROGRAM_VERSION = "v1";
+
+const ProgramDayQuerySchema = z.object({
+  program_day: z.coerce.number().int().min(1).max(30),
+});
+
 const CreateSchema = z
   .object({
     body: z.string().min(1),
@@ -92,6 +99,12 @@ Deno.serve(async (req) => {
   if (req.method === "GET" && subPath === "") {
     return handleList(url, supabase, auth.userId, requestId);
   }
+  if (req.method === "GET" && subPath === "by-program-day") {
+    return handleByProgramDay(url, supabase, auth.userId, requestId);
+  }
+  if (req.method === "GET" && subPath === "session-log") {
+    return handleSessionLog(supabase, auth.userId, requestId);
+  }
   if (req.method === "GET" && subPath !== "") {
     return handleGetById(supabase, subPath, auth.userId, requestId);
   }
@@ -122,6 +135,98 @@ function lessonJoinToTitleAndCategories(lesson: LessonJoin): {
   const rows = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
   const categories = rows.map((r) => r.category).filter(Boolean);
   return { lesson_title: lesson.title ?? null, categories };
+}
+
+// Fetch latest session journal tied to the canonical WOD lesson for a program day (1–30).
+async function handleByProgramDay(
+  url: URL,
+  supabase: ReturnType<typeof createServiceClient>,
+  userId: string,
+  requestId: string,
+): Promise<Response> {
+  const parsed = ProgramDayQuerySchema.safeParse({
+    program_day: url.searchParams.get("program_day") ?? undefined,
+  });
+  if (!parsed.success) {
+    return errorResponse(
+      400,
+      "VALIDATION_ERROR",
+      parsed.error.issues[0]?.message ?? "Invalid program_day",
+      requestId,
+    );
+  }
+  const programDay = parsed.data.program_day;
+
+  const { data: sched, error: schedErr } = await supabase
+    .from("program_schedule")
+    .select("lesson_id")
+    .eq("program_version", PROGRAM_VERSION)
+    .eq("day_number", programDay)
+    .maybeSingle();
+
+  if (schedErr) {
+    return errorResponse(500, "INTERNAL_ERROR", "Failed to resolve program day", requestId);
+  }
+  const lessonId = sched?.lesson_id as string | undefined;
+  if (!lessonId) {
+    return successResponse({ entry: null, program_day: programDay }, requestId);
+  }
+
+  const { data: row, error } = await supabase
+    .from("journal_entries")
+    .select(
+      "id, lesson_id, competition_date, body, entry_type, created_at, updated_at, lessons(title, lesson_categories(category))",
+    )
+    .eq("user_id", userId)
+    .eq("lesson_id", lessonId)
+    .eq("entry_type", "session")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    return errorResponse(500, "INTERNAL_ERROR", "Failed to fetch journal entry", requestId);
+  }
+  if (!row) {
+    return successResponse({ entry: null, program_day: programDay }, requestId);
+  }
+
+  const { lessons, ...e } = row as typeof row & { lessons: LessonJoin };
+  const { lesson_title, categories } = lessonJoinToTitleAndCategories(lessons);
+
+  return successResponse(
+    { entry: { ...e, lesson_title, categories }, program_day: programDay },
+    requestId,
+  );
+}
+
+/** Session-type entries oldest-first (for Day 30 evidence log review). */
+async function handleSessionLog(
+  supabase: ReturnType<typeof createServiceClient>,
+  userId: string,
+  requestId: string,
+): Promise<Response> {
+  const MAX = 200;
+  const { data: rows, error } = await supabase
+    .from("journal_entries")
+    .select(
+      "id, lesson_id, competition_date, body, entry_type, created_at, updated_at, lessons(title, lesson_categories(category))",
+    )
+    .eq("user_id", userId)
+    .eq("entry_type", "session")
+    .order("created_at", { ascending: true })
+    .limit(MAX);
+
+  if (error) {
+    return errorResponse(500, "INTERNAL_ERROR", "Failed to fetch journal entries", requestId);
+  }
+
+  const items = (rows ?? []).map(({ lessons, ...e }) => {
+    const { lesson_title, categories } = lessonJoinToTitleAndCategories(lessons as LessonJoin);
+    return { ...e, lesson_title, categories };
+  });
+
+  return successResponse({ items }, requestId);
 }
 
 // J2 — list own journal entries (paginated, chronological desc)

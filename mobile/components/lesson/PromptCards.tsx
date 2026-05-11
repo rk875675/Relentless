@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '@/lib/theme';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
@@ -16,7 +17,16 @@ import { pickMacColor } from '@/lib/mac-categories';
 // `intro_hold_seconds` and `min_entry_seconds` remain on the data shape so
 // existing content JSON keeps validating, but the player no longer enforces
 // them — the user paces the cards themselves with Back/Next.
-type PromptCardItem = { intro_hold_seconds: number; prompt: string; min_entry_seconds: number };
+export type PromptJournalLink =
+  | { kind: 'program_day'; program_day: number }
+  | { kind: 'session_entries' };
+
+type PromptCardItem = {
+  intro_hold_seconds: number;
+  prompt: string;
+  min_entry_seconds: number;
+  journal_link?: PromptJournalLink;
+};
 
 type Props = {
   cards: PromptCardItem[];
@@ -28,6 +38,7 @@ type Props = {
 };
 
 export default function PromptCards({ cards, catColor, accentColors, onIndexChange, onComplete }: Props) {
+  const router = useRouter();
   const [cardIndex, setCardIndex] = useState(0);
   const [phase, setPhase] = useState<'intro' | 'entry'>('intro');
   const [entries, setEntries] = useState<string[]>(() => Array(cards.length).fill(''));
@@ -121,6 +132,32 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
   const canGoBack = phase === 'entry' || cardIndex > 0;
   const isLastCard = cardIndex >= cards.length - 1;
 
+  const openJournalLink = (link: PromptJournalLink) => {
+    if (link.kind === 'program_day') {
+      router.push(`/journal/wod-day/${link.program_day}` as any);
+    } else {
+      router.push('/journal/session-log' as any);
+    }
+  };
+
+  const journalLinkLabel =
+    card.journal_link?.kind === 'program_day'
+      ? `View Day ${card.journal_link.program_day} journal`
+      : card.journal_link?.kind === 'session_entries'
+        ? 'View evidence log'
+        : null;
+
+  const journalLinkButton =
+    journalLinkLabel && card.journal_link ? (
+      <TouchableOpacity
+        style={styles.journalLinkBtn}
+        onPress={() => openJournalLink(card.journal_link!)}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.journalLinkBtnText}>{journalLinkLabel}</Text>
+      </TouchableOpacity>
+    ) : null;
+
   const dots = (
     <View style={styles.dots}>
       {cards.map((_, i) => {
@@ -158,6 +195,7 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
           <View style={[styles.card, { borderColor: catColor, borderTopWidth: 2 }]}>
             <Text style={styles.cardPrompt}>{card.prompt}</Text>
           </View>
+          {journalLinkButton}
           <View style={styles.actionRow}>
             {backButton}
             <TouchableOpacity style={[styles.btn, styles.btnInRow]} onPress={flipToEntry}>
@@ -184,6 +222,7 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
           >
             {dots}
             <Text style={styles.entryPrompt}>{card.prompt}</Text>
+            {journalLinkButton}
             <TextInput
               style={styles.textInput}
               placeholder="Write your answer..."
@@ -316,4 +355,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backBtnPlaceholder: { width: 48, height: 48 },
+  journalLinkBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  journalLinkBtnText: {
+    color: colors.accentLight,
+    fontSize: 15,
+    fontWeight: '700',
+  },
 });

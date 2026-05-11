@@ -95,12 +95,19 @@
         {
           "intro_hold_seconds": 0,
           "prompt": "Open your Day 23 journal entry — your five to ten year visualization. Read it. Let yourself feel it again.",
-          "min_entry_seconds": 0
+          "min_entry_seconds": 0,
+          "journal_link": {
+            "kind": "program_day",
+            "program_day": 23
+          }
         },
         {
           "intro_hold_seconds": 0,
           "prompt": "Now open your evidence log. Read every entry from the beginning.",
-          "min_entry_seconds": 0
+          "min_entry_seconds": 0,
+          "journal_link": {
+            "kind": "session_entries"
+          }
         },
         {
           "intro_hold_seconds": 0,
