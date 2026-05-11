@@ -187,9 +187,12 @@ function RouteGuard() {
 
   // Detect phase change synchronously during render so the black screen
   // appears on the SAME frame — not one frame late (which causes a flash).
+  // Only needed when transitioning FROM onboarding — (auth) → (tabs) works
+  // fine with router.replace and doesn't need the black screen.
+  const currentRoot = (segments as string[])[0];
   if (prevNavPhase.current !== navPhase) {
     prevNavPhase.current = navPhase;
-    if (!transitioning) setTransitioning(true);
+    if (!transitioning && currentRoot === '(onboarding)') setTransitioning(true);
   }
 
   useEffect(() => {
