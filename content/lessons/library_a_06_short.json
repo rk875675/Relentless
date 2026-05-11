@@ -8,19 +8,22 @@
   "blocks": [
     {
       "type": "tap_through_text",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/paulyudin-ambient-ambient-music-482398.mp3",
       "paragraphs": [
-        "You can't regulate what you can't see. Most athletes lose the mental battle not because they're weak — but because they never learned to read what was happening inside them in real time.",
-        "Research in emotional awareness training shows that athletes who can precisely identify and describe their emotional states have significantly better regulation under pressure.",
+        "You can't regulate what you can't see.",
+        "Most athletes lose the mental game not because they're weak — but because they can't read themselves.",
+        "Precisely identifying your emotional state gives you better regulation when it counts.",
+        "Athletes with strong emotional awareness consistently outperform those without it.",
         "This exercise takes you back to a specific moment when an emotion worked against you.",
-        "You're not going back to fix it. You're going back to map it — so next time, you recognize it early enough to do something about it.",
+        "This isn't about fixing the past. It's about mapping what happened.",
+        "The goal is to recognize it early enough next time to change the outcome.",
         "Think of one moment. A race, a practice, a workout where your head got in the way.",
         "Walk us through it. Be specific."
       ]
     },
     {
       "type": "prompt_cards",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/paulyudin-ambient-ambient-music-482398.mp3",
       "cards": [
         {
           "intro_hold_seconds": 3,

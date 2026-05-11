@@ -8,11 +8,12 @@
   "blocks": [
     {
       "type": "tap_through_text",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/grand_project-deep-meditation-192828.mp3",
       "paragraphs": [
         "Most athletes wait to feel ready. You don't have that luxury right now.",
         "Coffee Breath is controlled hyperventilating — one second in, one second out.",
-        "It activates your sympathetic nervous system — the same switch that fires when your body needs to perform.",
+        "It switches on your sympathetic nervous system.",
+        "That's the same switch your body uses when it needs to perform.",
         "This isn't meditation. This is ignition.",
         "When the exercise starts, breathe fast and keep pace with the circle.",
         "Don't overthink it. Just move air. The energy will follow."
@@ -21,7 +22,7 @@
     {
       "type": "timed_exercise",
       "duration_seconds": 60,
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/grand_project-deep-meditation-192828.mp3",
       "interactive_model": "coffee_breath",
       "haptic_pattern": {
         "cycle_seconds": 2,

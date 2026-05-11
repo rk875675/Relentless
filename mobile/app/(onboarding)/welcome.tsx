@@ -3,6 +3,7 @@ import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
+import { useAuth } from '@/lib/auth-context';
 import { clearOnboardingProgress, loadOnboardingScreen } from '@/lib/onboarding-local-state';
 import { colors, spacing } from '@/lib/theme';
 
@@ -19,6 +20,7 @@ const VALID_ONBOARDING_SCREENS = new Set([
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const { session, onboardingComplete } = useAuth();
   const [savedScreen, setSavedScreen] = useState<string | null>(null);
   const [showUI, setShowUI] = useState(false);
   const fadeTitle = useRef(new Animated.Value(0)).current;
@@ -26,6 +28,13 @@ export default function WelcomeScreen() {
   const fadeCta = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Skip auto-resume if the user already completed onboarding — the
+    // RouteGuard will replace to (tabs). Pushing a saved screen here would
+    // race with that replace and leave a stale onboarding screen on the stack.
+    if (session && onboardingComplete) {
+      setShowUI(true);
+      return;
+    }
     loadOnboardingScreen().then((s) => {
       if (s && VALID_ONBOARDING_SCREENS.has(s)) {
         setSavedScreen(s);
@@ -36,7 +45,7 @@ export default function WelcomeScreen() {
         setShowUI(true);
       }
     });
-  }, [router]);
+  }, [router, session, onboardingComplete]);
 
   useEffect(() => {
     if (!showUI) return;

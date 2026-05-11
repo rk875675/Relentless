@@ -8,10 +8,11 @@
   "blocks": [
     {
       "type": "tap_through_text",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/leberch-meditative-ambient-509385.mp3",
       "paragraphs": [
         "You're not going to wait until you feel motivated. That's not how this works.",
-        "Research in behavioral psychology shows that action precedes motivation — not the other way around. You don't feel ready and then start. You start, and then you feel ready.",
+        "Behavioral psychology is clear: action comes before motivation, not after.",
+        "You don't feel ready and then start. You start, and then you feel ready.",
         "The hardest part is always the first minute. Not the workout. Not the session. The first minute.",
         "You're going to pick one thing right now and do it for 60 seconds. That's the whole job.",
         "It doesn't matter if you finish it. It doesn't matter if it's big. What matters is that you start.",
@@ -20,7 +21,7 @@
     },
     {
       "type": "countdown_timer",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/leberch-meditative-ambient-509385.mp3",
       "duration_seconds": 60,
       "task_list": [
         "60 seconds of stretching",

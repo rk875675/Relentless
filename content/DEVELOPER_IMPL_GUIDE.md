@@ -139,13 +139,14 @@ Swipe left = next, swipe right = back, tap = next. Last paragraph shows
   "paragraphs": [
     "First paragraph shown on screen.",
     "Second paragraph shown after tap.",
-    "And so on — 3 to 7 paragraphs is ideal."
+    "Each paragraph is one tap — keep it short."
   ]
 }
 ```
 
+- **Each paragraph renders on its own screen — limit to 3 lines of text maximum (~90 characters).** If a paragraph runs long, break it into two separate array entries. Rephrase into two shorter, cleaner sentences — don't just cut mechanically at a period.
 - Keep each paragraph to 1–2 sentences max (readable at a glance)
-- 3–7 paragraphs is the sweet spot; beyond 7 gets long
+- 5–10 paragraphs is fine; splitting long paragraphs naturally adds helpful breathing room between ideas
 - `ambient_audio` is optional but strongly recommended
 
 ### Verbatim exercise copy (program Daily Workouts + library)

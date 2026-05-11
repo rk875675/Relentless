@@ -8,9 +8,10 @@
   "blocks": [
     {
       "type": "tap_through_text",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/paulyudin-ambient-ambient-music-482398.mp3",
       "paragraphs": [
-        "Not every moment calls for intensity. Not every moment calls for calm. Sometimes you just need to be level.",
+        "Not every moment calls for intensity, and not every moment calls for calm.",
+        "Sometimes all you need is to find level.",
         "Milk Breath is equal breathing — the same count in as out. No force in either direction.",
         "Four seconds in through the nose. Four seconds out through the mouth.",
         "The goal isn't to feel anything. The goal is to return to zero.",
@@ -21,7 +22,7 @@
     {
       "type": "timed_exercise",
       "duration_seconds": 80,
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/paulyudin-ambient-ambient-music-482398.mp3",
       "interactive_model": "milk_breath",
       "haptic_pattern": {
         "cycle_seconds": 8,

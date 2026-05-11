@@ -8,10 +8,11 @@
   "blocks": [
     {
       "type": "tap_through_text",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/paulyudin-ambient-ambient-music-482398.mp3",
       "paragraphs": [
         "Your body is always sending you signals. Most of the time, you're not listening.",
-        "Right now, you're holding tension somewhere — your jaw, your shoulders, your hands. You might not even know it.",
+        "Right now, tension is sitting somewhere in your body.",
+        "Your jaw, your shoulders, your hands — and you might not even know it.",
         "A body scan moves your attention slowly through your body from head to feet.",
         "You're not trying to fix anything. You're just noticing. Then releasing.",
         "This is one of the most practiced techniques in elite sports psychology. Simple doesn't mean easy.",
@@ -21,7 +22,7 @@
     {
       "type": "timed_exercise",
       "duration_seconds": 120,
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/paulyudin-ambient-ambient-music-482398.mp3",
       "interactive_model": "body_scan",
       "steps": [
         { "text": "Top of your head. Just notice.", "duration_seconds": 10, "haptic": "medium" },

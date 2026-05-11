@@ -8,11 +8,13 @@
   "blocks": [
     {
       "type": "tap_through_text",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/atlasaudio-ambient-cinematic-510518.mp3",
       "paragraphs": [
-        "Your brain doesn't know the difference between a real threat and a perceived one. It treats every worry the same — urgent, unresolved, consuming.",
+        "Your brain can't distinguish a real threat from an imagined one.",
+        "Every worry gets treated the same — urgent, unresolved, consuming.",
         "The goal of this exercise isn't to fix your worries. It's to sort them.",
-        "You're going to write down everything on your mind right now. Every fear, every doubt, every what-if — as separate entries.",
+        "Write down everything on your mind right now — every fear, doubt, and what-if.",
+        "Each one goes down as a separate entry.",
         "Then you're going to let go of anything you can't control today. Not forever. Just for now.",
         "What's left is your actual job. And you're going to figure out exactly what to do about it.",
         "Start by getting it all out. Don't filter. Don't judge. Just write."
@@ -20,7 +22,7 @@
     },
     {
       "type": "bubble_sort",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/atlasaudio-ambient-cinematic-510518.mp3",
       "entry_instruction": "Write down everything on your mind. One worry at a time.",
       "entry_done_label": "I'm done",
       "discard_instruction": "Tap any bubble that is outside your control right now.",

@@ -8,12 +8,14 @@
   "blocks": [
     {
       "type": "tap_through_text",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/leberch-meditative-ambient-509385.mp3",
       "paragraphs": [
-        "Navy SEALs use this before combat. Surgeons use it before operations. Now you're going to use it before battle.",
+        "Navy SEALs use this before combat. Surgeons use it before operations.",
+        "Now you're going to use it before battle.",
         "The structure is simple: four seconds in, four hold, four out, four hold.",
         "Breathe in through your nose, out through your mouth.",
-        "This isn't just about calming down — it gives your mind something precise to lock onto when it wants to spiral.",
+        "This doesn't just calm you down — it anchors your mind.",
+        "When your thoughts want to spiral, this gives them something precise to lock onto.",
         "If your mind drifts, that's fine. Acknowledge the thought, let it go, and return to your breath.",
         "Close your eyes if you'd like. The exercise begins now."
       ]
@@ -21,7 +23,7 @@
     {
       "type": "timed_exercise",
       "duration_seconds": 120,
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/leberch-meditative-ambient-509385.mp3",
       "interactive_model": "box_breathing",
       "visual_cues": [
         "Drop your shoulders. Relax.",

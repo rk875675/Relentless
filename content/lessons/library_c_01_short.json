@@ -8,19 +8,24 @@
   "blocks": [
     {
       "type": "tap_through_text",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/atlasaudio-ambient-cinematic-510518.mp3",
       "paragraphs": [
-        "The past does not equal the future. Just because something hasn't worked yet doesn't mean it won't. You don't make decisions based on who you were. You make them based on who you're becoming.",
-        "Most athletes set goals. The best athletes build an identity. There's a difference between 'I want to run faster' and knowing exactly who you are when you get there.",
-        "You're going to describe your future self in detail. Pick a time frame — 3 months, 6 months, a year. You choose how far out you want to look.",
-        "One rule: describe what you want, not what you don't want. Your brain thinks in images. Build the image you actually want.",
-        "Be specific. Vague answers produce vague results. The more real this person feels, the more your decisions will start pointing toward them.",
+        "The past does not equal the future. Something not working yet doesn't mean it won't.",
+        "You don't make decisions based on who you were. You make them based on who you're becoming.",
+        "Most athletes set goals. The best athletes build an identity.",
+        "Knowing who you'll be when you get there is different from just wanting results.",
+        "You're going to describe your future self in detail.",
+        "Pick a time frame — 3 months, 6 months, a year. You decide how far out to look.",
+        "One rule: describe what you want, not what you don't want.",
+        "Your brain thinks in images. Make sure you're building the right one.",
+        "Be specific — vague answers produce vague results.",
+        "The more real this person feels, the more your decisions will start pointing toward them.",
         "Start building."
       ]
     },
     {
       "type": "prompt_cards",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/atlasaudio-ambient-cinematic-510518.mp3",
       "cards": [
         {
           "intro_hold_seconds": 3,

@@ -8,19 +8,21 @@
   "blocks": [
     {
       "type": "tap_through_text",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/grand_project-deep-meditation-192828.mp3",
       "paragraphs": [
-        "One of the fastest ways to lose your mental edge is spending energy on things you cannot change. Research consistently shows that perceived control is one of the strongest predictors of performance under pressure.",
+        "Spending energy on things you can't control is the fastest way to lose your edge.",
+        "Perceived control is one of the strongest predictors of performance under pressure.",
         "This exercise forces you to get specific. Exactly what is and isn't in your hands.",
         "You're going to fill two columns. What I control. What I don't.",
-        "The uncontrollable side gets acknowledged, and then closed. You're not ignoring it. You're making a deliberate decision to stop spending energy there.",
+        "The uncontrollable side gets acknowledged, and then closed.",
+        "This isn't about ignoring it — it's a deliberate decision to stop spending energy there.",
         "The controllable side becomes your entire focus from this point forward.",
         "Be honest. Vague answers won't help you."
       ]
     },
     {
       "type": "two_column_sort",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/grand_project-deep-meditation-192828.mp3",
       "columns": [
         { "id": "control", "label": "What I Control" },
         { "id": "no_control", "label": "What I Don't" }

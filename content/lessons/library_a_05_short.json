@@ -8,19 +8,21 @@
   "blocks": [
     {
       "type": "tap_through_text",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/atlasaudio-ambient-cinematic-510518.mp3",
       "paragraphs": [
         "You are almost always harder on yourself than you would ever be on someone you care about.",
-        "Psychologist Ethan Kross at the University of Michigan found that advising yourself from a third-person perspective — as if you were coaching someone else — dramatically reduces emotional intensity and improves decision-making under stress.",
+        "Coaching yourself like you'd coach an athlete dramatically reduces emotional intensity.",
+        "Psychologist Ethan Kross at Michigan proved this also sharpens decision-making under stress.",
         "Distance is the tool. You're going to use it right now.",
-        "Think about an athlete coming to you with everything you're currently carrying — the doubt, the fear, the pressure.",
+        "Picture an athlete walking into your office.",
+        "They're carrying everything you're currently carrying — the doubt, the fear, the pressure.",
         "What would you actually tell them? Not what sounds good. What would genuinely help?",
         "Write like you mean it. That athlete needs you right now."
       ]
     },
     {
       "type": "prompt_cards",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/atlasaudio-ambient-cinematic-510518.mp3",
       "cards": [
         {
           "intro_hold_seconds": 3,

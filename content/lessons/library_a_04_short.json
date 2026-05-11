@@ -8,19 +8,23 @@
   "blocks": [
     {
       "type": "tap_through_text",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/leberch-meditative-ambient-509385.mp3",
       "paragraphs": [
-        "Pretending you feel ready when you don't costs more energy than just admitting it. Your brain knows the truth. Fighting it is the drain.",
-        "Cognitive acceptance research shows that athletes who acknowledge their actual situation — rather than suppressing or reframing it — perform more consistently under pressure.",
-        "Even the most positive athletes can crash and burn. When positivity has no direction, it becomes suppression. And suppressed fears eventually surface.",
+        "Pretending you're ready when you're not costs more energy than just admitting the truth.",
+        "Your brain already knows. Fighting it is the drain.",
+        "Athletes who face their actual situation honestly perform more consistently under pressure.",
+        "Suppressing or reframing reality doesn't help — it just delays the reckoning.",
+        "Even the most positive athletes can crash and burn when positivity has no direction.",
+        "Positivity without honesty becomes suppression — and suppressed fears always surface.",
         "This exercise isn't about feeling better. It's about being clear.",
         "You're going to write exactly where you are right now. No spin. No positivity for the sake of it.",
-        "Then you're going to answer one question that matters more than any pep talk. Be honest. The only person reading this is you."
+        "Then you're going to answer one question that matters more than any pep talk.",
+        "Be honest. The only person reading this is you."
       ]
     },
     {
       "type": "prompt_cards",
-      "ambient_audio": "ambient/ambient_music.mp3",
+      "ambient_audio": "ambient/leberch-meditative-ambient-509385.mp3",
       "cards": [
         {
           "intro_hold_seconds": 3,
