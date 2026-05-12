@@ -261,12 +261,18 @@ async function sendReminderEmail(args: {
   expiresAt: string;
 }): Promise<EmailSendResult> {
   const email = buildReminderEmail(args.productId, args.expiresAt);
+  const unsubMailto = `mailto:${args.from.replace(/.*<|>.*/g, "")}?subject=unsubscribe`;
   const payload: Record<string, unknown> = {
     from: args.from,
     to: [args.to],
     subject: email.subject,
     text: email.text,
     html: email.html,
+    headers: {
+      "List-Unsubscribe": `<${unsubMailto}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      "X-Entity-Ref-ID": crypto.randomUUID(),
+    },
   };
 
   if (args.replyTo) payload.reply_to = args.replyTo;

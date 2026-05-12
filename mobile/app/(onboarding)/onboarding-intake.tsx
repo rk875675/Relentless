@@ -66,11 +66,6 @@ const STEPS: StepDef[] = [
   },
   {
     type: 'choice',
-    title: 'How often do you think about your goals?',
-    options: ['Often', 'Sometimes', 'Rarely'],
-  },
-  {
-    type: 'choice',
     title: 'How often do you feel you could have done more after a comp?',
     options: ['Always', 'Often', 'Sometimes', 'Rarely', 'Never'],
   },
@@ -396,25 +391,41 @@ const holdStyles = StyleSheet.create({
 function QuoteStep({ onContinue }: { onContinue: () => void }) {
   const quoteOp = useRef(new Animated.Value(0)).current;
   const attrOp = useRef(new Animated.Value(0)).current;
-  const stanfordOp = useRef(new Animated.Value(0)).current;
   const continueOp = useRef(new Animated.Value(0)).current;
   const [canContinue, setCanContinue] = useState(false);
   const animRef = useRef<Animated.CompositeAnimation | null>(null);
   const hapticTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
+    quoteOp.setValue(0);
+    attrOp.setValue(0);
+    continueOp.setValue(0);
+
     hapticTimersRef.current = [
       setTimeout(() => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light), 600),
       setTimeout(() => void Haptics.selectionAsync(), 3000),
     ];
     const anim = Animated.sequence([
-      Animated.timing(quoteOp, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.timing(quoteOp, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }),
       Animated.delay(300),
-      Animated.timing(attrOp, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(attrOp, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }),
       Animated.delay(500),
-      Animated.timing(stanfordOp, { toValue: 1, duration: 500, useNativeDriver: true }),
-      Animated.delay(400),
-      Animated.timing(continueOp, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.timing(continueOp, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic),
+      }),
     ]);
     animRef.current = anim;
     anim.start(() => setCanContinue(true));
@@ -429,17 +440,12 @@ function QuoteStep({ onContinue }: { onContinue: () => void }) {
     <View style={quoteStyles.container}>
       <View style={quoteStyles.content}>
         <Animated.Text style={[quoteStyles.quote, { opacity: quoteOp }]}>
-          {'\u201cThe expectations I placed on myself were higher than what anyone expected from me.\u201d'}
+          {
+            '\u201cWhen they\u2019re at their best, athletes are focused on just being in the moment and executing their job.\u201d'
+          }
         </Animated.Text>
         <Animated.View style={[quoteStyles.attrBlock, { opacity: attrOp }]}>
-          <Text style={quoteStyles.attrName}>Kobe Bryant</Text>
-        </Animated.View>
-        <Animated.View style={[quoteStyles.stanfordBlock, { opacity: stanfordOp }]}>
-          <View style={quoteStyles.divider} />
-          <Text style={quoteStyles.stanfordQuote}>
-            {'\u201cWhen they\u2019re at their best, athletes are focused on just being in the moment and executing their job.\u201d'}
-          </Text>
-          <Text style={quoteStyles.stanfordAttr}>Kelli Moran-Miller · Stanford University</Text>
+          <Text style={quoteStyles.attrName}>Kelli Moran-Miller · Stanford University</Text>
           <Text style={quoteStyles.stanfordRole}>Director of Sport Psychology, 2024</Text>
         </Animated.View>
       </View>
@@ -461,7 +467,12 @@ function QuoteStep({ onContinue }: { onContinue: () => void }) {
 
 const quoteStyles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'space-between' },
-  content: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.xl, gap: 18 },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    gap: 18,
+  },
   quote: {
     fontSize: 24,
     fontWeight: '800',
@@ -477,34 +488,17 @@ const quoteStyles = StyleSheet.create({
     color: colors.accentLight,
     textAlign: 'center',
   },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginBottom: 14,
-  },
-  stanfordBlock: { gap: 6 },
-  stanfordQuote: {
-    fontSize: 14,
-    fontStyle: 'italic',
-    fontWeight: '500',
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  stanfordAttr: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: 4,
-  },
   stanfordRole: {
     fontSize: 11,
     fontWeight: '400',
     color: colors.textMuted,
     textAlign: 'center',
   },
-  bottom: { paddingBottom: spacing.xl, paddingHorizontal: spacing.xl },
+  bottom: {
+    paddingBottom: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xs,
+  },
   button: {
     backgroundColor: colors.accent,
     borderRadius: 12,
@@ -685,8 +679,19 @@ export default function OnboardingIntakeScreen() {
     if (restoredRef.current) return;
     restoredRef.current = true;
     loadOnboardingAnswers().then((saved) => {
-      if (saved.intakeAnswers?.length) setAnswers(saved.intakeAnswers);
-      if (typeof saved.intakeStep === 'number' && saved.intakeStep > 0) setQuestionIndex(saved.intakeStep);
+      let rawAnswers = saved.intakeAnswers ?? [];
+      let step = typeof saved.intakeStep === 'number' ? saved.intakeStep : 0;
+      /** Pre–May 2026 intake had 10 steps including “how often … goals”; drop that slot when resuming. */
+      if (rawAnswers.length >= 10) {
+        rawAnswers = [...rawAnswers.slice(0, 2), ...rawAnswers.slice(3)];
+        if (step > 2) step -= 1;
+        step = Math.min(step, STEPS.length - 1);
+        saveOnboardingAnswers({ intakeAnswers: rawAnswers as (string | null)[], intakeStep: step });
+      }
+      const nextAnswers = [...rawAnswers];
+      while (nextAnswers.length < STEPS.length) nextAnswers.push(null);
+      if (nextAnswers.length) setAnswers(nextAnswers.slice(0, STEPS.length));
+      if (step > 0) setQuestionIndex(Math.min(step, STEPS.length - 1));
     });
   }, []);
 
@@ -748,7 +753,7 @@ export default function OnboardingIntakeScreen() {
         return;
       }
       setQuestionIndex((i) => {
-        if (i === 9) setHoldBlockReset((k) => k + 1);
+        if (i === STEPS.length - 1) setHoldBlockReset((k) => k + 1);
         return i - 1;
       });
     });
@@ -872,7 +877,7 @@ export default function OnboardingIntakeScreen() {
             <QuoteStep onContinue={onInterstitialContinue} />
           ) : step.type === 'gap' ? (
             <GapStep
-              q5Answer={answers[5] ?? null}
+              q5Answer={answers[4] ?? null}
               onContinue={onInterstitialContinue}
             />
           ) : (

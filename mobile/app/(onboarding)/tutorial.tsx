@@ -59,7 +59,7 @@ const STEPS: TutorialStep[] = [
       title: 'YOUR MAC SCORE',
       body: 'Three rings — Mindfulness, Acceptance, Commitment. Every lesson you complete fills them.',
     },
-    progressStep: 17,
+    progressStep: 16,
     caretPosition: 'center',
     // Sits under full scroll; nudge up so the caret targets the MAC legend (below rings).
     tooltipNudgeY: -166,
@@ -73,7 +73,7 @@ const STEPS: TutorialStep[] = [
       title: 'WORKOUT OF THE DAY',
       body: 'A short guided session, delivered daily. Finish any lesson to keep your streak alive.',
     },
-    progressStep: 18,
+    progressStep: 17,
     caretPosition: 'center',
   },
   {
@@ -85,7 +85,7 @@ const STEPS: TutorialStep[] = [
       title: 'STAY CONSISTENT',
       body: 'Miss a day and every ring drops −2 pts. Miss enough and your streak breaks — plus you owe a reflection.',
     },
-    progressStep: 19,
+    progressStep: 18,
     caretPosition: 'left',
   },
   {
@@ -97,7 +97,7 @@ const STEPS: TutorialStep[] = [
       title: 'THE LIBRARY',
       body: 'Browse exercises by MAC category — use them before practice, on game day, or as extra reps.',
     },
-    progressStep: 20,
+    progressStep: 19,
     caretPosition: 'left',
   },
   {
@@ -109,7 +109,7 @@ const STEPS: TutorialStep[] = [
       title: 'PICK AN EXERCISE',
       body: 'Each category has a set of exercises with estimated times. Tap any one — before practice, on game day, or whenever you need a reset.',
     },
-    progressStep: 21,
+    progressStep: 20,
     caretPosition: 'center',
   },
   {
@@ -121,7 +121,7 @@ const STEPS: TutorialStep[] = [
       title: 'YOUR PROGRESS',
       body: 'Track your streak, personal best, and total lessons. Set your competition countdown to stay locked in.',
     },
-    progressStep: 22,
+    progressStep: 21,
     caretPosition: 'center',
   },
 ];
@@ -179,12 +179,22 @@ function RingsRow({ rings }: { rings: RingValues }) {
   );
 }
 
-function HomeScreen({ variant, rings, streak }: { variant: string; rings: RingValues; streak: number }) {
+function HomeScreen({
+  variant,
+  rings,
+  streak,
+  viewportBoundScroll = false,
+}: {
+  variant: string;
+  rings: RingValues;
+  streak: number;
+  viewportBoundScroll?: boolean;
+}) {
   const isDecay = variant === 'decay';
 
   return (
     <ScrollView
-      style={styles.screenScroll}
+      style={[styles.screenScroll, viewportBoundScroll && styles.screenScrollFill]}
       contentContainerStyle={styles.screenContent}
       showsVerticalScrollIndicator={false}
       scrollEnabled={false}
@@ -267,7 +277,17 @@ function HomeScreen({ variant, rings, streak }: { variant: string; rings: RingVa
   );
 }
 
-function LibraryScreen({ variant, rings, streak }: { variant: string; rings: RingValues; streak: number }) {
+function LibraryScreen({
+  variant,
+  rings,
+  streak,
+  viewportBoundScroll = false,
+}: {
+  variant: string;
+  rings: RingValues;
+  streak: number;
+  viewportBoundScroll?: boolean;
+}) {
   const categories = [
     { label: 'Mindfulness', color: colors.ringMindfulness },
     { label: 'Acceptance', color: colors.ringAcceptance },
@@ -275,7 +295,10 @@ function LibraryScreen({ variant, rings, streak }: { variant: string; rings: Rin
   ];
   return (
     <ScrollView
-      style={[styles.screenScroll, variant === 'overview' && styles.screenScrollLibraryOverview]}
+      style={[
+        viewportBoundScroll ? styles.screenScrollFill : styles.screenScroll,
+        variant === 'overview' && styles.screenScrollLibraryOverview,
+      ]}
       contentContainerStyle={styles.screenContent}
       showsVerticalScrollIndicator={false}
       scrollEnabled={false}
@@ -324,37 +347,67 @@ function LibraryScreen({ variant, rings, streak }: { variant: string; rings: Rin
   );
 }
 
-function LibraryCategoryScreen() {
-  const lessons = [
-    { title: 'Box Breathing', mins: '3 min' },
-    { title: 'The Tunnel', mins: '4 min' },
-    { title: 'Pre-Game Focus Reset', mins: '3 min' },
-    { title: 'Body Scan Grounding', mins: '5 min' },
+function LibraryCategoryScreen({ viewportBoundScroll = false }: { viewportBoundScroll?: boolean }) {
+  /** Mirrors `category/[id].tsx` lesson rows (library cards + optional WOD divider). */
+  const categoryColor = colors.ringMindfulness;
+  const tintedPill = {
+    backgroundColor: `${categoryColor}1e`,
+    borderColor: `${categoryColor}55`,
+  } as const;
+
+  const regularLessons = [
+    { title: 'Box breathing reset', mins: '3' },
+    { title: 'The tunnel', mins: '4' },
+    { title: 'Pre-game focus cue', mins: '3' },
   ];
+
+  const wodLessons = [{ title: 'What MAC Training Actually Is', mins: '3', day: 7 }];
+
   return (
     <ScrollView
-      style={styles.screenScroll}
-      contentContainerStyle={styles.screenContent}
+      style={[styles.screenScroll, viewportBoundScroll && styles.screenScrollFill]}
+      contentContainerStyle={styles.catScreenContent}
       showsVerticalScrollIndicator={false}
-      scrollEnabled={false}
     >
-      <View style={styles.catDetailHeader}>
-        <Ionicons name="chevron-back" size={18} color={colors.accentLight} />
-        <View style={[styles.catDetailAccentBar, { backgroundColor: colors.ringMindfulness }]} />
-        <Text style={styles.catDetailTitle}>Mindfulness</Text>
+      <View style={styles.catNavRow}>
+        <Ionicons name="chevron-back" size={20} color={colors.accentLight} />
+        <Text style={styles.catNavTitle}>Mindfulness</Text>
+        <View style={{ width: 20 }} />
       </View>
 
-      <Text style={styles.catDetailSubtitle}>
-        Exercises that sharpen present-moment focus and quiet mental noise.
-      </Text>
-
-      {lessons.map((l) => (
-        <View key={l.title} style={styles.lessonCard}>
-          <View style={styles.lessonCardInner}>
-            <Text style={styles.lessonTitle}>{l.title}</Text>
+      {regularLessons.map((l) => (
+        <View key={l.title} style={styles.catLessonCard}>
+          <View style={styles.catLessonRow}>
+            <View style={styles.catLessonLeft}>
+              <Text style={styles.catLessonTitle}>{l.title}</Text>
+            </View>
+            <View style={[styles.catLessonDurationPill, tintedPill]}>
+              <Text style={[styles.catLessonDurationText, { color: categoryColor }]}>
+                {l.mins} min
+              </Text>
+            </View>
           </View>
-          <View style={[styles.lessonTimePill, styles.lessonTimePillMindfulness]}>
-            <Text style={[styles.lessonTimeText, styles.lessonTimeTextMindfulness]}>{l.mins}</Text>
+        </View>
+      ))}
+
+      <View style={styles.catWodDividerRow}>
+        <View style={styles.catWodDividerLine} />
+        <Text style={styles.catWodDividerLabel}>Past WODs</Text>
+        <View style={styles.catWodDividerLine} />
+      </View>
+
+      {wodLessons.map((l) => (
+        <View key={l.title} style={styles.catLessonCard}>
+          <Text style={styles.catLessonDayLabel}>DAY {l.day}</Text>
+          <View style={styles.catLessonRow}>
+            <View style={styles.catLessonLeft}>
+              <Text style={styles.catLessonTitle}>{l.title}</Text>
+            </View>
+            <View style={[styles.catLessonDurationPill, tintedPill]}>
+              <Text style={[styles.catLessonDurationText, { color: categoryColor }]}>
+                {l.mins} min
+              </Text>
+            </View>
           </View>
         </View>
       ))}
@@ -362,58 +415,145 @@ function LibraryCategoryScreen() {
   );
 }
 
-function ProfileScreen({ rings, streak }: { rings: RingValues; streak: number }) {
+function ProfileScreen({
+  rings: _rings,
+  streak,
+  viewportBoundScroll = false,
+}: {
+  rings: RingValues;
+  streak: number;
+  viewportBoundScroll?: boolean;
+}) {
+  /** Mirrors `(tabs)/profile.tsx` hero, stats strip, countdown, and settings rows — mock only. */
+  const bestStreak = Math.max(streak + 2, streak);
+  const lessonsDone = 14;
+
+  function MockStatColumn({
+    label,
+    value,
+    icon,
+    iconColor,
+    iconBg,
+  }: {
+    label: string;
+    value: number;
+    icon: keyof typeof Ionicons.glyphMap;
+    iconColor: string;
+    iconBg: string;
+  }) {
+    return (
+      <View style={styles.profStatCol}>
+        <View style={[styles.profStatIconWrap, { backgroundColor: iconBg }]}>
+          <Ionicons name={icon} size={18} color={iconColor} />
+        </View>
+        <Text style={styles.profStatValue}>{value}</Text>
+        <Text style={styles.profStatCaption}>{label}</Text>
+      </View>
+    );
+  }
+
+  function MockProfileRow({
+    icon,
+    label,
+    value,
+    chevron,
+    last,
+  }: {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    value?: string;
+    chevron?: boolean;
+    last?: boolean;
+  }) {
+    return (
+      <View style={[styles.profMockRow, last && styles.profMockRowLast]}>
+        <View style={styles.profMockRowLeft}>
+          <View style={styles.profMockRowIconWrap}>
+            <Ionicons name={icon} size={17} color={colors.accentLight} />
+          </View>
+          <Text style={styles.profMockRowLabel}>{label}</Text>
+        </View>
+        {chevron ? (
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        ) : (
+          <Text style={styles.profMockRowValue}>{value}</Text>
+        )}
+      </View>
+    );
+  }
+
   return (
     <ScrollView
-      style={styles.screenScroll}
-      contentContainerStyle={styles.screenContent}
+      style={[styles.screenScroll, viewportBoundScroll && styles.screenScrollFill]}
+      contentContainerStyle={styles.profScreenContent}
       showsVerticalScrollIndicator={false}
-      scrollEnabled={false}
     >
-      <View style={styles.screenHeader}>
-        <Text style={styles.screenBrand}>RELENTLESS</Text>
-        <View style={styles.streakPill}>
-          <Text style={styles.streakNum}>{streak}</Text>
+      <View style={styles.profHeader}>
+        <Text style={styles.profBrand}>RELENTLESS</Text>
+        <View style={styles.profStreakPill}>
+          <Text style={styles.profStreakNum}>{streak}</Text>
           <Ionicons name="flame" size={16} color="#f59e0b" />
         </View>
       </View>
 
-      <View style={styles.avatarSection}>
-        <View style={styles.avatar}>
-          <Ionicons name="person" size={32} color={colors.accent} />
+      <View style={styles.profHero}>
+        <View style={styles.profAvatarOuter}>
+          <View style={styles.profAvatarInner}>
+            <Ionicons name="person" size={38} color={colors.accent} />
+          </View>
         </View>
-        <Text style={styles.avatarName}>You</Text>
+        <Text style={styles.profUserName}>You</Text>
+        <Text style={styles.profSportLine}>Track & field</Text>
       </View>
 
-      <View style={styles.statsCard}>
-        <View style={styles.statCol}>
-          <Ionicons name="flame" size={16} color="#f59e0b" />
-          <Text style={styles.statVal}>{streak}</Text>
-          <Text style={styles.statLabel}>Streak</Text>
+      <View style={styles.profStatsCard}>
+        <View style={styles.profStatsColumns}>
+          <MockStatColumn
+            label="Streak"
+            value={streak}
+            icon="flame"
+            iconColor="#f59e0b"
+            iconBg="rgba(245, 158, 11, 0.10)"
+          />
+          <View style={styles.profVerticalRule} />
+          <MockStatColumn
+            label="Best Streak"
+            value={bestStreak}
+            icon="trophy-outline"
+            iconColor={colors.accentLight}
+            iconBg={colors.accentSubtle}
+          />
+          <View style={styles.profVerticalRule} />
+          <MockStatColumn
+            label="Lessons"
+            value={lessonsDone}
+            icon="checkmark-circle-outline"
+            iconColor={colors.success}
+            iconBg="rgba(74, 222, 128, 0.10)"
+          />
         </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statCol}>
-          <Ionicons name="trophy-outline" size={16} color={colors.accentLight} />
-          <Text style={styles.statVal}>{streak}</Text>
-          <Text style={styles.statLabel}>Best</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statCol}>
-          <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
-          <Text style={styles.statVal}>14</Text>
-          <Text style={styles.statLabel}>Lessons</Text>
+        <View style={styles.profLastActiveRow}>
+          <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+          <Text style={styles.profLastActiveText}>Active today</Text>
         </View>
       </View>
 
-      <View style={styles.settingsRow}>
-        <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
-        <Text style={styles.settingsLabel}>Competition Date</Text>
-        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      <View style={styles.profCountdownCard}>
+        <View style={styles.profCountdownIconWrap}>
+          <Ionicons name="calendar" size={18} color={colors.accent} />
+        </View>
+        <View style={styles.profCountdownTextCol}>
+          <Text style={styles.profCountdownDays}>12 days</Text>
+          <Text style={styles.profCountdownSub}>until competition</Text>
+        </View>
       </View>
-      <View style={styles.settingsRow}>
-        <Ionicons name="journal-outline" size={16} color={colors.textMuted} />
-        <Text style={styles.settingsLabel}>Journal Entries</Text>
-        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+
+      <Text style={styles.profSectionLabel}>SETTINGS</Text>
+      <View style={styles.profRowsCard}>
+        <MockProfileRow icon="person-outline" label="Name" value="You" />
+        <MockProfileRow icon="calendar-outline" label="Competition Date" value="5/31/2026" />
+        <MockProfileRow icon="football-outline" label="Sport" value="Track & field" />
+        <MockProfileRow icon="journal-outline" label="Journal Entries" chevron last />
       </View>
     </ScrollView>
   );
@@ -617,6 +757,11 @@ export default function TutorialScreen() {
 
   const isDecay = step.variant === 'decay';
   const pinLibraryTooltipBottom = step.tab === 'library' && step.variant === 'overview';
+  /** Keeps tooltip visible for tall mocks; loose layout restores home tooltip positioning. */
+  const clampTutorialMockHeight =
+    (step.tab === 'library' && step.variant === 'overview') ||
+    (step.tab === 'library' && step.variant === 'category') ||
+    step.tab === 'profile';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -627,16 +772,32 @@ export default function TutorialScreen() {
           style={[styles.screenArea, { transform: [{ translateX: slideX }] }]}
           {...panResponder.panHandlers}
         >
-          <View style={pinLibraryTooltipBottom ? { flex: 1, minHeight: 0 } : undefined}>
+          <View
+            style={
+              clampTutorialMockHeight ? styles.screenMockHostClamp : styles.screenMockHostLoose
+            }
+          >
             {step.tab === 'home' && (
-              <HomeScreen variant={step.variant} rings={step.rings} streak={step.streak} />
+              <HomeScreen
+                variant={step.variant}
+                rings={step.rings}
+                streak={step.streak}
+                viewportBoundScroll={clampTutorialMockHeight}
+              />
             )}
             {step.tab === 'library' && step.variant === 'category' ? (
-              <LibraryCategoryScreen />
+              <LibraryCategoryScreen viewportBoundScroll />
             ) : step.tab === 'library' ? (
-              <LibraryScreen variant={step.variant} rings={step.rings} streak={step.streak} />
+              <LibraryScreen
+                variant={step.variant}
+                rings={step.rings}
+                streak={step.streak}
+                viewportBoundScroll={clampTutorialMockHeight}
+              />
             ) : null}
-            {step.tab === 'profile' && <ProfileScreen rings={step.rings} streak={step.streak} />}
+            {step.tab === 'profile' && (
+              <ProfileScreen rings={step.rings} streak={step.streak} viewportBoundScroll />
+            )}
             {/* Dim overlay separates mock screen from tooltip */}
             <Animated.View
               pointerEvents="none"
@@ -675,7 +836,12 @@ const styles = StyleSheet.create({
   inner: { flex: 1 },
 
   screenArea: { flex: 1, flexDirection: 'column' },
+  /** Viewport-bound host (library + profile) so sibling tooltip stays on-screen. */
+  screenMockHostClamp: { flex: 1, minHeight: 0 },
+  /** Original loose host for home mocks — restores prior tooltip placement. */
+  screenMockHostLoose: { position: 'relative' },
   screenScroll: {},
+  screenScrollFill: { flex: 1 },
   // Library overview: fill area above the pinned bottom tooltip.
   screenScrollLibraryOverview: { flex: 1, minHeight: 0 },
   screenContent: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 20 },
@@ -848,70 +1014,305 @@ const styles = StyleSheet.create({
     fontSize: 13, color: colors.textSecondary, lineHeight: 19, textAlign: 'center', marginTop: 6, maxWidth: 280, alignSelf: 'center',
   },
 
-  // Library category detail
-  catDetailHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10,
+  // Library category mock (aligned with `category/[id].tsx` list rows)
+  catScreenContent: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 20,
   },
-  catDetailAccentBar: { width: 4, height: 20, borderRadius: 2 },
-  catDetailTitle: { fontSize: 20, fontWeight: '800', color: colors.white, letterSpacing: 0.5 },
-  catDetailSubtitle: {
-    fontSize: 13, color: colors.textSecondary, lineHeight: 19, marginBottom: 18,
+  catNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
-  lessonCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1,
-    borderColor: colors.border, padding: 16, marginBottom: 10,
+  catNavTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.textPrimary,
   },
-  lessonCardInner: { flex: 1 },
-  lessonTitle: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
-  lessonTimePill: {
-    backgroundColor: colors.surfaceLight,
+  catLessonCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginBottom: 12,
+  },
+  catLessonDayLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+    letterSpacing: 1.5,
+    marginBottom: 8,
+  },
+  catLessonRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  catLessonLeft: {
+    flex: 1,
+    minHeight: 38,
+    justifyContent: 'flex-start',
+  },
+  catLessonTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  catLessonDurationPill: {
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderWidth: 1,
-    borderColor: colors.border,
     marginLeft: 12,
   },
-  lessonTimeText: {
+  catLessonDurationText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  catWodDividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+    gap: 12,
+  },
+  catWodDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  catWodDividerLabel: {
     fontSize: 11,
     fontWeight: '600',
     color: colors.textMuted,
-  },
-  lessonTimePillMindfulness: {
-    backgroundColor: 'rgba(96,165,250,0.12)',
-    borderColor: 'rgba(96,165,250,0.33)',
-  },
-  lessonTimeTextMindfulness: {
-    color: colors.ringMindfulness,
+    letterSpacing: 0.5,
+    textAlign: 'center',
   },
 
-  // Profile
-  avatarSection: { alignItems: 'center', marginBottom: 20 },
-  avatar: {
-    width: 64, height: 64, borderRadius: 32, backgroundColor: colors.accentSubtle,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
-    borderWidth: 2, borderColor: colors.accent,
+  // Profile tutorial mock (aligned with `(tabs)/profile.tsx`)
+  profScreenContent: {
+    paddingHorizontal: 20,
+    paddingTop: 32,
+    paddingBottom: 20,
   },
-  avatarName: { fontSize: 18, fontWeight: '700', color: colors.white },
-  statsCard: {
-    flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 16,
-    padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border,
-    justifyContent: 'space-around', alignItems: 'center',
+  profHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 32,
   },
-  statCol: { alignItems: 'center', gap: 4 },
-  statVal: { fontSize: 20, fontWeight: '800', color: colors.white },
-  statLabel: { fontSize: 11, color: colors.textMuted },
-  statDivider: { width: 1, height: 32, backgroundColor: colors.border },
-  settingsRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: colors.surface, borderRadius: 14, padding: 16,
-    marginBottom: 8, borderWidth: 1, borderColor: colors.border,
+  profBrand: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    letterSpacing: 3,
   },
-  settingsLabel: { flex: 1, fontSize: 15, fontWeight: '500', color: colors.textPrimary },
+  profStreakPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  profStreakNum: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  profHero: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  profAvatarOuter: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: 'rgba(139, 92, 246, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  profAvatarInner: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.accentSubtle,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profUserName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    letterSpacing: 0.3,
+    marginBottom: 4,
+  },
+  profSportLine: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+  },
+  profStatsCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderTopWidth: 2,
+    borderTopColor: 'rgba(139, 92, 246, 0.3)',
+    paddingTop: 22,
+    paddingBottom: 16,
+    marginBottom: 36,
+  },
+  profStatsColumns: {
+    flexDirection: 'row',
+  },
+  profStatCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  profStatIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  profVerticalRule: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginVertical: 4,
+  },
+  profStatValue: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    lineHeight: 36,
+  },
+  profStatCaption: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  profLastActiveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    marginHorizontal: 20,
+  },
+  profLastActiveText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.textMuted,
+    letterSpacing: 0.3,
+  },
+  profCountdownCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    marginBottom: 36,
+  },
+  profCountdownIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.accentSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profCountdownTextCol: {
+    flex: 1,
+  },
+  profCountdownDays: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  profCountdownSub: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  profSectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    letterSpacing: 1.5,
+    marginBottom: 12,
+    marginLeft: 4,
+  },
+  profRowsCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  profMockRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  profMockRowLast: {
+    borderBottomWidth: 0,
+  },
+  profMockRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  profMockRowIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: colors.accentSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profMockRowLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.textPrimary,
+  },
+  profMockRowValue: {
+    fontSize: 14,
+    color: colors.textMuted,
+  },
 
   // Tooltip container — paddingTop makes room for the caret arrow
   tooltipWrap: {
+    zIndex: 4,
+    elevation: 8,
+    flexShrink: 0,
     paddingHorizontal: 16,
     paddingBottom: 8,
     paddingTop: 12,

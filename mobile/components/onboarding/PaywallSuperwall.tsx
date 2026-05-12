@@ -43,7 +43,7 @@ type PaywallSuperwallProps = {
 
 export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallProps) {
   const router = useRouter();
-  const { session, signOut, completeOnboarding, hasPremiumAccess, refreshUserState } = useAuth();
+  const { session, completeOnboarding, hasPremiumAccess, refreshUserState } = useAuth();
 
   const [isOpening, setIsOpening] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -201,16 +201,6 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
     })();
   };
 
-  const handleAuthPress = () => {
-    if (isOpening) return;
-    if (session) {
-      void signOut();
-      return;
-    }
-    markInAppAuthHubEntry();
-    router.push({ pathname: '/(auth)' as any, params: { from: 'app' } });
-  };
-
   const continueDisabled = isOpening;
 
   /**
@@ -286,16 +276,6 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
           </TouchableOpacity>
 
           <View style={styles.footerRow}>
-            <TouchableOpacity
-              style={styles.footerLink}
-              onPress={handleAuthPress}
-              disabled={isOpening}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={session ? 'Sign out' : 'Sign in'}
-            >
-              <Text style={styles.footerLinkText}>{session ? 'Sign out' : 'Sign in'}</Text>
-            </TouchableOpacity>
             <TouchableOpacity
               style={styles.footerLink}
               onPress={handleRestore}

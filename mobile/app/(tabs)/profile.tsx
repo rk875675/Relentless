@@ -63,7 +63,6 @@ export default function ProfileScreen() {
     updateSport,
     updateDisplayName,
     refreshUserState,
-    resetOnboarding,
     revokePremiumForTesting,
     isDevAccount,
   } = useAuth();
@@ -515,12 +514,6 @@ export default function ProfileScreen() {
               label="Jump to Paywall"
               chevron
               onPress={() => revokePremiumForTesting()}
-            />
-            <ProfileRow
-              icon="refresh-outline"
-              label="Reset to Onboarding"
-              chevron
-              onPress={resetOnboarding}
               last
             />
           </View>
