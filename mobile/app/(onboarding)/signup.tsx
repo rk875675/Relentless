@@ -92,7 +92,7 @@ export default function OnboardingSignupScreen() {
     postPaywall?: string;
   }>();
   const sportArg = Array.isArray(sportParam) ? sportParam[0] : sportParam;
-  const isPostPaywall = postPaywall === 'true';
+  const isPostPaywall = postPaywall === 'true' || Boolean(getLastTrustedPaywallPurchase());
   const {
     session,
     signUp,
@@ -114,7 +114,7 @@ export default function OnboardingSignupScreen() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [appleLoading, setAppleLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const [syncing, setSyncing] = useState(() => isPostPaywall && Boolean(session));
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const [setupError, setSetupError] = useState('');
   const [setupComplete, setSetupComplete] = useState(false);

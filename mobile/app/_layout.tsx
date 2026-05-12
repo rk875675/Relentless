@@ -202,7 +202,7 @@ function RouteGuard() {
   }, [transitioning]);
 
   if (transitioning || (!initialLoadDone.current && loading)) {
-    return <View style={{ flex: 1, backgroundColor: '#2d2c2c' }} />;
+    return <View style={{ flex: 1, backgroundColor: '#000' }} />;
   }
 
   return (
