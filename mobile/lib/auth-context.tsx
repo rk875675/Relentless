@@ -504,8 +504,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       WebBrowser.maybeCompleteAuthSession();
       const result = await openAuthSessionWithTimeout(data.url, redirectTo);
+      if (__DEV__) console.log('[auth] openAuthSession result:', result.type, 'url' in result && result.url ? 'has url' : 'no url');
       if (result.type !== 'success' || !('url' in result) || !result.url) {
         if (result.type === 'cancel' || result.type === 'dismiss') {
+          // Dev builds can dismiss the browser even when auth completed
+          // (the redirect was handled internally before the promise resolved).
+          // Wait briefly for onAuthStateChange to establish the session.
+          await new Promise((r) => setTimeout(r, 1500));
+          const { data: fallbackSession } = await supabase.auth.getSession();
+          if (__DEV__) console.log('[auth] dismiss fallback session:', !!fallbackSession.session?.user);
+          if (fallbackSession.session?.user) {
+            return finishSignInFlow(fallbackSession.session.user.id);
+          }
           return { ok: false, cancelled: true };
         }
         return { ok: false, error: 'Sign-in was not completed.' };

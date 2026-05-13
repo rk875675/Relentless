@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Animated,
+  Keyboard,
   Modal,
   StyleSheet,
   Text,
@@ -10,8 +11,6 @@ import {
   ActivityIndicator,
   ScrollView,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
   RefreshControl,
   Linking,
 } from 'react-native';
@@ -153,6 +152,7 @@ export default function HomeScreen() {
   const [missJournalSaveError, setMissJournalSaveError] = useState('');
   const [missJournalDismissed, setMissJournalDismissed] = useState(false);
   const [showFreebieModal, setShowFreebieModal] = useState(false);
+  const [keyboardBottomPad, setKeyboardBottomPad] = useState(0);
   const freebieScale = useRef(new Animated.Value(0)).current;
   const freebieOpacity = useRef(new Animated.Value(0)).current;
   const deltaDateRef = useRef<string | null>(null);
@@ -161,6 +161,8 @@ export default function HomeScreen() {
   const preWorkoutJournalFooterRef = useRef<View>(null);
   const missReflectionFooterRef = useRef<View>(null);
   const journalCardY = useRef(0);
+  const journalCardRef = useRef<View>(null);
+  const journalFocusedRef = useRef(false);
   const lastSavedJournalRef = useRef('');
   const initialLoadDone = useRef(false);
 
@@ -328,6 +330,29 @@ export default function HomeScreen() {
     ]).start();
   }, [showFreebieModal]);
 
+  // Inflate bottom padding when keyboard opens (gives the ScrollView room to scroll)
+  // then center the pre-workout check-in card once the keyboard is fully up.
+  useEffect(() => {
+    const willShow = Keyboard.addListener('keyboardWillShow', (e) => {
+      setKeyboardBottomPad(e.endCoordinates.height);
+    });
+    const willHide = Keyboard.addListener('keyboardWillHide', () => {
+      setKeyboardBottomPad(0);
+    });
+    const didShow = Keyboard.addListener('keyboardDidShow', (e) => {
+      if (!journalFocusedRef.current) return;
+      // screenY is the exact pixel where the keyboard top starts — no guessing needed
+      const keyboardTop = e.endCoordinates.screenY;
+      journalCardRef.current?.measureInWindow((_x, cardScreenY, _w, cardH) => {
+        // Center the full card in the space above the keyboard, min 30px from top
+        const targetCardScreenY = Math.max(30, (keyboardTop - cardH) / 2);
+        const nextY = homeScrollYRef.current + cardScreenY - targetCardScreenY;
+        scrollRef.current?.scrollTo({ y: Math.max(0, nextY), animated: true });
+      });
+    });
+    return () => { willShow.remove(); willHide.remove(); didShow.remove(); };
+  }, []);
+
   const dismissFreebie = () => {
     const ymd = streak?.last_activity_date;
     if (ymd && currentUserId) {
@@ -378,14 +403,10 @@ export default function HomeScreen() {
   const streakIsReset = showMissReflection && !missJournalDismissed && streak?.current_streak === 0;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={90}
-    >
+    <View style={styles.screen}>
     <ScrollView
       ref={scrollRef}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, keyboardBottomPad > 0 && { paddingBottom: TAB_BAR_CLEARANCE + keyboardBottomPad }]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
@@ -628,8 +649,8 @@ export default function HomeScreen() {
 
       {/* Journal Prompt */}
       <View
+        ref={journalCardRef}
         style={styles.journalCard}
-        onLayout={(e) => { journalCardY.current = e.nativeEvent.layout.y; }}
       >
         <Text style={styles.journalLabel}>PRE-WORKOUT CHECK-IN</Text>
         <TextInput
@@ -647,13 +668,8 @@ export default function HomeScreen() {
           autoCorrect
           spellCheck
           editable={!journalSaving}
-          onFocus={() =>
-            scheduleScrollFooterAboveKeyboard(
-              scrollRef,
-              preWorkoutJournalFooterRef,
-              homeScrollYRef,
-            )
-          }
+          onFocus={() => { journalFocusedRef.current = true; }}
+          onBlur={() => { journalFocusedRef.current = false; }}
           onContentSizeChange={() =>
             scheduleScrollFooterAboveKeyboard(
               scrollRef,
@@ -732,7 +748,7 @@ export default function HomeScreen() {
       </Animated.View>
     </Modal>
 
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

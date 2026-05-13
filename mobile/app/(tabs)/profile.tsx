@@ -300,12 +300,15 @@ export default function ProfileScreen() {
 
   const lastActiveText = streak?.last_activity_date
     ? (() => {
-        const diffDays = Math.max(0, Math.floor(
-          (Date.now() - new Date(streak.last_activity_date + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24),
-        ));
-        if (diffDays === 0) return 'Active today';
+        const lastDate = new Date(streak.last_activity_date + 'T00:00:00');
+        const todayMidnight = new Date();
+        todayMidnight.setHours(0, 0, 0, 0);
+        const diffDays = Math.round(
+          (todayMidnight.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        if (diffDays <= 0) return 'Active today';
         if (diffDays === 1) return 'Active yesterday';
-        return `Active ${diffDays} days ago`;
+        return `Last active ${diffDays} days ago`;
       })()
     : null;
 

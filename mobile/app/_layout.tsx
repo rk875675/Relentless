@@ -3,7 +3,7 @@ import { Stack, useGlobalSearchParams, useRouter, useSegments } from 'expo-route
 import * as SplashScreen from 'expo-splash-screen';
 import * as Linking from 'expo-linking';
 import { useEffect, useRef, useState } from 'react';
-import { LogBox, View } from 'react-native';
+import { Animated, LogBox, View } from 'react-native';
 import { AnalyticsScreenTracker } from '@/components/AnalyticsScreenTracker';
 import { PostHogIdentitySync } from '@/components/PostHogIdentitySync';
 import { PostHogRoot } from '@/components/PostHogRoot';
@@ -185,27 +185,42 @@ function RouteGuard() {
   const prevNavPhase = useRef(navPhase);
   const [transitioning, setTransitioning] = useState(false);
 
-  // Detect phase change synchronously during render so the black screen
+  // Detect phase change synchronously during render so the overlay
   // appears on the SAME frame — not one frame late (which causes a flash).
   // Only needed when transitioning FROM onboarding — (auth) → (tabs) works
-  // fine with router.replace and doesn't need the black screen.
+  // fine with router.replace and doesn't need the overlay.
   const currentRoot = (segments as string[])[0];
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   if (prevNavPhase.current !== navPhase) {
     prevNavPhase.current = navPhase;
-    if (!transitioning && currentRoot === '(onboarding)') setTransitioning(true);
+    if (!transitioning && currentRoot === '(onboarding)') {
+      setTransitioning(true);
+      fadeAnim.setValue(1);
+    }
   }
 
   useEffect(() => {
     if (!transitioning) return;
-    const t = setTimeout(() => setTransitioning(false), 150);
+    const t = setTimeout(() => {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
+        setTransitioning(false);
+      });
+    }, 200);
     return () => clearTimeout(t);
-  }, [transitioning]);
+  }, [transitioning, fadeAnim]);
 
-  if (transitioning || (!initialLoadDone.current && loading)) {
+  if (!initialLoadDone.current && loading) {
     return <View style={{ flex: 1, backgroundColor: '#000' }} />;
   }
 
   return (
+    <>
+    {transitioning && (
+      <Animated.View
+        pointerEvents="none"
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 999, opacity: fadeAnim }}
+      />
+    )}
     <Stack key={navPhase} screenOptions={{ headerShown: false, animation: 'fade' }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="(onboarding)" />
@@ -259,6 +274,7 @@ function RouteGuard() {
         }}
       />
     </Stack>
+    </>
   );
 }
 
