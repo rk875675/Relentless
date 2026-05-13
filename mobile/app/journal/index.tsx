@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { apiFetch } from '@/lib/api';
+import { JournalListSkeleton } from '@/components/Skeleton';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 
 const MAC_COLORS: Record<string, string> = {
@@ -96,8 +96,9 @@ export default function JournalListScreen() {
       />
 
       <View style={styles.screen}>
+        {/* UX-PERF: skeleton loader replaces ActivityIndicator */}
         {loading ? (
-          <ActivityIndicator color={colors.accent} size="large" style={{ marginTop: 60 }} />
+          <JournalListSkeleton />
         ) : error ? (
           <Text style={styles.errorText}>{error}</Text>
         ) : entries.length === 0 ? (

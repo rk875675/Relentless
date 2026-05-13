@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { apiFetch } from '@/lib/api';
+import { JournalDetailSkeleton } from '@/components/Skeleton';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import FormattedJournalBody from '@/components/FormattedJournalBody';
 
@@ -84,8 +85,9 @@ export default function JournalDetailScreen() {
       />
 
       <View style={styles.screen}>
+        {/* UX-PERF: skeleton loader replaces ActivityIndicator */}
         {loading ? (
-          <ActivityIndicator color={colors.accent} size="large" style={{ marginTop: 60 }} />
+          <JournalDetailSkeleton />
         ) : error ? (
           <Text style={styles.errorText}>{error}</Text>
         ) : !entry ? (

@@ -8,7 +8,6 @@ import {
   Text,
   View,
   TouchableOpacity,
-  ActivityIndicator,
   ScrollView,
   TextInput,
   RefreshControl,
@@ -22,6 +21,7 @@ import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
 import { getDeviceLocalCalendarYmd, HOME_PROGRAM_ANCHOR_HEADERS } from '@/lib/device-calendar';
 import { ProgressRing, type ScoreDelta } from '@/components/ProgressRing';
+import { WorkoutCardSkeleton } from '@/components/Skeleton';
 import { getPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
@@ -604,8 +604,9 @@ export default function HomeScreen() {
             <View style={styles.workoutLabelPill}>
               <Text style={styles.workoutLabelText}>WORKOUT OF THE DAY</Text>
             </View>
+            {/* UX-PERF: skeleton loader replaces ActivityIndicator */}
             {loading ? (
-              <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.lg }} />
+              <WorkoutCardSkeleton />
             ) : lesson ? (
               <View style={styles.workoutLessonBody}>
                 <Text style={styles.workoutTitle}>{lesson.title}</Text>

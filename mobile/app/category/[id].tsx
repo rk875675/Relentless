@@ -5,9 +5,12 @@ import {
   View,
   FlatList,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { apiFetch } from '@/lib/api';
+import { getCached, setCached, bustCache } from '@/lib/api-cache';
+import { LessonListSkeleton } from '@/components/Skeleton';
 import { colors, spacing } from '@/lib/theme';
 import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
 
@@ -51,25 +54,44 @@ export default function CategoryScreen() {
 
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const fetchLessons = async () => {
-    setLoading(true);
-    setError('');
-    const { data, error: err } = await apiFetch<LessonsResponse>(
-      '/lessons?limit=50',
+
+  // UX-PERF: cache-then-network for lesson catalog
+  const cacheKey = '/lessons?limit=50';
+
+  const applyLessons = (items: Lesson[]) => {
+    setLessons(
+      items.filter(
+        (l) =>
+          l.lesson_type !== 'onboarding-sample' &&
+          l.categories.includes(id ?? ''),
+      ),
     );
+  };
+
+  const fetchLessons = async (isPull = false) => {
+    setError('');
+    if (isPull) {
+      setRefreshing(true);
+      bustCache(cacheKey);
+    } else {
+      const cached = getCached<LessonsResponse>(cacheKey);
+      if (cached) {
+        applyLessons(cached.items);
+        setLoading(false);
+        return;
+      }
+    }
+    const { data, error: err } = await apiFetch<LessonsResponse>(cacheKey);
     if (err) {
       setError(err);
     } else if (data) {
-      setLessons(
-        data.items.filter(
-          (l) =>
-            l.lesson_type !== 'onboarding-sample' &&
-            l.categories.includes(id ?? ''),
-        ),
-      );
+      applyLessons(data.items);
+      setCached(cacheKey, data);
     }
     setLoading(false);
+    setRefreshing(false);
   };
 
   useEffect(() => {
@@ -143,11 +165,21 @@ export default function CategoryScreen() {
         keyExtractor={(item, index) =>
           item.kind === 'divider' ? `divider-${index}` : item.lesson.id
         }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void fetchLessons(true)}
+            tintColor={colors.accent}
+          />
+        }
         ListEmptyComponent={
-          loading ? null : error ? (
+          /* UX-PERF: skeleton loader replaces blank list while loading */
+          loading ? (
+            <LessonListSkeleton />
+          ) : error ? (
             <View style={styles.errorWrap}>
               <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity style={styles.retryBtn} onPress={fetchLessons}>
+              <TouchableOpacity style={styles.retryBtn} onPress={() => void fetchLessons()}>
                 <Text style={styles.retryText}>Retry</Text>
               </TouchableOpacity>
             </View>

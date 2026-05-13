@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { apiFetch } from '@/lib/api';
+import { JournalDetailSkeleton } from '@/components/Skeleton';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import FormattedJournalBody from '@/components/FormattedJournalBody';
 
@@ -94,8 +94,9 @@ export default function WodDayJournalScreen() {
       />
 
       <View style={styles.screen}>
+        {/* UX-PERF: skeleton loader replaces ActivityIndicator */}
         {loading ? (
-          <ActivityIndicator color={colors.accent} size="large" style={{ marginTop: 60 }} />
+          <JournalDetailSkeleton />
         ) : error ? (
           <Text style={styles.centerMuted}>{error}</Text>
         ) : !entry ? (
