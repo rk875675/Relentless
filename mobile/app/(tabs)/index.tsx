@@ -27,7 +27,14 @@ import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
-import { trackPartnerReferralCtaClicked } from '@/lib/core-analytics';
+import {
+  trackPartnerReferralCtaClicked,
+  trackWodViewed,
+  trackWodStarted,
+  trackStreakViewed,
+  trackProgressRingViewed,
+  trackReflectionSaved,
+} from '@/lib/core-analytics';
 
 type Lesson = {
   id: string;
@@ -280,6 +287,10 @@ export default function HomeScreen() {
     const streakData = streakRes.error ? emptyStreak : (streakRes.data ?? emptyStreak);
     setStreak(streakData);
 
+    if (nextLesson) trackWodViewed({ lesson_id: nextLesson.id });
+    if (!streakRes.error) trackStreakViewed({ current_streak: streakData.current_streak });
+    if (!progressRes.error) trackProgressRingViewed();
+
     applyMissReflectionFromStreakAndJournal(streakData, missJournalRes, freebieAckYmd);
 
     const today = getDeviceLocalCalendarYmd();
@@ -394,6 +405,7 @@ export default function HomeScreen() {
     const targetId = overrideId ?? lesson?.id;
     if (!targetId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    trackWodStarted({ lesson_id: targetId, is_repeat: Boolean(overrideId) });
     await flushPreWorkoutJournal();
     bustCache('/lessons/next', '/progress', '/streak');
     router.push(`/lesson/${targetId}` as any);
@@ -571,6 +583,7 @@ export default function HomeScreen() {
                     return;
                   }
                   bustCache('/journal?limit=50', MISS_REFLECTION_JOURNAL_PATH);
+                  trackReflectionSaved({ type: 'miss_reflection' });
                   setMissJournalText('');
                   setMissJournalDismissed(true);
                   setShowMissReflection(false);

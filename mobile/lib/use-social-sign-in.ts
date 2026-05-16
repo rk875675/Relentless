@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth, type SocialSignInResult } from '@/lib/auth-context';
+import { trackSigninStarted, trackSigninCompleted, trackSigninFailed } from '@/lib/lifecycle-analytics';
 
 export function isSocialSignInCancelled(r: SocialSignInResult) {
   return r.ok === false && 'cancelled' in r && r.cancelled === true;
@@ -36,9 +37,10 @@ export function useSocialSignIn() {
   }, [session, onboardingComplete, hasPremiumAccess, router]);
 
   const handleSocialSignIn = useCallback(
-    async (provider: () => Promise<SocialSignInResult>, setLoading: (v: boolean) => void) => {
+    async (provider: () => Promise<SocialSignInResult>, setLoading: (v: boolean) => void, method: string) => {
       setLoading(true);
       attemptedSignIn.current = true;
+      trackSigninStarted({ method });
       try {
         const r = await provider();
         if (isSocialSignInCancelled(r)) {
@@ -47,11 +49,13 @@ export function useSocialSignIn() {
         }
         if (!r.ok) {
           attemptedSignIn.current = false;
+          trackSigninFailed({ method, reason: ('error' in r && r.error) ? r.error : 'unknown' });
           if (!isSocialSignInCancelled(r) && 'error' in r && r.error) {
             Alert.alert('Could not sign in', r.error);
           }
           return;
         }
+        trackSigninCompleted({ method });
         if (r.path) {
           attemptedSignIn.current = false;
           router.replace(r.path as any);
@@ -59,6 +63,7 @@ export function useSocialSignIn() {
         }
       } catch (e) {
         attemptedSignIn.current = false;
+        trackSigninFailed({ method, reason: e instanceof Error ? e.message : 'exception' });
         Alert.alert(
           'Could not sign in',
           e instanceof Error ? e.message : 'Something went wrong. Try again.',
@@ -71,12 +76,12 @@ export function useSocialSignIn() {
   );
 
   const handleGoogle = useCallback(
-    () => handleSocialSignIn(signInWithGoogle, setGoogleLoading),
+    () => handleSocialSignIn(signInWithGoogle, setGoogleLoading, 'google'),
     [handleSocialSignIn, signInWithGoogle],
   );
 
   const handleApple = useCallback(
-    () => handleSocialSignIn(signInWithApple, setAppleLoading),
+    () => handleSocialSignIn(signInWithApple, setAppleLoading, 'apple'),
     [handleSocialSignIn, signInWithApple],
   );
 

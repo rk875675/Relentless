@@ -26,6 +26,7 @@ import { bustCache } from '@/lib/api-cache';
 import { setPendingGainDeltas } from '@/lib/pending-deltas';
 import { colors, spacing } from '@/lib/theme';
 import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
+import { trackLessonViewed, trackLessonStarted, trackLessonCompleted, trackReflectionSaved } from '@/lib/core-analytics';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import FormattedJournalBody from '@/components/FormattedJournalBody';
 import PromptCards from '@/components/lesson/PromptCards';
@@ -613,6 +614,7 @@ export default function LessonPlayerScreen() {
         setJournalText('');
         setJournalExerciseContext('');
         setLesson(data);
+        trackLessonViewed({ lesson_id: data.id });
         setPhase('ready');
       })();
       return () => {
@@ -746,6 +748,7 @@ export default function LessonPlayerScreen() {
         setDoneDeltas(completeData.progress.deltas);
       }
       bustCache('/lessons/next', '/progress', '/streak');
+      trackLessonCompleted({ lesson_id: currentLesson.id });
       setPhase('done');
     }
   }, []);
@@ -1168,6 +1171,7 @@ export default function LessonPlayerScreen() {
   // -----------------------------------------------------------------------
   const startLesson = () => {
     if (!lesson) return;
+    trackLessonStarted({ lesson_id: lesson.id });
     sessionActive.current = true;
     setElapsed(0);
     setPhase('playing');
@@ -1231,6 +1235,9 @@ export default function LessonPlayerScreen() {
   const handleBlockJournalContinue = useCallback(() => {
     sessionActive.current = false;
     stopAllTimers();
+    if (journalTextRef.current.trim()) {
+      trackReflectionSaved({ type: 'lesson_reflection', lesson_id: lessonRef.current?.id });
+    }
     completeLesson();
   }, [completeLesson, stopAllTimers]);
 

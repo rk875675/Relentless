@@ -717,9 +717,10 @@ export default function TutorialScreen() {
           goToStepRef.current(idx + 1);
         } else if (gs.dx > SWIPE_THRESHOLD && idx > 0) {
           goToStepRef.current(idx - 1);
+        } else if (gs.dx > SWIPE_THRESHOLD && idx === 0 && navigation.canGoBack()) {
+          navigation.goBack();
         } else {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
-          // Snap back if threshold not met
           Animated.spring(slideX, {
             toValue: 0,
             useNativeDriver: true,

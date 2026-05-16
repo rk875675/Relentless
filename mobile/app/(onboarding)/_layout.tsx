@@ -19,11 +19,14 @@ export default function OnboardingLayout() {
   }, [segments]);
 
   return (
-    <Stack screenOptions={{ headerShown: false, animation: 'fade', gestureEnabled: false }}>
-      <Stack.Screen name="signup" options={{ gestureEnabled: false }} />
-      <Stack.Screen name="tutorial" options={{ gestureEnabled: false }} />
-      <Stack.Screen name="paywall" options={{ gestureEnabled: false }} />
+    <Stack screenOptions={{ headerShown: false, gestureEnabled: true }}>
+      <Stack.Screen name="paywall" options={{ gestureEnabled: false, animation: 'fade' }} />
+      <Stack.Screen name="signup" options={{ gestureEnabled: false, animation: 'fade' }} />
+      {/* Wizard screens use beforeRemove for internal steps, which conflicts
+          with native-stack gestures. Keep gestures off; their custom
+          PanResponder handles swipe-back (including popping on first step). */}
       <Stack.Screen name="onboarding-intake" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="tutorial" options={{ gestureEnabled: false }} />
       <Stack.Screen name="exercise-a" options={{ gestureEnabled: false }} />
       <Stack.Screen name="exercise-c" options={{ gestureEnabled: false }} />
       <Stack.Screen name="exercise-m" options={{ gestureEnabled: false }} />

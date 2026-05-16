@@ -19,6 +19,7 @@ import { AuthSocialSignInButtons } from '@/components/auth/AuthSocialSignInButto
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth, type SocialSignInResult } from '@/lib/auth-context';
 import { analytics } from '@/lib/analytics';
+import { trackSignupStarted, trackSignupCompleted } from '@/lib/lifecycle-analytics';
 import { bustCache } from '@/lib/api-cache';
 import { fetchJwsForTransaction, restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { clearOnboardingProgress } from '@/lib/onboarding-local-state';
@@ -384,6 +385,7 @@ export default function OnboardingSignupScreen() {
 
       if (!onboardingCompletedFiredRef.current) {
         onboardingCompletedFiredRef.current = true;
+        trackSignupCompleted({ post_paywall: true });
         analytics.capture('onboarding_completed', {
           step_key: 'signup',
           step_index: ONBOARDING_PROGRESS.competitionDate + 2,
@@ -452,6 +454,7 @@ export default function OnboardingSignupScreen() {
     }
     setError('');
     setLoading(true);
+    trackSignupStarted({ method: 'email', post_paywall: isPostPaywall });
     const err = await signUp(email.trim(), password);
 
     if (err) {
@@ -502,10 +505,12 @@ export default function OnboardingSignupScreen() {
   const handleSocial = async (
     provider: () => Promise<SocialSignInResult>,
     setBusy: (v: boolean) => void,
+    method: string,
   ) => {
     setError('');
     setSetupError('');
     setBusy(true);
+    trackSignupStarted({ method, post_paywall: isPostPaywall });
     try {
       const r = await provider();
       if (isSocialCancelled(r)) return;
@@ -604,8 +609,8 @@ export default function OnboardingSignupScreen() {
 
           <AuthSocialSignInButtons
             variant="hub"
-            onGoogle={() => handleSocial(signInWithGoogle, setGoogleLoading)}
-            onApple={() => handleSocial(signInWithApple, setAppleLoading)}
+            onGoogle={() => handleSocial(signInWithGoogle, setGoogleLoading, 'google')}
+            onApple={() => handleSocial(signInWithApple, setAppleLoading, 'apple')}
             googleLoading={googleLoading}
             appleLoading={appleLoading}
           />

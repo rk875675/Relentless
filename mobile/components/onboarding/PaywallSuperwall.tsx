@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,6 +15,8 @@ import { useRouter } from 'expo-router';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth } from '@/lib/auth-context';
 import { analytics } from '@/lib/analytics';
+import { trackOnboardingPaywallViewed, trackOnboardingPaywallDismissed } from '@/lib/onboarding-analytics';
+import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
 import { SUPERWALL_ENABLED, SUPERWALL_ONBOARDING_PLACEMENT } from '@/lib/superwall-config';
 import { SubscriptionLegalDisclosure } from '@/components/onboarding/SubscriptionLegalDisclosure';
@@ -58,22 +61,33 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
 
   useEffect(() => {
     saveOnboardingProgress({ sport, competitionDate });
+    trackOnboardingPaywallViewed({
+      step_key: 'paywall',
+      step_index: ONBOARDING_PROGRESS.competitionDate + 1,
+    });
   }, [sport, competitionDate]);
 
-  const { registerPlacement, preloadPaywalls, isConfigured } = useSuperwall((s: any) => ({
+  const { registerPlacement, preloadPaywalls, isConfigured, getPresentationResult } = useSuperwall((s: any) => ({
     registerPlacement: s.registerPlacement,
     preloadPaywalls: s.preloadPaywalls,
     isConfigured: s.isConfigured,
+    getPresentationResult: s.getPresentationResult,
   }));
 
   // Preload the onboarding paywall whenever this screen mounts and Superwall
-  // is configured. After a sign-out + reset, the SDK's cached paywall config
-  // can go stale — registerPlacement then fires `triggerFire` and
+  // is configured. The SDK's cached paywall config can go stale when the app
+  // is backgrounded — registerPlacement then fires `triggerFire` and
   // `paywallPresentationRequest` but never `paywallOpen`, so tapping Continue
-  // looks like nothing happens. Calling preloadPaywalls keeps it ready.
+  // looks like nothing happens. Re-preload on every foreground transition too.
   useEffect(() => {
     if (!isConfigured || !preloadPaywalls) return;
     preloadPaywalls([SUPERWALL_ONBOARDING_PLACEMENT]).catch(() => {});
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') {
+        preloadPaywalls([SUPERWALL_ONBOARDING_PLACEMENT]).catch(() => {});
+      }
+    });
+    return () => sub.remove();
   }, [isConfigured, preloadPaywalls]);
 
   const navigatedToSignup = useRef(false);
@@ -132,21 +146,29 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
     return true;
   };
 
-  const openPaywall = () => {
-    // Mark that the user actually tapped Continue. The navigate-to-signup
-    // useEffect above keys off this so passive grants can't auto-skip.
+  const openPaywall = async () => {
     setUserOpenedPaywall(true);
     if (!acquireLock()) return;
     setIsOpening(true);
-    // Fire paywall_presented here — after the lock is acquired — so it always
-    // matches exactly one registerPlacement call. Using the tap as the trigger
-    // is more reliable than listening for Superwall's paywallOpen event, which
-    // can be delayed or absent depending on SDK version.
+
+    // Pre-check: if Superwall won't present (e.g. device already has an
+    // active subscription → noAudienceMatch), skip straight to signup so the
+    // user isn't stuck with a dead Continue button.
+    if (getPresentationResult) {
+      try {
+        const result = await getPresentationResult(SUPERWALL_ONBOARDING_PLACEMENT);
+        if (__DEV__) console.log('[Superwall] getPresentationResult:', JSON.stringify(result));
+        if (result?.type && result.type !== 'Paywall') {
+          navigateToSignup();
+          setIsOpening(false);
+          return;
+        }
+      } catch {}
+    }
+
     analytics.capture('paywall_presented');
     registerPlacement(SUPERWALL_ONBOARDING_PLACEMENT)
       .catch((err: unknown) => {
-        // Previously swallowed silently — a dropped presentation looked like a
-        // frozen Continue button. Surface it so the user knows to retry.
         const msg =
           err instanceof Error && err.message
             ? err.message
@@ -210,6 +232,11 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
    * Clear the saved reachedPaywall flag so the next reload doesn't bounce them back.
    */
   const handleClose = () => {
+    trackOnboardingPaywallDismissed({
+      step_key: 'paywall',
+      step_index: ONBOARDING_PROGRESS.competitionDate + 1,
+      button_key: 'close',
+    });
     void clearOnboardingProgress();
     if (router.canGoBack()) {
       router.back();

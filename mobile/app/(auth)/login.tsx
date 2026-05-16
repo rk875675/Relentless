@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
+import { trackSigninStarted, trackSigninCompleted, trackSigninFailed } from '@/lib/lifecycle-analytics';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -18,14 +19,18 @@ export default function LoginScreen() {
       return;
     }
     setLoading(true);
+    trackSigninStarted({ method: 'email' });
     try {
       const result = await signIn(email.trim(), password);
       if (!result.ok) {
+        trackSigninFailed({ method: 'email', reason: result.error ?? 'unknown' });
         setError(result.error || 'Invalid email or password.');
         return;
       }
+      trackSigninCompleted({ method: 'email' });
       if (result.path) router.replace(result.path as any);
     } catch {
+      trackSigninFailed({ method: 'email', reason: 'exception' });
       setError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);

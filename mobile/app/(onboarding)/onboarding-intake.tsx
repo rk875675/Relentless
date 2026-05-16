@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
+import { trackOnboardingButtonClicked, trackOnboardingOptionSelected } from '@/lib/onboarding-analytics';
 import { colors, spacing } from '@/lib/theme';
 import { useWizardSwipeBackRight } from '@/lib/use-wizard-swipe-back';
 
@@ -61,7 +62,7 @@ const STEPS: StepDef[] = [
       'D1 or college athletics',
       'Win state or nationals',
       'Make varsity',
-      'Still figuring it out',
+      'Other',
     ],
   },
   {
@@ -88,7 +89,7 @@ const STEPS: StepDef[] = [
   },
   {
     type: 'hold',
-    title: 'Are you willing to commit to reaching that level?',
+    title: "Progress isn't easy, are you ready to commit?",
     overlayLine: 'Locking in your commitment',
     successLine: "You're in",
     holdDurationMs: HOLD_MS,
@@ -713,18 +714,28 @@ export default function OnboardingIntakeScreen() {
 
   const goNext = useCallback(
     (fromIndex: number) => {
-      if (fromIndex < STEPS.length - 1) {
+      if (STEPS[fromIndex]?.type === 'gap') {
+        // After the bar-graph screen, show the review/testimonial screen before continuing
+        const next = fromIndex + 1;
+        saveOnboardingAnswers({ intakeStep: next });
+        router.push('/(onboarding)/unlocked-potential' as any);
+      } else if (fromIndex < STEPS.length - 1) {
         const next = fromIndex + 1;
         setQuestionIndex(next);
         saveOnboardingAnswers({ intakeStep: next });
       } else {
-        router.push('/(onboarding)/unlocked-potential' as any);
+        router.push('/(onboarding)/mac-framework' as any);
       }
     },
     [router],
   );
 
   const onHoldLockedIn = useCallback(() => {
+    trackOnboardingButtonClicked({
+      step_key: 'intake_hold',
+      step_index: ONBOARDING_PROGRESS.intakeStart + questionIndexRef.current,
+      button_key: 'hold_committed',
+    });
     setAnswers((prev) => {
       const next = [...prev];
       next[questionIndexRef.current] = 'Committed';
@@ -732,7 +743,7 @@ export default function OnboardingIntakeScreen() {
       return next;
     });
     transitionDirRef.current = 'fwd';
-    router.push('/(onboarding)/unlocked-potential' as any);
+    router.push('/(onboarding)/mac-framework' as any);
   }, [router]);
 
   const runWizardBack = useCallback(() => {
@@ -774,11 +785,14 @@ export default function OnboardingIntakeScreen() {
 
   const swipeBackPan = useWizardSwipeBackRight(
     () =>
-      questionIndexRef.current > 0 &&
-      !(
-        STEPS[questionIndexRef.current]!.type === 'hold' && holdInteractingRef.current
-      ),
-    runWizardBack,
+      !(STEPS[questionIndexRef.current]!.type === 'hold' && holdInteractingRef.current),
+    () => {
+      if (questionIndexRef.current <= 0) {
+        router.back();
+      } else {
+        runWizardBack();
+      }
+    },
   );
 
   useEffect(() => {
@@ -795,6 +809,11 @@ export default function OnboardingIntakeScreen() {
 
   const setSelected = (opt: string) => {
     Haptics.selectionAsync();
+    trackOnboardingOptionSelected({
+      step_key: `intake_q${questionIndex}`,
+      step_index: ONBOARDING_PROGRESS.intakeStart + questionIndex,
+      selected_option_key: opt,
+    });
     setAnswers((prev) => {
       const next = [...prev];
       next[questionIndex] = opt;
@@ -829,9 +848,14 @@ export default function OnboardingIntakeScreen() {
     if (isHoldStep && !holdCompleted) return;
     if (!selected) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    trackOnboardingButtonClicked({
+      step_key: `intake_q${questionIndex}`,
+      step_index: ONBOARDING_PROGRESS.intakeStart + questionIndex,
+      button_key: holdCompleted ? 'hold_continue' : 'continue',
+    });
     transitionDirRef.current = 'fwd';
     if (holdCompleted) {
-      router.push('/(onboarding)/unlocked-potential' as any);
+      router.push('/(onboarding)/mac-framework' as any);
       return;
     }
     goNext(questionIndex);

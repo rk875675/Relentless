@@ -101,8 +101,14 @@ export default function ExerciseAScreen() {
   }, [navigation, runExerciseBack]);
 
   const swipeBackPan = useWizardSwipeBackRight(
-    () => stepRef.current !== 'intro',
-    runExerciseBack,
+    () => true,
+    () => {
+      if (stepRef.current === 'intro') {
+        router.back();
+      } else {
+        runExerciseBack();
+      }
+    },
   );
 
   // --- Audio bars ---

@@ -6,6 +6,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
+import { trackOnboardingCompetitionDateAdded, trackOnboardingButtonClicked } from '@/lib/onboarding-analytics';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
@@ -58,10 +59,24 @@ export default function CompetitionDateScreen() {
   };
 
   const saveAndContinue = () => {
+    if (date) {
+      trackOnboardingCompetitionDateAdded({
+        step_key: 'competition_date',
+        step_index: ONBOARDING_PROGRESS.competitionDate,
+        button_key: 'save_continue',
+      });
+    }
     goToPaywall(date ? toISODate(date) : undefined);
   };
 
-  const skip = () => goToPaywall();
+  const skip = () => {
+    trackOnboardingButtonClicked({
+      step_key: 'competition_date',
+      step_index: ONBOARDING_PROGRESS.competitionDate,
+      button_key: 'skip',
+    });
+    goToPaywall();
+  };
 
   return (
     <SafeAreaView style={styles.container}>

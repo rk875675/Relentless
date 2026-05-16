@@ -77,7 +77,7 @@ export default function MacQuestionScreen() {
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push({
-                pathname: '/(onboarding)/mac-detail' as any,
+                pathname: '/(onboarding)/we-can-train' as any,
                 params: { tag: selected! },
               });
             }}

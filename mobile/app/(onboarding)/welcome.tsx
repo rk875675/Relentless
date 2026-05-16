@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth } from '@/lib/auth-context';
 import { clearOnboardingProgress, loadOnboardingScreen } from '@/lib/onboarding-local-state';
+import { trackOnboardingStarted } from '@/lib/onboarding-analytics';
 import { colors, spacing } from '@/lib/theme';
 
 const VALID_ONBOARDING_SCREENS = new Set([
@@ -28,10 +29,11 @@ export default function WelcomeScreen() {
   const fadeCta = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Skip auto-resume if the user already completed onboarding — the
-    // RouteGuard will replace to (tabs). Pushing a saved screen here would
-    // race with that replace and leave a stale onboarding screen on the stack.
-    if (session && onboardingComplete) {
+    // When signed in, let RouteGuard handle all navigation. Don't auto-push
+    // a saved screen — setSession() fires before fetchUserState() finishes,
+    // so this effect re-runs with session=true + onboardingComplete=false,
+    // which would push a stale onboarding screen on top of the login view.
+    if (session) {
       setShowUI(true);
       return;
     }
@@ -45,7 +47,7 @@ export default function WelcomeScreen() {
         setShowUI(true);
       }
     });
-  }, [router, session, onboardingComplete]);
+  }, [router, session]);
 
   useEffect(() => {
     if (!showUI) return;
@@ -84,6 +86,9 @@ export default function WelcomeScreen() {
           <TouchableOpacity
             style={styles.button}
             onPress={() => {
+              if (!savedScreen) {
+                trackOnboardingStarted({ step_key: 'welcome', step_index: 0 });
+              }
               const target = savedScreen || 'relentless-intro';
               router.push(`/(onboarding)/${target}` as any);
             }}

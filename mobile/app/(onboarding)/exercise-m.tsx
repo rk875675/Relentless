@@ -88,8 +88,14 @@ export default function ExerciseMScreen() {
   }, [navigation, runExerciseBack]);
 
   const swipeBackPan = useWizardSwipeBackRight(
-    () => stepRef.current !== 'intro',
-    runExerciseBack,
+    () => true,
+    () => {
+      if (stepRef.current === 'intro') {
+        router.back();
+      } else {
+        runExerciseBack();
+      }
+    },
   );
 
   const circleScale = useRef(new Animated.Value(0.5)).current;

@@ -3,6 +3,12 @@ import { useEffect, useRef } from 'react';
 import { SUPERWALL_ENABLED, SUPERWALL_IOS_API_KEY } from '@/lib/superwall-config';
 import { useAuth } from '@/lib/auth-context';
 import { analytics } from '@/lib/analytics';
+import {
+  trackPurchaseStarted,
+  trackPurchaseCompleted,
+  trackPurchaseFailed,
+  trackPurchaseRestored,
+} from '@/lib/lifecycle-analytics';
 import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
 import { emitTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
 
@@ -154,6 +160,7 @@ function SuperwallPurchaseSync() {
       if (name === 'transactionStart') {
         transactionInFlight.current = true;
         sawAppCloseDuringTransaction.current = false;
+        trackPurchaseStarted({ source: 'superwall' });
       }
       if (name === 'appClose' && transactionInFlight.current) {
         sawAppCloseDuringTransaction.current = true;
@@ -163,6 +170,12 @@ function SuperwallPurchaseSync() {
           analytics.capture('paywall_dismissed');
         }
         sessionPurchasedRef.current = false;
+        transactionInFlight.current = false;
+        sawAppCloseDuringTransaction.current = false;
+      }
+
+      if (name === 'transactionFail' || name === 'transactionAbandon') {
+        trackPurchaseFailed({ source: 'superwall', reason: name });
         transactionInFlight.current = false;
         sawAppCloseDuringTransaction.current = false;
       }
@@ -192,6 +205,11 @@ function SuperwallPurchaseSync() {
           sessionPurchasedRef.current = true;
           optimisticGrantAccess();
           emitTrustedPaywallPurchase({ originalTransactionId: oid, signedTransactionInfo: signedTx });
+          if (name === 'transactionComplete') {
+            trackPurchaseCompleted({ source: 'superwall', original_transaction_id: oid ?? null });
+          } else {
+            trackPurchaseRestored({ source: 'superwall', original_transaction_id: oid ?? null });
+          }
         } else if (__DEV__) {
           console.log('[Superwall][purchaseIgnored]', name, 'without Apple sheet');
         }

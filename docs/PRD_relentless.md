@@ -218,8 +218,8 @@ Premium is the only access tier after onboarding.
 Do not design a separate freemium product model for V1.
 The paywall should appear after the onboarding / sample experience.
 Subscription purchase options (initial — may change before launch):
-Monthly: $12.99/month with a 3-day free trial.
-Annual: $59.99/year with a 7-day free trial.
+Monthly: $4.99/month with a 3-day free trial.
+Annual: $3.49/month (billed annually) with a 7-day free trial.
 Both are auto-renewable subscriptions in the same subscription group.
 App Store product IDs: com.relentless.monthly, com.relentless.annual.
 iOS bundle identifier and Android applicationId for release builds: com.relentlessmentaltoughness.relentless.
