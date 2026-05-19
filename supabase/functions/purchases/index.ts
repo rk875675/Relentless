@@ -541,9 +541,18 @@ function resolveEntitlement(data: AppleSubscriptionResponse): ResolvedEntitlemen
     tx.status === APPLE_STATUS.BILLING_GRACE ||
     tx.status === APPLE_STATUS.BILLING_RETRY;
 
+  // productId and expiresDate live inside the signedTransactionInfo JWS,
+  // not at the top level of the subscription status response.
+  const txPayload = tx.signedTransactionInfo
+    ? decodeJwtPayload<AppleTransactionPayload>(tx.signedTransactionInfo)
+    : null;
+
+  const productId = tx.productId ?? txPayload?.productId ?? null;
   const expiresAt = tx.expiresDate
     ? new Date(tx.expiresDate).toISOString()
-    : null;
+    : txPayload?.expiresDate
+      ? new Date(txPayload.expiresDate).toISOString()
+      : null;
 
   return {
     entitlementStatus: isActive
@@ -551,7 +560,7 @@ function resolveEntitlement(data: AppleSubscriptionResponse): ResolvedEntitlemen
         ? "trial"
         : "active"
       : "expired",
-    productId: tx.productId ?? null,
+    productId,
     expiresAt,
   };
 }

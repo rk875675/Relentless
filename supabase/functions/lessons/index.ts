@@ -22,7 +22,6 @@ import {
   applyGain,
   applyDecay,
   decayGapDays,
-  missedWodDaysInGap,
   yesterdayYmd,
 } from "../_shared/scoring.ts";
 import { ContentBlocksSchema } from "../_shared/content_blocks.ts";
@@ -530,14 +529,6 @@ async function handleComplete(
 
   const localYmd = resolveLocalTodayYmd(req);
 
-  // Read decay inputs BEFORE the RPC so last_wod_completion_local_date
-  // reflects the prior WOD, not the one we are about to record.
-  const { data: preProfile } = await supabase
-    .from("profiles")
-    .select("last_wod_completion_local_date")
-    .eq("id", userId)
-    .single();
-
   const { data: rpcResult, error: rpcErr } = await supabase.rpc("complete_lesson", {
     p_user_id: userId,
     p_lesson_id: parsed.data,
@@ -562,13 +553,11 @@ async function handleComplete(
   };
 
   const lastDecay = (progressRow?.last_decay_applied_local_date as string | null) ?? null;
-  const lastWod = (preProfile?.last_wod_completion_local_date as string | null) ?? null;
   let allDeltas: MacDeltas = {};
 
   const gap = decayGapDays(lastDecay, localYmd);
   if (gap > 0) {
-    const missed = missedWodDaysInGap(lastWod, lastDecay, localYmd);
-    const decay = applyDecay(scores, gap, missed);
+    const decay = applyDecay(scores, gap);
     scores = decay.scores;
     allDeltas = decay.deltas;
   }

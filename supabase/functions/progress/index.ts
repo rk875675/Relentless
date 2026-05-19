@@ -15,7 +15,6 @@ import {
   type MacScores,
   applyDecay,
   decayGapDays,
-  missedWodDaysInGap,
   yesterdayYmd,
 } from "../_shared/scoring.ts";
 
@@ -47,13 +46,6 @@ Deno.serve(async (req) => {
   // Library lock status with reason
   const lock = await computeLibraryUnlocked(supabase, auth.userId, localYmd);
 
-  // Profile for decay inputs
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("last_wod_completion_local_date")
-    .eq("id", auth.userId)
-    .single();
-
   // Current progress (lazy-create default row)
   const { data: progressRow } = await supabase
     .from("user_progress")
@@ -68,14 +60,12 @@ Deno.serve(async (req) => {
   };
 
   const lastDecay = (progressRow?.last_decay_applied_local_date as string | null) ?? null;
-  const lastWod = (profile?.last_wod_completion_local_date as string | null) ?? null;
 
   // Apply pending decay (covers completed days through yesterday)
   const gap = decayGapDays(lastDecay, localYmd);
   let deltas = null;
   if (gap > 0) {
-    const missed = missedWodDaysInGap(lastWod, lastDecay, localYmd);
-    const result = applyDecay(scores, gap, missed);
+    const result = applyDecay(scores, gap);
     scores = result.scores;
     deltas = Object.keys(result.deltas).length > 0 ? result.deltas : null;
 

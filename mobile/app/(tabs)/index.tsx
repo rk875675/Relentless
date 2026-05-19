@@ -630,10 +630,13 @@ export default function HomeScreen() {
                 )}
                 <Text style={styles.workoutTitle}>{lesson.title}</Text>
                 <View style={styles.workoutAuthorRow}>
-                  <Image
-                    source={require('../../assets/images/grant_chiasson.png')}
-                    style={styles.workoutAuthorPhoto}
-                  />
+                  <View style={styles.workoutAuthorPhoto}>
+                    <Image
+                      source={require('../../assets/images/grant_chiasson.png')}
+                      style={styles.workoutAuthorPhotoImg}
+                      resizeMode="cover"
+                    />
+                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.workoutAuthorName}>Grant Chiasson</Text>
                     <Text style={styles.workoutAuthorCred}>Sport Psychologist</Text>
@@ -918,9 +921,15 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   workoutAuthorPhoto: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
+  },
+  workoutAuthorPhotoImg: {
+    width: 56,
+    height: 56,
+    transform: [{ scale: 1.15 }, { translateY: -4 }],
   },
   workoutAuthorName: {
     fontSize: 15,

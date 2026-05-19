@@ -15,8 +15,6 @@ export const S = {
   GAIN_STEPS: [8.0, 3.5, 2.0, 1.0, 0.5] as readonly number[],
   /** Points lost per calendar day of inactivity (PRD §7: -2.0). */
   DAILY_TIME_DECAY: 2.0,
-  /** Extra points lost per missed-WOD day (PRD §7: -3.0). */
-  MISSED_WOD_PENALTY: 3.0,
   MAX_SCORE: 100.0,
   MIN_SCORE: 0.0,
 } as const;
@@ -117,43 +115,16 @@ export function decayGapDays(
   return calendarDaysInclusiveYmd(lastDecayYmd, yest) - 1;
 }
 
-/**
- * Missed-WOD days within the gap, approximated from last_wod_completion_local_date.
- */
-export function missedWodDaysInGap(
-  lastWodYmd: string | null,
-  lastDecayYmd: string | null,
-  todayYmd: string,
-): number {
-  const gap = decayGapDays(lastDecayYmd, todayYmd);
-  if (gap <= 0) return 0;
-  const yest = yesterdayYmd(todayYmd);
-  const ref = lastWodYmd ?? lastDecayYmd ?? yest;
-  if (yest <= ref) return 0;
-  const since = calendarDaysInclusiveYmd(ref, yest) - 1;
-  return Math.min(gap, since);
-}
-
 /** Apply decay to all 3 rings and return deltas. */
 export function applyDecay(
   scores: MacScores,
   gapDays: number,
-  missedDays: number,
 ): { scores: MacScores; deltas: MacDeltas } {
   if (gapDays <= 0) return { scores, deltas: {} };
-  const timePart = gapDays * S.DAILY_TIME_DECAY;
-  const wodPart = missedDays * S.MISSED_WOD_PENALTY;
-  const total = timePart + wodPart;
+  const total = gapDays * S.DAILY_TIME_DECAY;
   if (total <= 0) return { scores, deltas: {} };
 
-  const parts: string[] = [];
-  if (timePart > 0)
-    parts.push(`${gapDays}d inactive (−${fmt(timePart)})`);
-  if (wodPart > 0)
-    parts.push(
-      `${missedDays} missed WOD${missedDays > 1 ? "s" : ""} (−${fmt(wodPart)})`,
-    );
-  const reason = parts.join(" + ");
+  const reason = `${gapDays}d inactive (−${fmt(total)})`;
   const delta: ScoreDelta = { amount: -total, reason };
 
   return {

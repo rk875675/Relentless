@@ -305,10 +305,13 @@ function AnimatedWodCard({ active }: { active: boolean }) {
           { opacity: authorOpacity, transform: [{ translateY: authorSlide }] },
         ]}
       >
-        <Image
-          source={require('../../assets/images/grant_chiasson.png')}
-          style={styles.wodAuthorPhoto}
-        />
+        <View style={styles.wodAuthorPhoto}>
+          <Image
+            source={require('../../assets/images/grant_chiasson.png')}
+            style={styles.wodAuthorPhotoImg}
+            resizeMode="cover"
+          />
+        </View>
         <View>
           <Text style={styles.wodAuthorName}>Grant Chiasson</Text>
           <Text style={styles.wodAuthorCred}>Sport Psychologist</Text>
@@ -743,7 +746,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14,
   },
   wodAuthorPhoto: {
-    width: 32, height: 32, borderRadius: 16,
+    width: 48, height: 48, borderRadius: 24, overflow: 'hidden',
+  },
+  wodAuthorPhotoImg: {
+    width: 48, height: 48, transform: [{ scale: 1.15 }, { translateY: -4 }],
   },
   wodAuthorName: {
     fontSize: 13, fontWeight: '700', color: colors.textPrimary,

@@ -1,8 +1,6 @@
--- Allows new users who completed the Grant intro onboarding mini-lesson to start
--- with seeded MAC ring scores instead of 0. Uses ON CONFLICT DO NOTHING so existing
--- users with real progress are never overwritten.
--- Marked security definer so authenticated clients can call it without needing
--- direct DML access to user_progress (which has RLS enabled, no client policies).
+-- Fix: initialize_mac_scores must set last_decay_applied_local_date so decay
+-- starts immediately for newly seeded users (otherwise it stays null and
+-- decayGapDays returns 0 forever).
 
 create or replace function public.initialize_mac_scores(
   p_mindfulness  int default 20,
@@ -32,5 +30,3 @@ begin
   on conflict (user_id) do nothing;
 end;
 $$;
-
-grant execute on function public.initialize_mac_scores(int, int, int) to authenticated;
