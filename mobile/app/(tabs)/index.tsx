@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Animated,
+  Image,
   Keyboard,
   Modal,
   StyleSheet,
@@ -614,28 +615,36 @@ export default function HomeScreen() {
           disabled={loading || (!lesson && !lastWod)}
         >
           <View style={styles.workoutCardInner}>
-            <View style={styles.workoutLabelPill}>
-              <Text style={styles.workoutLabelText}>WORKOUT OF THE DAY</Text>
+            <View style={styles.workoutLabelRow}>
+              <View style={styles.workoutLabelPill}>
+                <Text style={styles.workoutLabelText}>WORKOUT OF THE DAY</Text>
+              </View>
             </View>
-            {/* UX-PERF: skeleton loader replaces ActivityIndicator */}
+
             {loading ? (
               <WorkoutCardSkeleton />
             ) : lesson ? (
               <View style={styles.workoutLessonBody}>
+                {typeof lesson.program_day === 'number' && (
+                  <Text style={styles.workoutDayBadge}>Day {lesson.program_day} of 30</Text>
+                )}
                 <Text style={styles.workoutTitle}>{lesson.title}</Text>
-                <View style={styles.workoutMetaRow}>
-                  {typeof lesson.program_day === 'number' && (
-                    <Text style={styles.workoutDayBadge}>
-                      Day {lesson.program_day} of 30
-                    </Text>
-                  )}
+                <View style={styles.workoutAuthorRow}>
+                  <Image
+                    source={require('../../assets/images/grant_chiasson.png')}
+                    style={styles.workoutAuthorPhoto}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.workoutAuthorName}>Grant Chiasson</Text>
+                    <Text style={styles.workoutAuthorCred}>Sport Psychologist</Text>
+                  </View>
                   <View style={styles.workoutMetaPill}>
                     <Text style={styles.workoutMeta}>{mins} min</Text>
                   </View>
                 </View>
               </View>
             ) : (
-              <>
+              <View style={styles.workoutDoneBody}>
                 <Ionicons name="checkmark-circle" size={36} color={colors.success} style={{ marginBottom: 12 }} />
                 <Text style={styles.workoutTitleDone}>All caught up!</Text>
                 <Text style={styles.workoutDesc}>Come back tomorrow for the next workout</Text>
@@ -645,7 +654,7 @@ export default function HomeScreen() {
                     <Text style={styles.repeatBtnText}>Repeat Today's Workout</Text>
                   </View>
                 )}
-              </>
+              </View>
             )}
           </View>
         </TouchableOpacity>
@@ -851,18 +860,26 @@ const styles = StyleSheet.create({
   },
   workoutCardInner: {
     flexDirection: 'column',
-    paddingTop: 24,
+    paddingTop: 20,
     paddingBottom: 20,
     paddingHorizontal: spacing.xl,
+    alignItems: 'flex-start',
+  },
+  workoutLabelRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 10,
   },
   workoutLessonBody: {
     width: '100%',
-    /** Mid size between compact (84) and roomy (148); meta stays toward bottom via space-between. */
-    minHeight: 116,
+    alignItems: 'flex-start',
+  },
+  workoutDoneBody: {
+    width: '100%',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    flexDirection: 'column',
+    paddingVertical: 8,
   },
   workoutLabelPill: {
     backgroundColor: colors.accentSubtle,
@@ -884,13 +901,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.accentLight,
+    marginBottom: 6,
   },
   workoutTitle: {
     fontSize: 19,
     fontWeight: '700',
     color: colors.textPrimary,
-    textAlign: 'center',
+    textAlign: 'left',
     lineHeight: 26,
+    marginBottom: 14,
+  },
+  workoutAuthorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 0,
+  },
+  workoutAuthorPhoto: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  workoutAuthorName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  workoutAuthorCred: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.accentLight,
+    marginTop: 2,
   },
   workoutTitleDone: {
     fontSize: 17,
@@ -902,11 +943,8 @@ const styles = StyleSheet.create({
   workoutMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     flexWrap: 'wrap',
     gap: 10,
-    alignSelf: 'stretch',
-    paddingBottom: 2,
   },
   workoutDesc: {
     fontSize: 14,
@@ -926,6 +964,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.accent,
     letterSpacing: 0.3,
+  },
+  wodNewBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(139,92,246,0.15)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(139,92,246,0.4)',
+  },
+  wodNewDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.accentLight,
+  },
+  wodNewText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.accentLight,
+    letterSpacing: 1,
   },
   repeatBtn: {
     flexDirection: 'row',

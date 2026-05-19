@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import {
   Animated,
   Dimensions,
+  Image,
   PanResponder,
   ScrollView,
   StyleSheet,
@@ -13,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useNavigation } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { ProgressRing } from '@/components/ProgressRing';
+import { ProgressRing, ScoreDelta } from '@/components/ProgressRing';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
@@ -38,14 +39,15 @@ type TooltipContent = { title: string; body: string };
 type RingValues = { m: number; a: number; c: number; decay?: boolean };
 
 type TutorialStep = {
-  tab: 'home';
-  variant: 'rings' | 'wod';
+  tab: 'home' | 'library';
+  variant: 'rings' | 'wod' | 'library';
   rings: RingValues;
   streak: number;
   tooltip: TooltipContent;
   progressStep: number;
   caretPosition: 'left' | 'center';
   tooltipNudgeY?: number;
+  pinToBottom?: boolean;
 };
 
 const STEPS: TutorialStep[] = [
@@ -55,8 +57,8 @@ const STEPS: TutorialStep[] = [
     rings: { m: 20, a: 20, c: 20 },
     streak: 0,
     tooltip: {
-      title: 'YOUR MAC SCORE',
-      body: 'Three rings — Mindfulness, Acceptance, Commitment. Complete lessons to fill them up.',
+      title: 'YOUR MAC RINGS',
+      body: 'You just earned +20 in each ring from your first workout. Train every day to keep filling them up.',
     },
     progressStep: 16,
     caretPosition: 'center',
@@ -68,11 +70,24 @@ const STEPS: TutorialStep[] = [
     rings: { m: 20, a: 20, c: 20 },
     streak: 0,
     tooltip: {
-      title: 'WORKOUT OF THE DAY',
-      body: 'A short guided session, delivered daily. This is your main training.',
+      title: "GRANT'S DAILY WOD",
+      body: "A new session from Grant every day. 3–5 minutes — show up, do the work.",
     },
     progressStep: 17,
     caretPosition: 'center',
+  },
+  {
+    tab: 'library',
+    variant: 'library',
+    rings: { m: 20, a: 20, c: 20 },
+    streak: 0,
+    tooltip: {
+      title: 'THE RELENTLESS LIBRARY',
+      body: 'For days you want to go deeper — extra sessions organized by pillar, available anytime.',
+    },
+    progressStep: 18,
+    caretPosition: 'center',
+    tooltipNudgeY: -10,
   },
 ];
 
@@ -107,7 +122,9 @@ function MockTabBar({ active, onSwitch }: { active: string; onSwitch: (t: string
   );
 }
 
-function RingsRow({ rings }: { rings: RingValues }) {
+type RingDeltas = { m?: ScoreDelta; a?: ScoreDelta; c?: ScoreDelta };
+
+function RingsRow({ rings, deltas }: { rings: RingValues; deltas?: RingDeltas }) {
   const decayDelta = rings.decay
     ? { amount: -2.0, reason: '1 day without training' }
     : undefined;
@@ -118,21 +135,190 @@ function RingsRow({ rings }: { rings: RingValues }) {
         percentage={rings.m}
         label="Mindfulness"
         ringColor={colors.ringMindfulness}
-        delta={decayDelta}
+        delta={deltas?.m ?? decayDelta}
       />
       <ProgressRing
         percentage={rings.a}
         label="Acceptance"
         ringColor={colors.ringAcceptance}
-        delta={decayDelta}
+        delta={deltas?.a ?? decayDelta}
       />
       <ProgressRing
         percentage={rings.c}
         label="Commitment"
         ringColor={colors.ringCommitment}
-        delta={decayDelta}
+        delta={deltas?.c ?? decayDelta}
       />
     </View>
+  );
+}
+
+const MAC_CATS = [
+  { label: 'Mindfulness', color: colors.ringMindfulness },
+  { label: 'Acceptance', color: colors.ringAcceptance },
+  { label: 'Commitment', color: colors.ringCommitment },
+] as const;
+
+function LibraryMockScreen({ rings, streak }: { rings: RingValues; streak: number }) {
+  const anims = useRef(
+    MAC_CATS.map(() => ({
+      opacity: new Animated.Value(0),
+      slide: new Animated.Value(16),
+    }))
+  ).current;
+
+  useEffect(() => {
+    // Wait for the step slide-in to finish before staggering rows in
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    MAC_CATS.forEach((_, i) => {
+      timers.push(
+        setTimeout(() => {
+          Animated.parallel([
+            Animated.timing(anims[i].opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+            Animated.timing(anims[i].slide, { toValue: 0, duration: 300, useNativeDriver: true }),
+          ]).start();
+        }, 200 + i * 110)
+      );
+    });
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  return (
+    <ScrollView
+      style={styles.screenScroll}
+      contentContainerStyle={styles.screenContent}
+      showsVerticalScrollIndicator={false}
+      scrollEnabled={false}
+    >
+      <View style={styles.screenHeader}>
+        <Text style={styles.screenBrand}>RELENTLESS</Text>
+        <View style={styles.streakPill}>
+          <Text style={styles.streakNum}>{streak}</Text>
+          <Ionicons name="flame" size={16} color="#f59e0b" />
+        </View>
+      </View>
+
+      <RingsRow rings={rings} />
+
+      {MAC_CATS.map((cat, i) => (
+        <Animated.View
+          key={cat.label}
+          style={[
+            styles.libCategoryRow,
+            { opacity: anims[i].opacity, transform: [{ translateY: anims[i].slide }] },
+          ]}
+        >
+          <View style={[styles.categoryAccent, { backgroundColor: cat.color }]} />
+          <Text style={styles.categoryLabel}>{cat.label}</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </Animated.View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function AnimatedWodCard({ active }: { active: boolean }) {
+  const cardScale = useRef(new Animated.Value(1)).current;
+  const cardOpacity = useRef(new Animated.Value(0.08)).current;
+  const glowOpacity = useRef(new Animated.Value(0.25)).current;
+  const authorOpacity = useRef(new Animated.Value(0)).current;
+  const authorSlide = useRef(new Animated.Value(10)).current;
+  const badgeScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!active) {
+      cardOpacity.setValue(0.08);
+      authorOpacity.setValue(0);
+      authorSlide.setValue(10);
+      glowOpacity.setValue(0.25);
+      return;
+    }
+
+    cardScale.setValue(0.94);
+    Animated.parallel([
+      Animated.timing(cardScale, { toValue: 1, duration: 380, useNativeDriver: true }),
+      Animated.timing(cardOpacity, { toValue: 1, duration: 320, useNativeDriver: true }),
+    ]).start();
+
+    const authorTimer = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(authorOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(authorSlide, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]).start();
+    }, 340);
+
+    const glowLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowOpacity, { toValue: 0.7, duration: 950, useNativeDriver: true }),
+        Animated.timing(glowOpacity, { toValue: 0.25, duration: 950, useNativeDriver: true }),
+      ])
+    );
+    glowLoop.start();
+
+    const badgeLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(badgeScale, { toValue: 1.2, duration: 650, useNativeDriver: true }),
+        Animated.timing(badgeScale, { toValue: 1.0, duration: 650, useNativeDriver: true }),
+      ])
+    );
+    badgeLoop.start();
+
+    return () => {
+      clearTimeout(authorTimer);
+      glowLoop.stop();
+      badgeLoop.stop();
+    };
+  }, [active]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.wodCard,
+        styles.wodCardHighlight,
+        { transform: [{ scale: cardScale }], opacity: cardOpacity },
+      ]}
+    >
+      {/* Pulsing glow overlay */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          { borderRadius: 16, backgroundColor: 'rgba(139,92,246,0.09)', opacity: glowOpacity },
+        ]}
+      />
+
+      <View style={styles.wodHeaderRow}>
+        <Text style={styles.wodLabel}>WORKOUT OF THE DAY</Text>
+        <Animated.View style={[styles.wodNewBadge, { transform: [{ scale: badgeScale }] }]}>
+          <View style={styles.wodNewDot} />
+          <Text style={styles.wodNewText}>NEW</Text>
+        </Animated.View>
+      </View>
+
+      <Text style={styles.wodDayBadge}>Day 1 of 30</Text>
+      <Text style={styles.wodTitle}>What MAC Training Actually Is</Text>
+
+      {/* Grant attribution — staggered fade + slide in */}
+      <Animated.View
+        style={[
+          styles.wodAuthorRow,
+          { opacity: authorOpacity, transform: [{ translateY: authorSlide }] },
+        ]}
+      >
+        <Image
+          source={require('../../assets/images/grant_chiasson.png')}
+          style={styles.wodAuthorPhoto}
+        />
+        <View>
+          <Text style={styles.wodAuthorName}>Grant Chiasson</Text>
+          <Text style={styles.wodAuthorCred}>Sport Psychologist</Text>
+        </View>
+      </Animated.View>
+
+      <View style={styles.wodMetaPill}>
+        <Text style={styles.wodMeta}>3 min</Text>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -140,11 +326,13 @@ function HomeScreen({
   variant,
   rings,
   streak,
+  deltas,
   viewportBoundScroll = false,
 }: {
   variant: string;
   rings: RingValues;
   streak: number;
+  deltas?: RingDeltas;
   viewportBoundScroll?: boolean;
 }) {
   const isDecay = variant === 'decay';
@@ -171,25 +359,8 @@ function HomeScreen({
       </View>
 
       <View style={{ opacity: variant === 'wod' ? 0.08 : 1 }}>
-        <RingsRow rings={rings} />
+        <RingsRow rings={rings} deltas={deltas} />
       </View>
-
-      {variant === 'rings' && (
-        <View style={styles.macLegend}>
-          <View style={styles.macLegendRow}>
-            <View style={[styles.macDot, { backgroundColor: colors.ringMindfulness }]} />
-            <Text style={styles.macLegendLabel}>M — Mindfulness</Text>
-          </View>
-          <View style={styles.macLegendRow}>
-            <View style={[styles.macDot, { backgroundColor: colors.ringAcceptance }]} />
-            <Text style={styles.macLegendLabel}>A — Acceptance</Text>
-          </View>
-          <View style={styles.macLegendRow}>
-            <View style={[styles.macDot, { backgroundColor: colors.ringCommitment }]} />
-            <Text style={styles.macLegendLabel}>C — Commitment</Text>
-          </View>
-        </View>
-      )}
 
       {isDecay && (
         <>
@@ -220,16 +391,7 @@ function HomeScreen({
         </>
       )}
 
-      {!isDecay && (
-        <View style={[styles.wodCard, variant === 'wod' && styles.wodCardHighlight, { opacity: variant === 'rings' ? 0.08 : 1 }]}>
-          <Text style={styles.wodLabel}>WORKOUT OF THE DAY</Text>
-          <Text style={styles.wodDayBadge}>Day 7 of 30</Text>
-          <Text style={styles.wodTitle}>What MAC Training Actually Is</Text>
-          <View style={styles.wodMetaPill}>
-            <Text style={styles.wodMeta}>3 min</Text>
-          </View>
-        </View>
-      )}
+      {!isDecay && <AnimatedWodCard active={variant === 'wod'} />}
     </ScrollView>
   );
 }
@@ -317,6 +479,17 @@ export default function TutorialScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const [stepIdx, setStepIdx] = useState(0);
+  const [step0Phase, setStep0Phase] = useState<'delta' | 'filled'>('delta');
+
+  // Auto-play the +20 → filled ring animation on step 0
+  useEffect(() => {
+    if (stepIdx !== 0) return;
+    setStep0Phase('delta');
+    const t = setTimeout(() => setStep0Phase('filled'), 1400);
+    return () => clearTimeout(t);
+  }, [stepIdx]);
+
+  const MAC_INTRO_GAIN: ScoreDelta = { amount: 20, reason: "Grant's intro workout complete" };
 
   // Refs so PanResponder callbacks always have the latest values without recreating the handler
   const stepIdxRef = useRef(0);
@@ -327,6 +500,13 @@ export default function TutorialScreen() {
   const isAnimating = useRef(false);
 
   const step = STEPS[stepIdx];
+
+  const step0Deltas: RingDeltas | undefined =
+    stepIdx === 0 && step0Phase === 'delta'
+      ? { m: MAC_INTRO_GAIN, a: MAC_INTRO_GAIN, c: MAC_INTRO_GAIN }
+      : undefined;
+  const displayRings =
+    stepIdx === 0 && step0Phase === 'delta' ? { m: 0, a: 0, c: 0 } : step.rings;
 
   // Tooltip entrance animation — fires on every step change
   useEffect(() => {
@@ -443,11 +623,16 @@ export default function TutorialScreen() {
           {...panResponder.panHandlers}
         >
           <View style={styles.screenMockHostLoose}>
-            <HomeScreen
-              variant={step.variant}
-              rings={step.rings}
-              streak={step.streak}
-            />
+            {step.tab === 'library' ? (
+              <LibraryMockScreen rings={step.rings} streak={step.streak} />
+            ) : (
+              <HomeScreen
+                variant={step.variant}
+                rings={displayRings}
+                streak={step.streak}
+                deltas={step0Deltas}
+              />
+            )}
             {/* Dim overlay separates mock screen from tooltip */}
             <Animated.View
               pointerEvents="none"
@@ -463,7 +648,7 @@ export default function TutorialScreen() {
             isDecay={isDecay}
             caretPosition={step.caretPosition}
             nudgeY={step.tooltipNudgeY ?? 0}
-            pinToBottom={false}
+            pinToBottom={step.pinToBottom ?? false}
           />
         </Animated.View>
 
@@ -522,19 +707,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-around', marginBottom: 16,
   },
 
-  // MAC legend (rings step only)
-  macLegend: {
-    backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1,
-    borderColor: colors.border, padding: 14, marginBottom: 14, gap: 8,
-  },
-  macLegendRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  macDot: { width: 10, height: 10, borderRadius: 5 },
-  macLegendLabel: { fontSize: 13, fontWeight: '600', color: colors.textPrimary },
-
   // WOD card
   wodCard: {
     backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1,
-    borderColor: colors.border, padding: 20, alignItems: 'center', marginBottom: 12,
+    borderColor: colors.border, padding: 20, marginBottom: 12,
   },
   wodCardHighlight: {
     borderColor: colors.accent,
@@ -545,10 +721,38 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 6,
   },
-  wodLabel: { fontSize: 11, fontWeight: '700', color: colors.textMuted, letterSpacing: 1.5, marginBottom: 4 },
-  wodDayBadge: { fontSize: 12, fontWeight: '600', color: colors.accentLight, marginBottom: 6 },
-  wodTitle: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 8, textAlign: 'center' },
+  wodHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4,
+  },
+  wodNewBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(139,92,246,0.15)', borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderWidth: 1, borderColor: 'rgba(139,92,246,0.4)',
+  },
+  wodNewDot: {
+    width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.accentLight,
+  },
+  wodNewText: {
+    fontSize: 9, fontWeight: '800', color: colors.accentLight, letterSpacing: 1,
+  },
+  wodLabel: { fontSize: 11, fontWeight: '700', color: colors.textMuted, letterSpacing: 1.5 },
+  wodDayBadge: { fontSize: 12, fontWeight: '600', color: colors.accentLight, marginBottom: 6, marginTop: 4 },
+  wodTitle: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 14, textAlign: 'left' },
+  wodAuthorRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14,
+  },
+  wodAuthorPhoto: {
+    width: 32, height: 32, borderRadius: 16,
+  },
+  wodAuthorName: {
+    fontSize: 13, fontWeight: '700', color: colors.textPrimary,
+  },
+  wodAuthorCred: {
+    fontSize: 11, fontWeight: '500', color: colors.accentLight, marginTop: 1,
+  },
   wodMetaPill: {
+    alignSelf: 'flex-start',
     backgroundColor: colors.background, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 4,
     borderWidth: 1, borderColor: colors.border,
   },
@@ -622,6 +826,19 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)',
   },
   reflectionPlaceholder: { fontSize: 14, color: 'rgba(239,68,68,0.55)' },
+
+  // Library mock — compact row (real library uses paddingVertical:32 which is too tall in tutorial)
+  libCategoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 18,
+    paddingHorizontal: spacing.lg,
+    marginBottom: 10,
+  },
 
   // Library overview
   categoryBtn: {
