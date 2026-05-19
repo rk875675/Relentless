@@ -38,14 +38,13 @@ type TooltipContent = { title: string; body: string };
 type RingValues = { m: number; a: number; c: number; decay?: boolean };
 
 type TutorialStep = {
-  tab: 'home' | 'library' | 'profile';
-  variant: 'rings' | 'wod' | 'decay' | 'overview' | 'category' | 'stats';
+  tab: 'home';
+  variant: 'rings' | 'wod';
   rings: RingValues;
   streak: number;
   tooltip: TooltipContent;
   progressStep: number;
   caretPosition: 'left' | 'center';
-  /** Negative values pull the tooltip up (only used on specific steps; default 0). */
   tooltipNudgeY?: number;
 };
 
@@ -53,78 +52,36 @@ const STEPS: TutorialStep[] = [
   {
     tab: 'home',
     variant: 'rings',
-    rings: { m: 72, a: 58, c: 45 },
-    streak: 6,
+    rings: { m: 20, a: 20, c: 20 },
+    streak: 0,
     tooltip: {
       title: 'YOUR MAC SCORE',
-      body: 'Three rings — Mindfulness, Acceptance, Commitment. Every lesson you complete fills them.',
+      body: 'Three rings — Mindfulness, Acceptance, Commitment. Complete lessons to fill them up.',
     },
     progressStep: 16,
     caretPosition: 'center',
-    // Sits under full scroll; nudge up so the caret targets the MAC legend (below rings).
     tooltipNudgeY: -166,
   },
   {
     tab: 'home',
     variant: 'wod',
-    rings: { m: 72, a: 58, c: 45 },
-    streak: 6,
+    rings: { m: 20, a: 20, c: 20 },
+    streak: 0,
     tooltip: {
       title: 'WORKOUT OF THE DAY',
-      body: 'A short guided session, delivered daily. Finish any lesson to keep your streak alive.',
+      body: 'A short guided session, delivered daily. This is your main training.',
     },
     progressStep: 17,
     caretPosition: 'center',
   },
-  {
-    tab: 'home',
-    variant: 'decay',
-    rings: { m: 48, a: 36, c: 41, decay: true },
-    streak: 0,
-    tooltip: {
-      title: 'STAY CONSISTENT',
-      body: 'Miss a day and every ring drops −2 pts. Miss enough and your streak breaks — plus you owe a reflection.',
-    },
-    progressStep: 18,
-    caretPosition: 'left',
-  },
-  {
-    tab: 'library',
-    variant: 'overview',
-    rings: { m: 72, a: 58, c: 45 },
-    streak: 6,
-    tooltip: {
-      title: 'THE LIBRARY',
-      body: 'Browse exercises by MAC category — use them before practice, on game day, or as extra reps.',
-    },
-    progressStep: 19,
-    caretPosition: 'left',
-  },
-  {
-    tab: 'library',
-    variant: 'category',
-    rings: { m: 72, a: 58, c: 45 },
-    streak: 6,
-    tooltip: {
-      title: 'PICK AN EXERCISE',
-      body: 'Each category has a set of exercises with estimated times. Tap any one — before practice, on game day, or whenever you need a reset.',
-    },
-    progressStep: 20,
-    caretPosition: 'center',
-  },
-  {
-    tab: 'profile',
-    variant: 'stats',
-    rings: { m: 72, a: 58, c: 45 },
-    streak: 6,
-    tooltip: {
-      title: 'YOUR PROGRESS',
-      body: 'Track your streak, personal best, and total lessons. Set your competition countdown to stay locked in.',
-    },
-    progressStep: 21,
-    caretPosition: 'center',
-  },
 ];
+
+// VAULTED steps — can be restored above if the tutorial is expanded.
+// { tab: 'home', variant: 'decay', progressStep: 18,
+//   tooltip: { title: 'STAY CONSISTENT', body: 'Miss a day and every ring drops.' } },
+// { tab: 'library', variant: 'overview', progressStep: 19, ... }
+// { tab: 'library', variant: 'category', progressStep: 20, ... }
+// { tab: 'profile', variant: 'stats', progressStep: 21, ... }
 
 function MockTabBar({ active, onSwitch }: { active: string; onSwitch: (t: string) => void }) {
   const tabs = [
@@ -273,288 +230,6 @@ function HomeScreen({
           </View>
         </View>
       )}
-    </ScrollView>
-  );
-}
-
-function LibraryScreen({
-  variant,
-  rings,
-  streak,
-  viewportBoundScroll = false,
-}: {
-  variant: string;
-  rings: RingValues;
-  streak: number;
-  viewportBoundScroll?: boolean;
-}) {
-  const categories = [
-    { label: 'Mindfulness', color: colors.ringMindfulness },
-    { label: 'Acceptance', color: colors.ringAcceptance },
-    { label: 'Commitment', color: colors.ringCommitment },
-  ];
-  return (
-    <ScrollView
-      style={[
-        viewportBoundScroll ? styles.screenScrollFill : styles.screenScroll,
-        variant === 'overview' && styles.screenScrollLibraryOverview,
-      ]}
-      contentContainerStyle={styles.screenContent}
-      showsVerticalScrollIndicator={false}
-      scrollEnabled={false}
-    >
-      <View style={styles.screenHeader}>
-        <Text style={styles.screenBrand}>RELENTLESS</Text>
-        <View style={styles.headerRight}>
-          <View style={styles.streakPill}>
-            <Text style={styles.streakNum}>{streak}</Text>
-            <Ionicons name="flame" size={16} color="#f59e0b" />
-          </View>
-        </View>
-      </View>
-
-      <View style={{ opacity: variant === 'overview' ? 0.08 : 1 }}>
-        <RingsRow rings={rings} />
-      </View>
-
-      {categories.map((cat) => {
-        const isHighlighted = variant === 'overview' && cat.label === 'Mindfulness';
-        return (
-          <View
-            key={cat.label}
-            style={[
-              styles.categoryBtn,
-              isHighlighted && styles.categoryBtnHighlight,
-            ]}
-          >
-            <View style={[styles.categoryAccent, { backgroundColor: cat.color }]} />
-            <Text style={styles.categoryLabel}>{cat.label}</Text>
-            <Ionicons name="chevron-forward" size={18} color={isHighlighted ? colors.accentLight : colors.textMuted} />
-          </View>
-        );
-      })}
-
-      {variant !== 'overview' && (
-        <View style={styles.ctaCard}>
-          <Text style={styles.ctaTitle}>Want to go deeper?</Text>
-          <Text style={styles.ctaByline}>Sessions with Grant</Text>
-          <Text style={styles.ctaSub}>
-            Personalized coaching for your specific goals
-          </Text>
-        </View>
-      )}
-    </ScrollView>
-  );
-}
-
-function LibraryCategoryScreen({ viewportBoundScroll = false }: { viewportBoundScroll?: boolean }) {
-  /** Mirrors `category/[id].tsx` lesson rows (library cards + optional WOD divider). */
-  const categoryColor = colors.ringMindfulness;
-  const tintedPill = {
-    backgroundColor: `${categoryColor}1e`,
-    borderColor: `${categoryColor}55`,
-  } as const;
-
-  const regularLessons = [
-    { title: 'Box breathing reset', mins: '3' },
-    { title: 'The tunnel', mins: '4' },
-    { title: 'Pre-game focus cue', mins: '3' },
-  ];
-
-  const wodLessons = [{ title: 'What MAC Training Actually Is', mins: '3', day: 7 }];
-
-  return (
-    <ScrollView
-      style={[styles.screenScroll, viewportBoundScroll && styles.screenScrollFill]}
-      contentContainerStyle={styles.catScreenContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.catNavRow}>
-        <Ionicons name="chevron-back" size={20} color={colors.accentLight} />
-        <Text style={styles.catNavTitle}>Mindfulness</Text>
-        <View style={{ width: 20 }} />
-      </View>
-
-      {regularLessons.map((l) => (
-        <View key={l.title} style={styles.catLessonCard}>
-          <View style={styles.catLessonRow}>
-            <View style={styles.catLessonLeft}>
-              <Text style={styles.catLessonTitle}>{l.title}</Text>
-            </View>
-            <View style={[styles.catLessonDurationPill, tintedPill]}>
-              <Text style={[styles.catLessonDurationText, { color: categoryColor }]}>
-                {l.mins} min
-              </Text>
-            </View>
-          </View>
-        </View>
-      ))}
-
-      <View style={styles.catWodDividerRow}>
-        <View style={styles.catWodDividerLine} />
-        <Text style={styles.catWodDividerLabel}>Past WODs</Text>
-        <View style={styles.catWodDividerLine} />
-      </View>
-
-      {wodLessons.map((l) => (
-        <View key={l.title} style={styles.catLessonCard}>
-          <Text style={styles.catLessonDayLabel}>DAY {l.day}</Text>
-          <View style={styles.catLessonRow}>
-            <View style={styles.catLessonLeft}>
-              <Text style={styles.catLessonTitle}>{l.title}</Text>
-            </View>
-            <View style={[styles.catLessonDurationPill, tintedPill]}>
-              <Text style={[styles.catLessonDurationText, { color: categoryColor }]}>
-                {l.mins} min
-              </Text>
-            </View>
-          </View>
-        </View>
-      ))}
-    </ScrollView>
-  );
-}
-
-function ProfileScreen({
-  rings: _rings,
-  streak,
-  viewportBoundScroll = false,
-}: {
-  rings: RingValues;
-  streak: number;
-  viewportBoundScroll?: boolean;
-}) {
-  /** Mirrors `(tabs)/profile.tsx` hero, stats strip, countdown, and settings rows — mock only. */
-  const bestStreak = Math.max(streak + 2, streak);
-  const lessonsDone = 14;
-
-  function MockStatColumn({
-    label,
-    value,
-    icon,
-    iconColor,
-    iconBg,
-  }: {
-    label: string;
-    value: number;
-    icon: keyof typeof Ionicons.glyphMap;
-    iconColor: string;
-    iconBg: string;
-  }) {
-    return (
-      <View style={styles.profStatCol}>
-        <View style={[styles.profStatIconWrap, { backgroundColor: iconBg }]}>
-          <Ionicons name={icon} size={18} color={iconColor} />
-        </View>
-        <Text style={styles.profStatValue}>{value}</Text>
-        <Text style={styles.profStatCaption}>{label}</Text>
-      </View>
-    );
-  }
-
-  function MockProfileRow({
-    icon,
-    label,
-    value,
-    chevron,
-    last,
-  }: {
-    icon: keyof typeof Ionicons.glyphMap;
-    label: string;
-    value?: string;
-    chevron?: boolean;
-    last?: boolean;
-  }) {
-    return (
-      <View style={[styles.profMockRow, last && styles.profMockRowLast]}>
-        <View style={styles.profMockRowLeft}>
-          <View style={styles.profMockRowIconWrap}>
-            <Ionicons name={icon} size={17} color={colors.accentLight} />
-          </View>
-          <Text style={styles.profMockRowLabel}>{label}</Text>
-        </View>
-        {chevron ? (
-          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-        ) : (
-          <Text style={styles.profMockRowValue}>{value}</Text>
-        )}
-      </View>
-    );
-  }
-
-  return (
-    <ScrollView
-      style={[styles.screenScroll, viewportBoundScroll && styles.screenScrollFill]}
-      contentContainerStyle={styles.profScreenContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.profHeader}>
-        <Text style={styles.profBrand}>RELENTLESS</Text>
-        <View style={styles.profStreakPill}>
-          <Text style={styles.profStreakNum}>{streak}</Text>
-          <Ionicons name="flame" size={16} color="#f59e0b" />
-        </View>
-      </View>
-
-      <View style={styles.profHero}>
-        <View style={styles.profAvatarOuter}>
-          <View style={styles.profAvatarInner}>
-            <Ionicons name="person" size={38} color={colors.accent} />
-          </View>
-        </View>
-        <Text style={styles.profUserName}>You</Text>
-        <Text style={styles.profSportLine}>Track & field</Text>
-      </View>
-
-      <View style={styles.profStatsCard}>
-        <View style={styles.profStatsColumns}>
-          <MockStatColumn
-            label="Streak"
-            value={streak}
-            icon="flame"
-            iconColor="#f59e0b"
-            iconBg="rgba(245, 158, 11, 0.10)"
-          />
-          <View style={styles.profVerticalRule} />
-          <MockStatColumn
-            label="Best Streak"
-            value={bestStreak}
-            icon="trophy-outline"
-            iconColor={colors.accentLight}
-            iconBg={colors.accentSubtle}
-          />
-          <View style={styles.profVerticalRule} />
-          <MockStatColumn
-            label="Lessons"
-            value={lessonsDone}
-            icon="checkmark-circle-outline"
-            iconColor={colors.success}
-            iconBg="rgba(74, 222, 128, 0.10)"
-          />
-        </View>
-        <View style={styles.profLastActiveRow}>
-          <Ionicons name="time-outline" size={12} color={colors.textMuted} />
-          <Text style={styles.profLastActiveText}>Active today</Text>
-        </View>
-      </View>
-
-      <View style={styles.profCountdownCard}>
-        <View style={styles.profCountdownIconWrap}>
-          <Ionicons name="calendar" size={18} color={colors.accent} />
-        </View>
-        <View style={styles.profCountdownTextCol}>
-          <Text style={styles.profCountdownDays}>12 days</Text>
-          <Text style={styles.profCountdownSub}>until competition</Text>
-        </View>
-      </View>
-
-      <Text style={styles.profSectionLabel}>SETTINGS</Text>
-      <View style={styles.profRowsCard}>
-        <MockProfileRow icon="person-outline" label="Name" value="You" />
-        <MockProfileRow icon="calendar-outline" label="Competition Date" value="5/31/2026" />
-        <MockProfileRow icon="football-outline" label="Sport" value="Track & field" />
-        <MockProfileRow icon="journal-outline" label="Journal Entries" chevron last />
-      </View>
     </ScrollView>
   );
 }
@@ -757,12 +432,6 @@ export default function TutorialScreen() {
   };
 
   const isDecay = step.variant === 'decay';
-  const pinLibraryTooltipBottom = step.tab === 'library' && step.variant === 'overview';
-  /** Keeps tooltip visible for tall mocks; loose layout restores home tooltip positioning. */
-  const clampTutorialMockHeight =
-    (step.tab === 'library' && step.variant === 'overview') ||
-    (step.tab === 'library' && step.variant === 'category') ||
-    step.tab === 'profile';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -773,32 +442,12 @@ export default function TutorialScreen() {
           style={[styles.screenArea, { transform: [{ translateX: slideX }] }]}
           {...panResponder.panHandlers}
         >
-          <View
-            style={
-              clampTutorialMockHeight ? styles.screenMockHostClamp : styles.screenMockHostLoose
-            }
-          >
-            {step.tab === 'home' && (
-              <HomeScreen
-                variant={step.variant}
-                rings={step.rings}
-                streak={step.streak}
-                viewportBoundScroll={clampTutorialMockHeight}
-              />
-            )}
-            {step.tab === 'library' && step.variant === 'category' ? (
-              <LibraryCategoryScreen viewportBoundScroll />
-            ) : step.tab === 'library' ? (
-              <LibraryScreen
-                variant={step.variant}
-                rings={step.rings}
-                streak={step.streak}
-                viewportBoundScroll={clampTutorialMockHeight}
-              />
-            ) : null}
-            {step.tab === 'profile' && (
-              <ProfileScreen rings={step.rings} streak={step.streak} viewportBoundScroll />
-            )}
+          <View style={styles.screenMockHostLoose}>
+            <HomeScreen
+              variant={step.variant}
+              rings={step.rings}
+              streak={step.streak}
+            />
             {/* Dim overlay separates mock screen from tooltip */}
             <Animated.View
               pointerEvents="none"
@@ -814,7 +463,7 @@ export default function TutorialScreen() {
             isDecay={isDecay}
             caretPosition={step.caretPosition}
             nudgeY={step.tooltipNudgeY ?? 0}
-            pinToBottom={pinLibraryTooltipBottom}
+            pinToBottom={false}
           />
         </Animated.View>
 

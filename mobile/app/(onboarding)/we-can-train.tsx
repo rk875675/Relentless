@@ -92,7 +92,7 @@ export default function WeCanTrainScreen() {
               style={styles.button}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push('/(onboarding)/tutorial' as any);
+                router.push('/(onboarding)/grant-intro' as any);
               }}
             >
               <Text style={styles.buttonText}>See How It Works</Text>

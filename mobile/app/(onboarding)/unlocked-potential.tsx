@@ -115,7 +115,7 @@ export default function UnlockedPotentialScreen() {
               style={styles.button}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push('/(onboarding)/onboarding-intake' as any);
+                router.push('/(onboarding)/mac-teaser' as any);
               }}
             >
               <Text style={styles.buttonText}>Continue</Text>

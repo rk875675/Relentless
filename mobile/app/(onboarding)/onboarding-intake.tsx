@@ -56,17 +56,6 @@ const STEPS: StepDef[] = [
   },
   {
     type: 'choice',
-    title: "What's your current long-term goal?",
-    options: [
-      'Pro',
-      'D1 or college athletics',
-      'Win state or nationals',
-      'Make varsity',
-      'Other',
-    ],
-  },
-  {
-    type: 'choice',
     title: 'How often do you feel you could have done more after a comp?',
     options: ['Always', 'Often', 'Sometimes', 'Rarely', 'Never'],
   },
@@ -87,14 +76,17 @@ const STEPS: StepDef[] = [
     title: 'How strongly do you want that level of performance?',
     options: ['More than anything', 'Strongly', 'Somewhat', 'A little', 'Not much'],
   },
-  {
-    type: 'hold',
-    title: "Progress isn't easy, are you ready to commit?",
-    overlayLine: 'Locking in your commitment',
-    successLine: "You're in",
-    holdDurationMs: HOLD_MS,
-  },
 ];
+
+// VAULTED: can be restored to STEPS if the commitment lock-in step is brought back.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _VAULTED_HOLD_STEP: HoldStep = {
+  type: 'hold',
+  title: "Progress isn't easy, are you ready to commit?",
+  overlayLine: 'Locking in your commitment',
+  successLine: "You're in",
+  holdDurationMs: HOLD_MS,
+};
 
 type HoldUiPhase = 'idle' | 'holding' | 'success';
 
@@ -689,6 +681,14 @@ export default function OnboardingIntakeScreen() {
         step = Math.min(step, STEPS.length - 1);
         saveOnboardingAnswers({ intakeAnswers: rawAnswers as (string | null)[], intakeStep: step });
       }
+      /** June 2026: long-term goal (was index 1) removed. Detect by checking the saved answer value. */
+      const OLD_LONG_TERM_GOAL_OPTIONS = new Set(['Pro', 'D1 or college athletics', 'Win state or nationals', 'Make varsity', 'Other']);
+      if (rawAnswers.length >= 2 && typeof rawAnswers[1] === 'string' && OLD_LONG_TERM_GOAL_OPTIONS.has(rawAnswers[1])) {
+        rawAnswers = [rawAnswers[0]!, ...rawAnswers.slice(2)];
+        if (step > 1) step -= 1;
+        step = Math.min(step, STEPS.length - 1);
+        saveOnboardingAnswers({ intakeAnswers: rawAnswers as (string | null)[], intakeStep: step });
+      }
       const nextAnswers = [...rawAnswers];
       while (nextAnswers.length < STEPS.length) nextAnswers.push(null);
       if (nextAnswers.length) setAnswers(nextAnswers.slice(0, STEPS.length));
@@ -724,7 +724,7 @@ export default function OnboardingIntakeScreen() {
         setQuestionIndex(next);
         saveOnboardingAnswers({ intakeStep: next });
       } else {
-        router.push('/(onboarding)/mac-framework' as any);
+        router.push('/(onboarding)/mac-question' as any);
       }
     },
     [router],
@@ -743,7 +743,7 @@ export default function OnboardingIntakeScreen() {
       return next;
     });
     transitionDirRef.current = 'fwd';
-    router.push('/(onboarding)/mac-framework' as any);
+    router.push('/(onboarding)/mac-question' as any);
   }, [router]);
 
   const runWizardBack = useCallback(() => {
@@ -855,7 +855,7 @@ export default function OnboardingIntakeScreen() {
     });
     transitionDirRef.current = 'fwd';
     if (holdCompleted) {
-      router.push('/(onboarding)/mac-framework' as any);
+      router.push('/(onboarding)/mac-question' as any);
       return;
     }
     goNext(questionIndex);

@@ -10,8 +10,9 @@ import { colors, spacing } from '@/lib/theme';
 
 const VALID_ONBOARDING_SCREENS = new Set([
   'relentless-intro', 'onboarding-intake', 'unlocked-potential',
-  'mac-framework', 'mac-question', 'mac-detail', 'mac-setup',
-  'we-can-train', 'tutorial', 'tutorial-home', 'tutorial-home-detail',
+  'mac-teaser', 'mac-framework', 'mac-question', 'mac-detail', 'mac-setup',
+  'we-can-train', 'grant-intro', 'onboarding-trophy',
+  'tutorial', 'tutorial-home', 'tutorial-home-detail',
   'tutorial-library', 'tutorial-library-detail', 'tutorial-profile',
   'sport-selection', 'competition-date', 'paywall', 'signup',
   'what-you-get', 'exercise-a', 'exercise-m', 'exercise-c',

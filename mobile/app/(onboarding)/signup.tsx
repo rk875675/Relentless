@@ -22,7 +22,8 @@ import { analytics } from '@/lib/analytics';
 import { trackSignupStarted, trackSignupCompleted } from '@/lib/lifecycle-analytics';
 import { bustCache } from '@/lib/api-cache';
 import { fetchJwsForTransaction, restorePurchasesViaStoreKit } from '@/lib/iap-restore';
-import { clearOnboardingProgress } from '@/lib/onboarding-local-state';
+import { clearOnboardingProgress, loadOnboardingAnswers } from '@/lib/onboarding-local-state';
+import { apiFetch } from '@/lib/api';
 import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
 import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
 import { supabase } from '@/lib/supabase';
@@ -370,6 +371,28 @@ export default function OnboardingSignupScreen() {
         completeOnboarding({ requireUser: true }),
         new Promise<void>((r) => setTimeout(r, 3_000)),
       ]).catch(() => {});
+
+      // Seed initial MAC ring scores (20/20/20) for users who completed
+      // Grant's onboarding mini-lesson. ignoreDuplicates guards existing users.
+      loadOnboardingAnswers().then(async (answers) => {
+        if (!answers.grantComplete) return;
+        await supabase
+          .rpc('initialize_mac_scores', {
+            p_mindfulness: 20,
+            p_acceptance: 20,
+            p_commitment: 20,
+          })
+          .catch(() => {});
+        if (answers.grantJournalAnswer?.trim()) {
+          await apiFetch('/journal', {
+            method: 'POST',
+            body: {
+              body: answers.grantJournalAnswer.trim(),
+              entry_type: 'onboarding_future_self',
+            },
+          }).catch(() => {});
+        }
+      }).catch(() => {});
 
       clearTimeout(forceNavigateTimer);
       if (!forceNavigated) {

@@ -10,6 +10,10 @@ export type OnboardingAnswers = {
   macTag?: string;
   sport?: string;
   competitionDate?: string;
+  /** Set to true after the user completes Grant's intro mini-lesson. */
+  grantComplete?: boolean;
+  /** The user's answer to Grant's "What is your current goal?" journal prompt. */
+  grantJournalAnswer?: string;
 };
 
 type OnboardingLocalState = {
