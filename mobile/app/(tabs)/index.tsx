@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Animated,
+  Dimensions,
   Image,
   Keyboard,
   Modal,
@@ -36,6 +37,8 @@ import {
   trackProgressRingViewed,
   trackReflectionSaved,
 } from '@/lib/core-analytics';
+
+const { height: screenHeight } = Dimensions.get('window');
 
 type Lesson = {
   id: string;
@@ -148,11 +151,11 @@ export default function HomeScreen() {
   const [error, setError] = useState('');
   const [progressLoadError, setProgressLoadError] = useState(false);
   const [streakLoadError, setStreakLoadError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [journalText, setJournalText] = useState('');
   const [journalSaving, setJournalSaving] = useState(false);
   const [journalSaveError, setJournalSaveError] = useState('');
   const [journalSavedHint, setJournalSavedHint] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [activeDeltas, setActiveDeltas] = useState<MacDeltas | null>(null);
   const [showMissReflection, setShowMissReflection] = useState(false);
   const [missJournalText, setMissJournalText] = useState('');
@@ -168,13 +171,12 @@ export default function HomeScreen() {
   const homeScrollYRef = useRef(0);
   const preWorkoutJournalFooterRef = useRef<View>(null);
   const missReflectionFooterRef = useRef<View>(null);
-  const journalCardY = useRef(0);
   const journalCardRef = useRef<View>(null);
   const journalFocusedRef = useRef(false);
   const lastSavedJournalRef = useRef('');
   const initialLoadDone = useRef(false);
 
-  const journalPrompt = "What's one thing you want to focus on during today's workout?";
+  const journalPrompt = "What's on your mind going into today's session?";
 
   const fetchData = useCallback(async (isPullRefresh = false) => {
     setError('');
@@ -353,10 +355,8 @@ export default function HomeScreen() {
     });
     const didShow = Keyboard.addListener('keyboardDidShow', (e) => {
       if (!journalFocusedRef.current) return;
-      // screenY is the exact pixel where the keyboard top starts — no guessing needed
       const keyboardTop = e.endCoordinates.screenY;
       journalCardRef.current?.measureInWindow((_x, cardScreenY, _w, cardH) => {
-        // Center the full card in the space above the keyboard, min 30px from top
         const targetCardScreenY = Math.max(30, (keyboardTop - cardH) / 2);
         const nextY = homeScrollYRef.current + cardScreenY - targetCardScreenY;
         scrollRef.current?.scrollTo({ y: Math.max(0, nextY), animated: true });
@@ -445,7 +445,7 @@ export default function HomeScreen() {
               <View style={styles.countdownPill}>
                 <MaterialCommunityIcons
                   name="bullseye-arrow"
-                  size={14}
+                  size={17}
                   color={days != null ? colors.accentLight : colors.textMuted}
                 />
                 <Text style={[styles.countdownText, days != null && { color: colors.accentLight }]}>
@@ -610,45 +610,58 @@ export default function HomeScreen() {
       ) : (
         <TouchableOpacity
           style={styles.workoutCardOuter}
-          activeOpacity={0.8}
+          activeOpacity={0.85}
           onPress={lesson ? () => void handleStartWorkout() : lastWod ? () => void handleStartWorkout(lastWod.id) : undefined}
           disabled={loading || (!lesson && !lastWod)}
         >
           <View style={styles.workoutCardInner}>
-            <View style={styles.workoutLabelRow}>
-              <View style={styles.workoutLabelPill}>
-                <Text style={styles.workoutLabelText}>WORKOUT OF THE DAY</Text>
-              </View>
-            </View>
-
             {loading ? (
               <WorkoutCardSkeleton />
             ) : lesson ? (
-              <View style={styles.workoutLessonBody}>
-                {typeof lesson.program_day === 'number' && (
-                  <Text style={styles.workoutDayBadge}>Day {lesson.program_day} of 30</Text>
-                )}
-                <Text style={styles.workoutTitle}>{lesson.title}</Text>
-                <View style={styles.workoutAuthorRow}>
-                  <View style={styles.workoutAuthorPhoto}>
-                    <Image
-                      source={require('../../assets/images/grant_chiasson.png')}
-                      style={styles.workoutAuthorPhotoImg}
-                      resizeMode="cover"
-                    />
+              <>
+                {/* TOP — label + day number */}
+                <View style={styles.wodTopSection}>
+                  <View style={styles.workoutLabelPill}>
+                    <Text style={styles.workoutLabelText}>WORKOUT OF THE DAY</Text>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.workoutAuthorName}>Grant Chiasson</Text>
-                    <Text style={styles.workoutAuthorCred}>Sport Psychologist</Text>
+                  {typeof lesson.program_day === 'number' && (
+                    <Text style={styles.workoutDayBadge}>Day {lesson.program_day} · 30-day program</Text>
+                  )}
+                </View>
+
+                {/* MIDDLE — title fills remaining space */}
+                <View style={styles.wodTitleSection}>
+                  <Text style={styles.workoutTitle}>{lesson.title}</Text>
+                </View>
+
+                {/* BOTTOM — coach row + cta */}
+                <View style={styles.wodBottomSection}>
+                  <View style={styles.wodDivider} />
+                  <View style={styles.workoutAuthorRow}>
+                    <View style={styles.workoutAuthorPhotoRing}>
+                      <Image
+                        source={require('../../assets/images/grant_chiasson.png')}
+                        style={styles.workoutAuthorPhotoImg}
+                        resizeMode="cover"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.workoutAuthorName}>Grant Chiasson</Text>
+                      <Text style={styles.workoutAuthorCred}>Sport Psychologist</Text>
+                    </View>
+                    <View style={styles.workoutMetaPill}>
+                      <Text style={styles.workoutMeta}>{mins} min</Text>
+                    </View>
                   </View>
-                  <View style={styles.workoutMetaPill}>
-                    <Text style={styles.workoutMeta}>{mins} min</Text>
+                  <View style={styles.wodStartRow}>
+                    <Text style={styles.wodStartText}>Begin session</Text>
+                    <Ionicons name="chevron-forward" size={15} color={colors.accentLight} />
                   </View>
                 </View>
-              </View>
+              </>
             ) : (
               <View style={styles.workoutDoneBody}>
-                <Ionicons name="checkmark-circle" size={36} color={colors.success} style={{ marginBottom: 12 }} />
+                <Ionicons name="checkmark-circle" size={40} color={colors.success} style={{ marginBottom: 14 }} />
                 <Text style={styles.workoutTitleDone}>All caught up!</Text>
                 <Text style={styles.workoutDesc}>Come back tomorrow for the next workout</Text>
                 {lastWod && (
@@ -673,12 +686,12 @@ export default function HomeScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Journal Prompt */}
+      {/* Today's Focus — lightweight pre-session note */}
       <View
         ref={journalCardRef}
         style={styles.journalCard}
       >
-        <Text style={styles.journalLabel}>PRE-WORKOUT CHECK-IN</Text>
+        <Text style={styles.journalLabel}>TODAY'S FOCUS</Text>
         <TextInput
           style={styles.journalInput}
           placeholder={journalPrompt}
@@ -792,7 +805,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 32,
   },
   brand: {
     fontSize: 24,
@@ -811,15 +824,16 @@ const styles = StyleSheet.create({
     gap: 5,
     backgroundColor: colors.surface,
     borderRadius: 20,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 6,
     borderWidth: 1,
     borderColor: colors.border,
   },
   countdownText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     color: colors.textMuted,
+    letterSpacing: 0.5,
   },
   streakPill: {
     flexDirection: 'row',
@@ -854,19 +868,37 @@ const styles = StyleSheet.create({
     marginBottom: 36,
   },
   workoutCardOuter: {
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: 'rgba(167, 139, 250, 0.35)',
+    borderColor: 'rgba(167, 139, 250, 0.4)',
     backgroundColor: colors.surface,
     overflow: 'hidden',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
   workoutCardInner: {
     flexDirection: 'column',
-    paddingTop: 20,
-    paddingBottom: 20,
     paddingHorizontal: spacing.xl,
-    alignItems: 'flex-start',
+    paddingTop: 24,
+    paddingBottom: 24,
+    minHeight: screenHeight * 0.46,
+  },
+  wodTopSection: {
+    width: '100%',
+    marginBottom: 4,
+  },
+  wodTitleSection: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    width: '100%',
+    paddingVertical: 12,
+  },
+  wodBottomSection: {
+    width: '100%',
+  },
+  wodDivider: {
+    height: 1,
+    backgroundColor: 'rgba(167, 139, 250, 0.15)',
+    marginBottom: 18,
   },
   workoutLabelRow: {
     flexDirection: 'row',
@@ -877,59 +909,62 @@ const styles = StyleSheet.create({
   },
   workoutLessonBody: {
     width: '100%',
-    alignItems: 'flex-start',
+    alignItems: 'flex-start' as const,
   },
   workoutDoneBody: {
+    flex: 1,
     width: '100%',
-    alignItems: 'center',
-    paddingVertical: 8,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
   },
   workoutLabelPill: {
+    alignSelf: 'flex-start' as const,
     backgroundColor: colors.accentSubtle,
     borderWidth: 1,
     borderColor: 'rgba(167, 139, 250, 0.28)',
     borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 17,
-    marginBottom: 9,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    marginBottom: 10,
   },
   workoutLabelText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     color: colors.accentLight,
     letterSpacing: 1.2,
-    textAlign: 'center',
   },
   workoutDayBadge: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.accentLight,
-    marginBottom: 6,
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textMuted,
+    letterSpacing: 0.2,
+    paddingLeft: 14,
   },
   workoutTitle: {
-    fontSize: 19,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
     color: colors.textPrimary,
     textAlign: 'left',
-    lineHeight: 26,
-    marginBottom: 14,
+    lineHeight: 36,
   },
   workoutAuthorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 0,
+    marginBottom: 16,
   },
-  workoutAuthorPhoto: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  workoutAuthorPhotoRing: {
+    width: 58,
+    height: 58,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: 'rgba(167, 139, 250, 0.4)',
     overflow: 'hidden',
   },
   workoutAuthorPhotoImg: {
-    width: 56,
-    height: 56,
-    transform: [{ scale: 1.15 }, { translateY: -4 }],
+    width: '100%' as any,
+    height: '100%' as any,
+    transform: [{ scale: 1.6 }, { translateY: -5 }],
   },
   workoutAuthorName: {
     fontSize: 15,
@@ -943,11 +978,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   workoutTitleDone: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: colors.textPrimary,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 26,
   },
   workoutMetaRow: {
     flexDirection: 'row',
@@ -965,37 +1000,28 @@ const styles = StyleSheet.create({
   workoutMetaPill: {
     backgroundColor: colors.accentSubtle,
     borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.3)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   workoutMeta: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accentLight,
     letterSpacing: 0.3,
   },
-  wodNewBadge: {
+  wodStartRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(139,92,246,0.15)',
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(139,92,246,0.4)',
+    justifyContent: 'flex-end',
+    gap: 4,
   },
-  wodNewDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: colors.accentLight,
-  },
-  wodNewText: {
-    fontSize: 9,
-    fontWeight: '800',
+  wodStartText: {
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.accentLight,
-    letterSpacing: 1,
+    letterSpacing: 0.2,
   },
   repeatBtn: {
     flexDirection: 'row',
@@ -1142,12 +1168,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(167, 139, 250, 0.22)',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
+    marginTop: spacing.md,
   },
   journalLabel: {
     fontSize: 9,
-    fontWeight: '600',
+    fontWeight: '700',
     color: 'rgba(167, 139, 250, 0.72)',
-    letterSpacing: 1.2,
+    letterSpacing: 1.4,
     marginBottom: 8,
   },
   journalInput: {

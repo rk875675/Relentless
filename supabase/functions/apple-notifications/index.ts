@@ -78,8 +78,8 @@ async function forwardToSuperwall(rawBody: string): Promise<void> {
       headers: { "Content-Type": "application/json" },
       body: rawBody,
     });
-  } catch {
-    // Forward failure must never affect our 200 ACK back to Apple.
+  } catch (err) {
+    console.error("[apple-notifications] Superwall forward failed:", err);
   }
 }
 
