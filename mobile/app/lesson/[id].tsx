@@ -510,6 +510,7 @@ export default function LessonPlayerScreen() {
   ).current;
 
   const sessionActive = useRef(false);
+  const loadedLessonIdRef = useRef<string | null>(null);
   /** When set, lesson was interrupted by OS background; skew wall clocks by this duration on resume. */
   const backgroundPauseBeganMsRef = useRef<number | null>(null);
   /** Legacy flat mode (no voiceover): anchor for elapsed timer; shifted on OS pause/resume. */
@@ -592,14 +593,15 @@ export default function LessonPlayerScreen() {
   }, []);
 
   // -----------------------------------------------------------------------
-  // Load lesson — refetch every time this screen gains focus (same lesson id
-  // still gets new content_blocks when timings change in the DB). Skip while
-  // an in-flight session is active so we do not swap JSON mid-playback.
+  // Load lesson — fetch once per lesson ID. Skip if the same lesson is
+  // already loaded or if playback is in progress. This prevents signed-URL
+  // churn and redundant Storage egress on every focus/navigation event.
   // -----------------------------------------------------------------------
   useFocusEffect(
     useCallback(() => {
       if (!id || typeof id !== 'string') return;
       if (sessionActive.current) return;
+      if (loadedLessonIdRef.current === id) return;
       let cancelled = false;
       (async () => {
         const { data, error } = await apiFetch<LessonDetail>(`/lessons/${id}`);
@@ -613,6 +615,7 @@ export default function LessonPlayerScreen() {
         journalPartsRef.current = [];
         setJournalText('');
         setJournalExerciseContext('');
+        loadedLessonIdRef.current = id;
         setLesson(data);
         trackLessonViewed({ lesson_id: data.id });
         setPhase('ready');
