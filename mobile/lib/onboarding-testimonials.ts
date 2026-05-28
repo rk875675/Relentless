@@ -20,10 +20,10 @@ export type OnboardingTestimonial = {
 export const ONBOARDING_TESTIMONIALS: OnboardingTestimonial[] = [
   {
     quote:
-      "In a sport like pole vault, the greatest limiting factor is the athlete's mind. Mental training is a necessity at all levels and can even affect the best vaulters.",
-    name: 'Beau Domingue',
-    detail: 'D1 Pole Vaulter',
-    avatar: require('@/assets/images/testimonials/beau-domingue.jpg'),
+      '[Relentless] is very immersive and allows me to lock in for my competitions. I highly recommend this for athletes who struggle with pre-race nerves or anxiety.',
+    name: 'Niko Schultz',
+    detail: '1:45 800m runner at Penn State',
+    avatar: require('@/assets/images/testimonials/niko-schultz.jpg'),
   },
   {
     quote:
@@ -34,6 +34,13 @@ export const ONBOARDING_TESTIMONIALS: OnboardingTestimonial[] = [
   },
   {
     quote:
+      'Understanding your mind is the first step in being a better athlete, and Relentless is the simplest way to help you show up at your best.',
+    name: 'Brock Kelly',
+    detail: '2:31 marathoner',
+    avatar: require('@/assets/images/testimonials/brock-kelly.jpg'),
+  },
+  {
+    quote:
       'In a sport where the mind can prevent the body from its potential, Relentless reframes training as something that is not only physical, but highly psychological.',
     name: 'Mats Swanson',
     detail: 'D1 Runner at LSU',
@@ -41,16 +48,9 @@ export const ONBOARDING_TESTIMONIALS: OnboardingTestimonial[] = [
   },
   {
     quote:
-      '[Relentless] is very immersive and allows me to lock in for my competitions. I highly recommend this for athletes who struggle with pre-race nerves or anxiety.',
-    name: 'Niko Schultz',
-    detail: '1:45 800m runner at Penn State',
-    avatar: require('@/assets/images/testimonials/niko-schultz.jpg'),
-  },
-  {
-    quote:
-      'Understanding your mind is the first step in being a better athlete, and Relentless is the simplest way to help you show up at your best.',
-    name: 'Brock Kelly',
-    detail: '2:31 marathoner',
-    avatar: require('@/assets/images/testimonials/brock-kelly.jpg'),
+      "In a sport like pole vault, the greatest limiting factor is the athlete's mind. Mental training is a necessity at all levels and can even affect the best vaulters.",
+    name: 'Beau Domingue',
+    detail: 'D1 Pole Vaulter',
+    avatar: require('@/assets/images/testimonials/beau-domingue.jpg'),
   },
 ];
