@@ -614,8 +614,6 @@ export default function TutorialScreen() {
     }
   };
 
-  const isDecay = step.variant === 'decay';
-
   return (
     <SafeAreaView style={styles.container}>
       <ProgressBar step={step.progressStep} total={ONBOARDING_TOTAL_STEPS} onBack={handleBack} />
@@ -648,7 +646,6 @@ export default function TutorialScreen() {
             stepIdx={stepIdx}
             total={STEPS.length}
             anim={stepAnim}
-            isDecay={isDecay}
             caretPosition={step.caretPosition}
             nudgeY={step.tooltipNudgeY ?? 0}
             pinToBottom={step.pinToBottom ?? false}

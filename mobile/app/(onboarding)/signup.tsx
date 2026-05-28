@@ -375,13 +375,13 @@ export default function OnboardingSignupScreen() {
       // Seed initial MAC ring scores (20/20/20) for all new onboarding accounts.
       // ON CONFLICT DO NOTHING in the RPC means existing users are never overwritten.
       loadOnboardingAnswers().then(async (answers) => {
-        await supabase
-          .rpc('initialize_mac_scores', {
+        try {
+          await supabase.rpc('initialize_mac_scores', {
             p_mindfulness: 20,
             p_acceptance: 20,
             p_commitment: 20,
-          })
-          .catch(() => {});
+          });
+        } catch {}
         if (answers.grantJournalAnswer?.trim()) {
           await apiFetch('/journal', {
             method: 'POST',
