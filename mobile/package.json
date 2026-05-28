@@ -30,6 +30,7 @@
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-superwall": "^1.0.8",
+    "expo-video": "~3.0.16",
     "expo-web-browser": "~15.0.11",
     "ngrok": "^4.3.3",
     "posthog-react-native": "^4.43.13",

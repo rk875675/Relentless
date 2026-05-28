@@ -43,16 +43,34 @@ export function Skeleton({ width = '100%', height = 16, borderRadius = 8, style 
 
 /**
  * Matches the workout card inner layout on Home:
- * pill label → title line → meta row (day badge + duration pill).
+ * top (pill + day badge) → flex title block → bottom (coach row + cta).
  */
 export function WorkoutCardSkeleton() {
   return (
     <View style={wcs.container}>
-      <Skeleton width={140} height={14} borderRadius={12} style={wcs.pill} />
-      <Skeleton width="70%" height={18} style={wcs.title} />
-      <View style={wcs.metaRow}>
-        <Skeleton width={80} height={14} borderRadius={6} />
-        <Skeleton width={52} height={24} borderRadius={12} />
+      <View style={wcs.topSection}>
+        <Skeleton width={160} height={28} borderRadius={999} style={wcs.pill} />
+        <Skeleton width={140} height={14} borderRadius={6} style={wcs.dayBadge} />
+      </View>
+
+      <View style={wcs.titleSection}>
+        <Skeleton width="85%" height={32} borderRadius={8} style={wcs.titleLine} />
+        <Skeleton width="55%" height={32} borderRadius={8} />
+      </View>
+
+      <View style={wcs.bottomSection}>
+        <View style={wcs.divider} />
+        <View style={wcs.authorRow}>
+          <Skeleton width={58} height={58} borderRadius={999} />
+          <View style={wcs.authorText}>
+            <Skeleton width={120} height={15} borderRadius={6} style={wcs.authorName} />
+            <Skeleton width={90} height={12} borderRadius={6} />
+          </View>
+          <Skeleton width={52} height={32} borderRadius={12} />
+        </View>
+        <View style={wcs.startRow}>
+          <Skeleton width={90} height={13} borderRadius={6} />
+        </View>
       </View>
     </View>
   );
@@ -60,17 +78,43 @@ export function WorkoutCardSkeleton() {
 
 const wcs = StyleSheet.create({
   container: {
+    flex: 1,
     width: '100%',
-    minHeight: 116,
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
-  pill: { marginBottom: 12 },
-  title: { marginBottom: 16 },
-  metaRow: {
+  topSection: {
+    width: '100%',
+    marginBottom: 4,
+  },
+  pill: { marginBottom: 10 },
+  dayBadge: { marginLeft: 14 },
+  titleSection: {
+    flex: 1,
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: 12,
+  },
+  titleLine: { marginBottom: 8 },
+  bottomSection: {
+    width: '100%',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(167, 139, 250, 0.15)',
+    marginBottom: 18,
+  },
+  authorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
+    marginBottom: 16,
+  },
+  authorText: {
+    flex: 1,
+  },
+  authorName: { marginBottom: 4 },
+  startRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
   },
 });
 

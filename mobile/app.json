@@ -28,7 +28,8 @@
       "expo-asset",
       "expo-iap",
       "expo-web-browser",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true

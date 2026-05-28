@@ -61,3 +61,124 @@ export async function storeIdempotencyKey(
     expires_at: new Date(Date.now() + IDEMPOTENCY_TTL_MS).toISOString(),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Claim-first idempotency (closes the TOCTOU race in checkIdempotencyKey).
+//
+// Reserve the key atomically by inserting a placeholder row (response_status
+// null). If the row already exists, inspect it: return the cached response if
+// the previous attempt completed, or a 409 if it's still in flight or owned
+// by a different user. After the work is done, call storeIdempotencyResult to
+// fill in the actual status/body via UPDATE.
+// ---------------------------------------------------------------------------
+export type IdempotencyClaim =
+  | { claimed: true }
+  | { claimed: false; response: Response };
+
+export async function claimIdempotencyKey(
+  supabase: SupabaseClient,
+  key: string,
+  userId: string,
+  requestId: string,
+): Promise<IdempotencyClaim> {
+  const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS).toISOString();
+
+  // ON CONFLICT DO NOTHING: only the first concurrent caller wins the insert.
+  // ignoreDuplicates makes the SELECT return an empty array on conflict.
+  const { data: claimRows, error: insertErr } = await supabase
+    .from("idempotency_keys")
+    .upsert(
+      {
+        key,
+        user_id: userId,
+        response_status: null,
+        response_body: null,
+        expires_at: expiresAt,
+      },
+      { onConflict: "key", ignoreDuplicates: true },
+    )
+    .select("key");
+
+  if (insertErr) {
+    return {
+      claimed: false,
+      response: errorResponse(
+        500,
+        "INTERNAL_ERROR",
+        "Idempotency claim failed",
+        requestId,
+      ),
+    };
+  }
+
+  if (claimRows && claimRows.length > 0) {
+    return { claimed: true };
+  }
+
+  const { data: existing } = await supabase
+    .from("idempotency_keys")
+    .select("user_id, response_status, response_body")
+    .eq("key", key)
+    .maybeSingle();
+
+  if (!existing) {
+    return {
+      claimed: false,
+      response: errorResponse(
+        500,
+        "INTERNAL_ERROR",
+        "Idempotency lookup failed",
+        requestId,
+      ),
+    };
+  }
+
+  if (existing.user_id !== userId) {
+    return {
+      claimed: false,
+      response: errorResponse(
+        409,
+        "IDEMPOTENCY_CONFLICT",
+        "Idempotency key already used with different params",
+        requestId,
+      ),
+    };
+  }
+
+  if (existing.response_status === null) {
+    return {
+      claimed: false,
+      response: errorResponse(
+        409,
+        "IDEMPOTENCY_IN_PROGRESS",
+        "Request with this idempotency key is still in progress; retry shortly",
+        requestId,
+      ),
+    };
+  }
+
+  return {
+    claimed: false,
+    response: new Response(JSON.stringify(existing.response_body), {
+      status: existing.response_status,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    }),
+  };
+}
+
+export async function storeIdempotencyResult(
+  supabase: SupabaseClient,
+  key: string,
+  userId: string,
+  responseStatus: number,
+  responseBody: unknown,
+): Promise<void> {
+  await supabase
+    .from("idempotency_keys")
+    .update({
+      response_status: responseStatus,
+      response_body: responseBody,
+    })
+    .eq("key", key)
+    .eq("user_id", userId);
+}

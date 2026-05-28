@@ -16,62 +16,24 @@ import { useRouter, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+import { setAudioModeAsync } from 'expo-audio';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { Asset } from 'expo-asset';
 import { saveOnboardingAnswers } from '@/lib/onboarding-local-state';
 import { colors, spacing } from '@/lib/theme';
 
-// TODO: wire Whisper audio URLs here when voiceover recordings are ready
-// const AUDIO_URLS = ['grant_intro_seg_01.mp3', 'grant_intro_seg_02.mp3', 'grant_intro_seg_03.mp3'];
+// Grant's onboarding intro is delivered as two video segments split by the journal:
+//   intro (s1): "This is Grant…" + "I've helped hundreds of athletes…"
+//   outro (s2): "Excellent, I'll see you again on day 1."
+const INTRO_VIDEO = require('../../assets/videos/Grant_Intro_s1.mp4');
+const OUTRO_VIDEO = require('../../assets/videos/Grant_Intro_s2.mp4');
 
-/** Verbatim voiceover script from Grant's onboarding intro. */
-const VOICE_CUES = [
-  "This is Grant, I'm a coach here in Relentless.",
-  "I've helped hundreds of athletes improve their performance through sports psychology, and I'm giving you the exact strategies that work through short, guided lessons.",
-  "Excellent, I'll see you again on day 1.",
-] as const;
-
-/** Journal prompt shown between cue 1 and cue 2. */
+/** Journal prompt shown between the intro and outro video segments. */
 const JOURNAL_PROMPT = 'What is your current goal in your sport?';
 
-/** After this cue index completes, show the journal before continuing. */
-const JOURNAL_AFTER_CUE = 1;
-
-/** Total voiceover cues. Progress denominator. */
-const TOTAL_CUES = VOICE_CUES.length;
-
 type Phase = 'ready' | 'playing' | 'journal';
-
-// ─── Audio bar animation ──────────────────────────────────────────────────────
-
-const BAR_BASE_HEIGHTS = [10, 20, 28, 16, 22] as const;
-
-function useAudioBars(active: boolean) {
-  const scales = useRef(BAR_BASE_HEIGHTS.map(() => new Animated.Value(1))).current;
-  const loopRefs = useRef<Animated.CompositeAnimation[]>([]);
-
-  useEffect(() => {
-    loopRefs.current.forEach((l) => l.stop());
-    loopRefs.current = [];
-    if (!active) {
-      scales.forEach((s) => s.setValue(1));
-      return;
-    }
-    scales.forEach((scale, i) => {
-      const loop = Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 80),
-          Animated.timing(scale, { toValue: 1.9, duration: 380, useNativeDriver: true }),
-          Animated.timing(scale, { toValue: 0.6, duration: 380, useNativeDriver: true }),
-          Animated.timing(scale, { toValue: 1, duration: 240, useNativeDriver: true }),
-        ]),
-      );
-      loopRefs.current.push(loop);
-      loop.start();
-    });
-    return () => { loopRefs.current.forEach((l) => l.stop()); };
-  }, [active]);
-
-  return scales;
-}
+/** Which video segment the playing phase is showing. */
+type Segment = 'intro' | 'outro';
 
 // ─── Volume toast ─────────────────────────────────────────────────────────────
 
@@ -104,6 +66,29 @@ function useVolumeToast() {
   return { visible, opacity, scale, translateY, show };
 }
 
+// ─── Video skeleton (shown while the segment file is being prepared) ──────────
+function VideoSkeleton() {
+  const pulse = useRef(new Animated.Value(0.35)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.7, duration: 750, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.35, duration: 750, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  return (
+    <View style={styles.skeletonRoot} pointerEvents="none">
+      <Animated.View style={[styles.skeletonAvatar, { opacity: pulse }]} />
+      <Animated.View style={[styles.skeletonLine, styles.skeletonLineWide, { opacity: pulse }]} />
+      <Animated.View style={[styles.skeletonLine, styles.skeletonLineNarrow, { opacity: pulse }]} />
+    </View>
+  );
+}
+
 // ─── Grant photo ─────────────────────────────────────────────────────────────
 function GrantPhoto() {
   return (
@@ -125,19 +110,119 @@ export default function GrantIntroScreen() {
   const insets = useSafeAreaInsets();
 
   const [phase, setPhase] = useState<Phase>('ready');
-  const [cueIndex, setCueIndex] = useState(0);
+  const [segment, setSegment] = useState<Segment>('intro');
   const [journalText, setJournalText] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const textFade = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
   const journalScrollRef = useRef<ScrollView>(null);
   const journalFooterRef = useRef<View>(null);
   /** Set to true just before pushing to trophy; used to reset state on back-nav. */
   const didCompleteRef = useRef(false);
 
-  const barScales = useAudioBars(phase === 'playing');
   const volumeToast = useVolumeToast();
+
+  // Pre-download both segments to local files. In dev builds, require()'d
+  // assets are streamed from the Metro server, which can stall mid-playback;
+  // playing from a local file:// URI avoids that.
+  const [introUri, setIntroUri] = useState<string | null>(null);
+  const [outroUri, setOutroUri] = useState<string | null>(null);
+  const assetsReady = introUri !== null && outroUri !== null;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [a1, a2] = await Promise.all([
+          Asset.fromModule(INTRO_VIDEO).downloadAsync(),
+          Asset.fromModule(OUTRO_VIDEO).downloadAsync(),
+        ]);
+        if (cancelled) return;
+        setIntroUri(a1.localUri ?? a1.uri);
+        setOutroUri(a2.localUri ?? a2.uri);
+      } catch {
+        // Fall back to streaming from the asset/bundler URI.
+        if (cancelled) return;
+        setIntroUri(Asset.fromModule(INTRO_VIDEO).uri);
+        setOutroUri(Asset.fromModule(OUTRO_VIDEO).uri);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // One preloaded player per segment. Keeping a dedicated, fully-buffered
+  // player for each clip (instead of one player + replace()) avoids the iOS
+  // black-frame glitches that replace()/source-swaps cause mid-playback, and
+  // makes the segment transition instant.
+  const introPlayer = useVideoPlayer(introUri, (p) => {
+    p.loop = false;
+    p.timeUpdateEventInterval = 0.2;
+  });
+  const outroPlayer = useVideoPlayer(outroUri, (p) => {
+    p.loop = false;
+    p.timeUpdateEventInterval = 0.2;
+  });
+  const activePlayer = segment === 'outro' ? outroPlayer : introPlayer;
+
+  // Configure the audio session once, up front — reconfiguring it mid-playback
+  // can interrupt the AVPlayer and blank the video on iOS.
+  useEffect(() => {
+    void setAudioModeAsync({
+      playsInSilentMode: true,
+      interruptionMode: 'doNotMix',
+      allowsRecording: false,
+      shouldPlayInBackground: false,
+    });
+  }, []);
+
+  // Refs let the once-registered native listeners always read the latest
+  // phase/segment and call the latest advance handlers.
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  const segmentRef = useRef(segment);
+  segmentRef.current = segment;
+  const onIntroEndRef = useRef<() => void>(() => {});
+  const onOutroEndRef = useRef<() => void>(() => {});
+
+  // Play the active segment from the start whenever we enter the playing phase.
+  useEffect(() => {
+    if (phase !== 'playing') {
+      introPlayer.pause();
+      outroPlayer.pause();
+      return;
+    }
+    if (!assetsReady) return; // wait for the local file(s) before playing
+    progressAnim.setValue(0); // each segment's bar fills from 0 over its own length
+    activePlayer.currentTime = 0;
+    activePlayer.play();
+  }, [phase, segment, assetsReady, activePlayer, introPlayer, outroPlayer, progressAnim]);
+
+  // Register listeners on both players: autoplay once ready, drive the progress
+  // bar from real playback time, and auto-advance when a segment finishes.
+  useEffect(() => {
+    const subs: { remove: () => void }[] = [];
+    const register = (pl: typeof introPlayer, seg: Segment) => {
+      subs.push(pl.addListener('statusChange', () => {
+        if (pl.status === 'readyToPlay' && phaseRef.current === 'playing' && segmentRef.current === seg) {
+          pl.play();
+        }
+      }));
+      subs.push(pl.addListener('playToEnd', () => {
+        if (phaseRef.current !== 'playing' || segmentRef.current !== seg) return;
+        progressAnim.setValue(1);
+        if (seg === 'outro') onOutroEndRef.current();
+        else onIntroEndRef.current();
+      }));
+      subs.push(pl.addListener('timeUpdate', ({ currentTime }) => {
+        if (segmentRef.current !== seg) return;
+        const dur = pl.duration;
+        if (dur > 0) progressAnim.setValue(Math.min(1, currentTime / dur));
+      }));
+    };
+    register(introPlayer, 'intro');
+    register(outroPlayer, 'outro');
+    return () => subs.forEach((s) => s.remove());
+  }, [introPlayer, outroPlayer, progressAnim]);
 
   // ── Block swipe + hardware back during playing AND journal ───────────────
   useEffect(() => {
@@ -157,66 +242,30 @@ export default function GrantIntroScreen() {
       if (didCompleteRef.current) {
         didCompleteRef.current = false;
         setPhase('ready');
-        setCueIndex(0);
+        setSegment('intro');
         setJournalText('');
         progressAnim.setValue(0);
-        textFade.setValue(0);
       }
-    }, [progressAnim, textFade]),
+    }, [progressAnim]),
   );
-
-  const animateCueIn = useCallback(() => {
-    textFade.setValue(0);
-    Animated.timing(textFade, { toValue: 1, duration: 300, useNativeDriver: true }).start();
-  }, [textFade]);
-
-  const animateProgress = useCallback((target: number) => {
-    Animated.timing(progressAnim, {
-      toValue: target,
-      duration: 500,
-      useNativeDriver: false,
-    }).start();
-  }, [progressAnim]);
 
   const handleBegin = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Progress bar starts at 0 — advances only as cues are completed.
+    setSegment('intro');
     setPhase('playing');
-    setCueIndex(0);
-    animateCueIn();
     volumeToast.show();
-  }, [animateCueIn, volumeToast]);
+  }, [volumeToast]);
 
-  const handleCueContinue = useCallback(() => {
+  const handleIntroContinue = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    if (cueIndex === JOURNAL_AFTER_CUE) {
-      // Cue 1 done → advance progress to 2/3, then show journal.
-      animateProgress((JOURNAL_AFTER_CUE + 1) / TOTAL_CUES);
-      Animated.timing(textFade, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => {
-        setPhase('journal');
-      });
-      return;
-    }
-
-    const nextCue = cueIndex + 1;
-    if (nextCue < TOTAL_CUES) {
-      // Advance progress to reflect completed cue.
-      animateProgress(nextCue / TOTAL_CUES);
-      Animated.timing(textFade, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => {
-        setCueIndex(nextCue);
-        animateCueIn();
-      });
-    }
-  }, [cueIndex, textFade, animateProgress, animateCueIn]);
+    setPhase('journal');
+  }, []);
 
   const handleJournalBack = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    animateProgress(1 / TOTAL_CUES);
+    setSegment('intro');
     setPhase('playing');
-    setCueIndex(JOURNAL_AFTER_CUE);
-    animateCueIn();
-  }, [animateCueIn, animateProgress]);
+  }, []);
 
   const handleJournalDone = useCallback(async () => {
     if (submitting) return;
@@ -226,13 +275,11 @@ export default function GrantIntroScreen() {
 
     await saveOnboardingAnswers({ grantJournalAnswer: journalText.trim() || undefined });
 
-    // Transition to outro cue — progress stays at 2/3.
-    const outroCue = JOURNAL_AFTER_CUE + 1;
+    // Transition to the outro video segment — progress stays at the halfway point.
+    setSegment('outro');
     setPhase('playing');
-    setCueIndex(outroCue);
-    animateCueIn();
     setSubmitting(false);
-  }, [submitting, journalText, animateCueIn]);
+  }, [submitting, journalText]);
 
   const handleOutroContinue = useCallback(async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -241,10 +288,11 @@ export default function GrantIntroScreen() {
     router.push('/(onboarding)/onboarding-trophy' as any);
   }, [router]);
 
-  // NOTE: no useEffect for animateCueIn — every transition calls it explicitly
-  // to avoid double-firing (state update + effect both triggering the animation).
+  // Keep the playToEnd listener pointed at the current advance handlers.
+  useEffect(() => { onIntroEndRef.current = handleIntroContinue; }, [handleIntroContinue]);
+  useEffect(() => { onOutroEndRef.current = handleOutroContinue; }, [handleOutroContinue]);
 
-  const isOutroCue = cueIndex === TOTAL_CUES - 1;
+  const isOutroSegment = segment === 'outro';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -321,54 +369,45 @@ export default function GrantIntroScreen() {
         </View>
       )}
 
-      {/* ── Playing phase (voiceover cues) ────────────────────────────────────── */}
+      {/* ── Playing phase (Grant intro video) ─────────────────────────────────── */}
       {phase === 'playing' && (
-        <View style={styles.centered}>
-          <Animated.Text style={[styles.blockText, { opacity: textFade }]}>
-            {VOICE_CUES[cueIndex]}
-          </Animated.Text>
+        <View style={styles.playingRoot}>
+          <View style={styles.video}>
+            <VideoView
+              player={activePlayer}
+              style={StyleSheet.absoluteFill}
+              contentFit="contain"
+              nativeControls={false}
+            />
+            {!assetsReady && <VideoSkeleton />}
+          </View>
 
-          {/* Audio bars */}
-          <View style={styles.audioCue}>
-            {barScales.map((scaleAnim, i) => (
+          <View style={styles.playingFooter}>
+            {/* Lesson progress bar */}
+            <Animated.View style={styles.progressBarTrack}>
               <Animated.View
-                key={i}
                 style={[
-                  styles.audioCueBar,
+                  styles.progressBarFill,
                   {
-                    height: BAR_BASE_HEIGHTS[i],
+                    width: progressAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0%', '100%'],
+                    }),
                     backgroundColor: colors.accentLight,
-                    transform: [{ scaleY: scaleAnim }],
                   },
                 ]}
               />
-            ))}
+            </Animated.View>
+
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={isOutroSegment ? handleOutroContinue : handleIntroContinue}
+            >
+              <Text style={styles.primaryBtnText}>
+                {isOutroSegment ? 'Continue' : 'Next'}
+              </Text>
+            </TouchableOpacity>
           </View>
-
-          {/* Lesson progress bar */}
-          <Animated.View style={styles.progressBarTrack}>
-            <Animated.View
-              style={[
-                styles.progressBarFill,
-                {
-                  width: progressAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0%', '100%'],
-                  }),
-                  backgroundColor: colors.accentLight,
-                },
-              ]}
-            />
-          </Animated.View>
-
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={isOutroCue ? handleOutroContinue : handleCueContinue}
-          >
-            <Text style={styles.primaryBtnText}>
-              {isOutroCue ? 'Continue' : 'Next'}
-            </Text>
-          </TouchableOpacity>
         </View>
       )}
 
@@ -577,32 +616,42 @@ const styles = StyleSheet.create({
   },
 
   // ── Playing ───────────────────────────────────────────────────────────────
-  centered: {
+  playingRoot: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
   },
-  blockText: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    textAlign: 'center',
-    lineHeight: 32,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.xl,
-  },
-  audioCue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    height: 34,
+  video: {
+    flex: 1,
+    width: '100%',
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#000',
     marginBottom: spacing.lg,
   },
-  audioCueBar: {
-    width: 3,
-    borderRadius: 1.5,
+  skeletonRoot: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  skeletonAvatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: colors.border,
+    marginBottom: spacing.lg,
+  },
+  skeletonLine: {
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.border,
+    marginBottom: spacing.sm,
+  },
+  skeletonLineWide: { width: '62%' },
+  skeletonLineNarrow: { width: '40%' },
+  playingFooter: {
+    alignItems: 'center',
   },
   progressBarTrack: {
     width: '80%',
@@ -618,7 +667,7 @@ const styles = StyleSheet.create({
   },
 
   // ── Journal ───────────────────────────────────────────────────────────────
-  journalRoot: { flex: 1 },
+  journalRoot: { flex: 1, backgroundColor: colors.background },
   journalContent: {
     flexGrow: 1,
     justifyContent: 'flex-start',

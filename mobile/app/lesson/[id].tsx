@@ -706,6 +706,11 @@ export default function LessonPlayerScreen() {
   // Complete lesson (reads from refs to avoid stale closures)
   // -----------------------------------------------------------------------
   const completingRef = useRef(false);
+  // Stable per completion attempt: reused across retries of the same attempt
+  // (so the server's idempotency layer actually dedupes), regenerated only
+  // after a successful completion. A new lesson screen mount = new ref = new
+  // key, so different lessons / days naturally get different keys.
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   const completeLesson = useCallback(async () => {
     const currentLesson = lessonRef.current;
@@ -714,6 +719,12 @@ export default function LessonPlayerScreen() {
     setSubmitting(true);
     setPhase('completing');
     progressAnim.setValue(1);
+
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current = `${currentLesson.id}-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 10)}`;
+    }
 
     const exerciseParts = journalPartsRef.current.filter(Boolean);
     const answer = journalTextRef.current.trim();
@@ -736,16 +747,18 @@ export default function LessonPlayerScreen() {
       progress?: { deltas?: Record<string, { amount: number; reason: string }> };
     }>(`/lessons/${currentLesson.id}/complete`, {
       method: 'POST',
-      headers: { 'Idempotency-Key': `${currentLesson.id}-${Date.now()}` },
+      headers: { 'Idempotency-Key': idempotencyKeyRef.current },
     });
 
     if (error) {
       completingRef.current = false;
+      // Keep idempotencyKeyRef so a retry reuses the same key (server dedupes).
       setSubmitting(false);
       setErrorMsg(error);
       setPhase('error');
       progressAnim.setValue(0);
     } else {
+      idempotencyKeyRef.current = null;
       if (completeData?.progress?.deltas) {
         setPendingGainDeltas(completeData.progress.deltas as any);
         setDoneDeltas(completeData.progress.deltas);

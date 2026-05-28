@@ -27,10 +27,10 @@ export const ONBOARDING_TESTIMONIALS: OnboardingTestimonial[] = [
   },
   {
     quote:
-      "Mentality is something I've always struggled with, especially going into races. Relentless has helped me feel more confident going into races to perform better.",
-    name: 'Svenya Stoyanoff',
+      'In a sport where the mind can prevent the body from its potential, Relentless reframes training as something that is not only physical, but highly psychological.',
+    name: 'Mats Swanson',
     detail: 'D1 Runner at LSU',
-    avatar: require('@/assets/images/testimonials/svenya-stoyanoff.jpg'),
+    avatar: require('@/assets/images/testimonials/mats-swanson.jpg'),
   },
   {
     quote:
@@ -41,10 +41,10 @@ export const ONBOARDING_TESTIMONIALS: OnboardingTestimonial[] = [
   },
   {
     quote:
-      'In a sport where the mind can prevent the body from its potential, Relentless reframes training as something that is not only physical, but highly psychological.',
-    name: 'Mats Swanson',
+      "Mentality is something I've always struggled with, especially going into races. Relentless has helped me feel more confident going into races to perform better.",
+    name: 'Svenya Stoyanoff',
     detail: 'D1 Runner at LSU',
-    avatar: require('@/assets/images/testimonials/mats-swanson.jpg'),
+    avatar: require('@/assets/images/testimonials/svenya-stoyanoff.jpg'),
   },
   {
     quote:

@@ -9,21 +9,13 @@ import {
 import { getUser } from "../_shared/auth.ts";
 import { requireEntitlement } from "../_shared/entitlement.ts";
 import {
-  checkIdempotencyKey,
-  storeIdempotencyKey,
+  claimIdempotencyKey,
+  storeIdempotencyResult,
 } from "../_shared/idempotency.ts";
 import { checkRateLimit } from "../_shared/ratelimit.ts";
 import { computeLibraryUnlocked, calendarDaysInclusiveYmd } from "../_shared/library.ts";
 import { parseProgramAnchor, resolveLocalTodayYmd } from "../_shared/client_day.ts";
 import { ensureProgramStartIfHome } from "../_shared/program_start.ts";
-import {
-  type MacScores,
-  type MacDeltas,
-  applyGain,
-  applyDecay,
-  decayGapDays,
-  yesterdayYmd,
-} from "../_shared/scoring.ts";
 import { ContentBlocksSchema } from "../_shared/content_blocks.ts";
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -488,8 +480,32 @@ async function handleNext(
 }
 
 // ---------------------------------------------------------------------------
-// P1 — record lesson completion + MAC scoring (decay then gain)
+// P1 — record lesson completion atomically (RPC handles MAC scoring + streak
+// + program_day in one transaction under a per-user advisory lock).
 // ---------------------------------------------------------------------------
+type CompleteLessonRpcResult = {
+  completed_at: string;
+  is_duplicate: boolean;
+  lesson_completion_count: number;
+  lesson_title: string | null;
+  scores: {
+    mindfulness_score: number;
+    acceptance_score: number;
+    commitment_score: number;
+  };
+  decay: { gap_days: number; amount: number } | null;
+  gains: Array<{ category: string; daily_count: number; amount: number }>;
+  streak: {
+    current_streak: number;
+    longest_streak: number;
+    last_activity_date: string | null;
+  };
+};
+
+function fmt1(n: number): string {
+  return n.toFixed(1);
+}
+
 async function handleComplete(
   req: Request,
   supabase: ReturnType<typeof createServiceClient>,
@@ -507,12 +523,14 @@ async function handleComplete(
     return errorResponse(400, "VALIDATION_ERROR", "Idempotency-Key header is required", requestId);
   }
 
-  const check = await checkIdempotencyKey(supabase, idempotencyKey, userId, requestId);
-  if (check.replay) return check.response;
+  // Claim-first idempotency: reserves the key atomically with a placeholder
+  // row, so two concurrent same-key requests never both run side effects.
+  const claim = await claimIdempotencyKey(supabase, idempotencyKey, userId, requestId);
+  if (!claim.claimed) return claim.response;
 
   const { data: lessonRow, error: lessonErr } = await supabase
     .from("lessons")
-    .select("id, title")
+    .select("id")
     .eq("id", parsed.data)
     .eq("published", true)
     .single();
@@ -521,117 +539,60 @@ async function handleComplete(
     return errorResponse(404, "NOT_FOUND", "Lesson not found", requestId);
   }
 
-  const { data: cats } = await supabase
-    .from("lesson_categories")
-    .select("category")
-    .eq("lesson_id", parsed.data);
-  const lessonCategories = (cats ?? []).map((c: { category: string }) => c.category);
-
   const localYmd = resolveLocalTodayYmd(req);
 
-  const { data: rpcResult, error: rpcErr } = await supabase.rpc("complete_lesson", {
+  const { data: rpcRaw, error: rpcErr } = await supabase.rpc("complete_lesson", {
     p_user_id: userId,
     p_lesson_id: parsed.data,
     p_completion_local_date: localYmd,
   });
 
-  if (rpcErr) {
+  if (rpcErr || !rpcRaw) {
     return errorResponse(500, "INTERNAL_ERROR", "Failed to record completion", requestId);
   }
 
-  // --- MAC scoring: apply pending decay then gain ---
-  const { data: progressRow } = await supabase
-    .from("user_progress")
-    .select("mindfulness_score, acceptance_score, commitment_score, last_decay_applied_local_date")
-    .eq("user_id", userId)
-    .maybeSingle();
+  const rpc = rpcRaw as CompleteLessonRpcResult;
 
-  let scores: MacScores = {
-    mindfulness_score: progressRow?.mindfulness_score ?? 0,
-    acceptance_score: progressRow?.acceptance_score ?? 0,
-    commitment_score: progressRow?.commitment_score ?? 0,
-  };
+  // Reason strings are built in TS so PRD's "tunables centralised in scoring.ts"
+  // text formatting stays here. Amounts come from SQL (single source of truth
+  // for atomicity).
+  const deltas: Record<string, { amount: number; reason: string }> = {};
 
-  const lastDecay = (progressRow?.last_decay_applied_local_date as string | null) ?? null;
-  let allDeltas: MacDeltas = {};
-
-  const gap = decayGapDays(lastDecay, localYmd);
-  if (gap > 0) {
-    const decay = applyDecay(scores, gap);
-    scores = decay.scores;
-    allDeltas = decay.deltas;
-  }
-
-  // Count today's per-tag completions (including the one just inserted).
-  // Rows store completion_local_date = client device calendar day (see migration).
-  const { data: todayRows } = await supabase
-    .from("user_lesson_completions")
-    .select("id, lesson_id")
-    .eq("user_id", userId)
-    .eq("completion_local_date", localYmd);
-
-  const todayLessonIds = [
-    ...new Set((todayRows ?? []).map((r: { lesson_id: string }) => r.lesson_id)),
-  ];
-  const tagDailyCounts: Record<string, number> = {};
-  if (todayLessonIds.length > 0) {
-    const { data: catRows } = await supabase
-      .from("lesson_categories")
-      .select("lesson_id, category")
-      .in("lesson_id", todayLessonIds);
-    for (const row of todayRows ?? []) {
-      const cats = (catRows ?? []).filter(
-        (c: { lesson_id: string }) => c.lesson_id === row.lesson_id,
-      );
-      for (const cat of cats) {
-        tagDailyCounts[cat.category] = (tagDailyCounts[cat.category] ?? 0) + 1;
-      }
+  if (rpc.decay) {
+    const amount = Number(rpc.decay.amount);
+    const reason = `${rpc.decay.gap_days}d inactive (\u2212${fmt1(amount)})`;
+    for (const cat of ["mindfulness", "acceptance", "commitment"] as const) {
+      deltas[cat] = { amount: -amount, reason };
     }
   }
 
-  const gainResult = applyGain(
-    scores,
-    lessonCategories,
-    tagDailyCounts,
-    lessonRow.title as string,
-  );
-  scores = gainResult.scores;
-
-  for (const [cat, d] of Object.entries(gainResult.deltas)) {
-    const existing = (allDeltas as Record<string, { amount: number; reason: string }>)[cat];
-    if (existing) {
-      (allDeltas as Record<string, { amount: number; reason: string }>)[cat] = {
-        amount: existing.amount + d.amount,
-        reason: `${existing.reason}; ${d.reason}`,
-      };
-    } else {
-      (allDeltas as Record<string, { amount: number; reason: string }>)[cat] = d;
-    }
+  for (const g of rpc.gains ?? []) {
+    const gainAmount = Number(g.amount);
+    const reason = g.daily_count > 1
+      ? `${g.category} session #${g.daily_count} today (+${fmt1(gainAmount)})`
+      : `Completed "${rpc.lesson_title ?? ""}" (+${fmt1(gainAmount)})`;
+    const existing = deltas[g.category];
+    deltas[g.category] = existing
+      ? { amount: existing.amount + gainAmount, reason: `${existing.reason}; ${reason}` }
+      : { amount: gainAmount, reason };
   }
-
-  const yest = yesterdayYmd(localYmd);
-  await supabase.from("user_progress").upsert(
-    {
-      user_id: userId,
-      mindfulness_score: scores.mindfulness_score,
-      acceptance_score: scores.acceptance_score,
-      commitment_score: scores.commitment_score,
-      last_decay_applied_local_date: gap > 0 ? yest : (lastDecay ?? localYmd),
-    },
-    { onConflict: "user_id" },
-  );
 
   const responseBody = {
     data: {
       lesson_id: parsed.data,
-      completed_at: rpcResult.completed_at,
-      progress: { ...scores, deltas: allDeltas },
-      streak: rpcResult.streak,
+      completed_at: rpc.completed_at,
+      progress: {
+        mindfulness_score: Number(rpc.scores.mindfulness_score),
+        acceptance_score: Number(rpc.scores.acceptance_score),
+        commitment_score: Number(rpc.scores.commitment_score),
+        deltas,
+      },
+      streak: rpc.streak,
     },
     request_id: requestId,
   };
 
-  await storeIdempotencyKey(supabase, idempotencyKey, userId, 200, responseBody);
+  await storeIdempotencyResult(supabase, idempotencyKey, userId, 200, responseBody);
 
   return new Response(JSON.stringify(responseBody), {
     status: 200,
