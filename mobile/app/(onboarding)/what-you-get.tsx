@@ -1,6 +1,7 @@
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
@@ -64,7 +65,10 @@ export default function WhatYouGetScreen() {
         <View style={styles.bottom}>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => router.push('/(onboarding)/sport-selection' as any)}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/(onboarding)/sport-selection' as any);
+            }}
           >
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>

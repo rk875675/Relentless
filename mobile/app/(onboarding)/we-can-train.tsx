@@ -34,7 +34,7 @@ export default function WeCanTrainScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ProgressBar
-        step={ONBOARDING_PROGRESS.macDetail}
+        step={ONBOARDING_PROGRESS.weCanTrain}
         total={ONBOARDING_TOTAL_STEPS}
         onBack={onPop}
       />

@@ -5,7 +5,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { getMacPillarForTag } from '@/lib/mac-pillar-onboarding';
-import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+import { ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
@@ -27,8 +27,9 @@ export default function MacDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Legacy screen: step 13 is its historical (now flow-dropped) slot. */}
       <ProgressBar
-        step={ONBOARDING_PROGRESS.macDetail}
+        step={13}
         total={ONBOARDING_TOTAL_STEPS}
         onBack={onPop}
       />

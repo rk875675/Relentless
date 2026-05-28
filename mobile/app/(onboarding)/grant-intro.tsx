@@ -20,6 +20,12 @@ import { setAudioModeAsync } from 'expo-audio';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Asset } from 'expo-asset';
 import { saveOnboardingAnswers } from '@/lib/onboarding-local-state';
+import {
+  trackOnboardingGrantVideoStarted,
+  trackOnboardingGrantJournalSubmitted,
+  trackOnboardingGrantVideoCompleted,
+} from '@/lib/onboarding-analytics';
+import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
 
 // Grant's onboarding intro is delivered as two video segments split by the journal:
@@ -251,6 +257,10 @@ export default function GrantIntroScreen() {
 
   const handleBegin = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    trackOnboardingGrantVideoStarted({
+      step_key: 'grant_intro',
+      step_index: ONBOARDING_PROGRESS.grantIntro,
+    });
     setSegment('intro');
     setPhase('playing');
     volumeToast.show();
@@ -273,7 +283,13 @@ export default function GrantIntroScreen() {
     Keyboard.dismiss();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    await saveOnboardingAnswers({ grantJournalAnswer: journalText.trim() || undefined });
+    const trimmed = journalText.trim();
+    trackOnboardingGrantJournalSubmitted({
+      step_key: 'grant_intro',
+      step_index: ONBOARDING_PROGRESS.grantIntro,
+      skipped: !trimmed,
+    });
+    await saveOnboardingAnswers({ grantJournalAnswer: trimmed || undefined });
 
     // Transition to the outro video segment — progress stays at the halfway point.
     setSegment('outro');
@@ -282,9 +298,16 @@ export default function GrantIntroScreen() {
   }, [submitting, journalText]);
 
   const handleOutroContinue = useCallback(async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await saveOnboardingAnswers({ grantComplete: true });
+    // Reachable from both the auto-advance playToEnd listener and a manual
+    // Continue tap; guard so the completion event + navigation fire only once.
+    if (didCompleteRef.current) return;
     didCompleteRef.current = true;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    trackOnboardingGrantVideoCompleted({
+      step_key: 'grant_intro',
+      step_index: ONBOARDING_PROGRESS.grantIntro,
+    });
+    await saveOnboardingAnswers({ grantComplete: true });
     router.push('/(onboarding)/onboarding-trophy' as any);
   }, [router]);
 

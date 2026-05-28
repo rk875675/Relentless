@@ -1,23 +1,29 @@
 import { useRef, useCallback } from 'react';
 import { Animated, PanResponder } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import type { WizardSwipeBackOptions } from '@/lib/use-wizard-swipe-back';
 
 /**
  * Thin wrapper now that the native stack uses a slide animation + gestures.
  * `shellTranslateX` stays 0 so existing Animated.View wrappers are inert,
- * `panHandlers` is a no-op PanResponder, and `onPop` calls `router.back()`.
+ * `panHandlers` is a no-op PanResponder, and `onPop` pops the native stack.
+ *
+ * onPop uses the native stack's goBack (the same path as the swipe-back
+ * gesture) rather than router.back(). welcome's resume effect pushes the saved
+ * screen on mount, which desyncs the router history from the native stack;
+ * router.back() then remounts welcome and bounces the user forward to the saved
+ * screen. navigation.goBack() pops to the existing instance like the gesture.
  */
 export function useOnboardingPopWithFade(_swipeOptions?: WizardSwipeBackOptions) {
-  const router = useRouter();
+  const navigation = useNavigation();
   const shellTranslateX = useRef(new Animated.Value(0)).current;
   const panHandlers = useRef(PanResponder.create({})).current.panHandlers;
 
   const onPop = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
+    if (navigation.canGoBack()) {
+      navigation.goBack();
     }
-  }, [router]);
+  }, [navigation]);
 
   return { shellTranslateX, panHandlers, onPop };
 }

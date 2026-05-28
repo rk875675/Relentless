@@ -16,7 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ProgressRing, ScoreDelta } from '@/components/ProgressRing';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
-import { ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -60,7 +60,7 @@ const STEPS: TutorialStep[] = [
       title: 'YOUR MAC RINGS',
       body: 'You just earned +20 in each ring from your first workout. Train every day to keep filling them up.',
     },
-    progressStep: 16,
+    progressStep: ONBOARDING_PROGRESS.tutorialStart,
     caretPosition: 'center',
     tooltipNudgeY: -166,
   },
@@ -73,7 +73,7 @@ const STEPS: TutorialStep[] = [
       title: "GRANT'S DAILY WOD",
       body: "A new session from Grant every day. 3–5 minutes — show up, do the work.",
     },
-    progressStep: 17,
+    progressStep: ONBOARDING_PROGRESS.tutorialStart + 1,
     caretPosition: 'center',
   },
   {
@@ -85,7 +85,7 @@ const STEPS: TutorialStep[] = [
       title: 'THE RELENTLESS LIBRARY',
       body: 'For days you want to go deeper — extra sessions organized by pillar, available anytime.',
     },
-    progressStep: 18,
+    progressStep: ONBOARDING_PROGRESS.tutorialStart + 2,
     caretPosition: 'center',
     tooltipNudgeY: -10,
   },

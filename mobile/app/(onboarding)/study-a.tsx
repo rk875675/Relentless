@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
@@ -44,7 +45,10 @@ export default function StudyAScreen() {
         <View style={styles.bottom}>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => router.push('/(onboarding)/study-b')}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/(onboarding)/study-b');
+            }}
           >
             <Text style={styles.buttonText}>Continue</Text>
           </TouchableOpacity>

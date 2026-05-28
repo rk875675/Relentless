@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useNavigation } from 'expo-router';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { apiFetch } from '@/lib/api';
 import { colors, spacing } from '@/lib/theme';
@@ -375,6 +376,7 @@ export default function ExerciseCScreen() {
   };
 
   const advance = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (step === 'intro') setStep('scene');
     else if (step === 'horizon') setStep('journal');
     else if (step === 'journal') void saveJournal();

@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
+import { trackOnboardingOptionSelected } from '@/lib/onboarding-analytics';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
@@ -55,6 +56,11 @@ export default function MacQuestionScreen() {
                   Haptics.selectionAsync();
                   setSelected(opt.tag);
                   saveOnboardingAnswers({ macTag: opt.tag });
+                  trackOnboardingOptionSelected({
+                    step_key: 'mac_question',
+                    step_index: ONBOARDING_PROGRESS.macQuestion,
+                    selected_option_key: opt.tag,
+                  });
                 }}
               >
                 <Text

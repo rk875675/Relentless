@@ -3,6 +3,7 @@ import { Animated, StyleSheet, Text, TouchableOpacity, View, Platform } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
@@ -59,6 +60,7 @@ export default function CompetitionDateScreen() {
   };
 
   const saveAndContinue = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (date) {
       trackOnboardingCompetitionDateAdded({
         step_key: 'competition_date',
@@ -70,6 +72,7 @@ export default function CompetitionDateScreen() {
   };
 
   const skip = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     trackOnboardingButtonClicked({
       step_key: 'competition_date',
       step_index: ONBOARDING_PROGRESS.competitionDate,

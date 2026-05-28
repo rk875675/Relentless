@@ -16,7 +16,7 @@ import { useRouter, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
-import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS, getIntakeProgressStep } from '@/lib/onboarding-progress';
 import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
 import { trackOnboardingButtonClicked, trackOnboardingOptionSelected } from '@/lib/onboarding-analytics';
 import { colors, spacing } from '@/lib/theme';
@@ -733,7 +733,7 @@ export default function OnboardingIntakeScreen() {
   const onHoldLockedIn = useCallback(() => {
     trackOnboardingButtonClicked({
       step_key: 'intake_hold',
-      step_index: ONBOARDING_PROGRESS.intakeStart + questionIndexRef.current,
+      step_index: getIntakeProgressStep(questionIndexRef.current),
       button_key: 'hold_committed',
     });
     setAnswers((prev) => {
@@ -811,7 +811,7 @@ export default function OnboardingIntakeScreen() {
     Haptics.selectionAsync();
     trackOnboardingOptionSelected({
       step_key: `intake_q${questionIndex}`,
-      step_index: ONBOARDING_PROGRESS.intakeStart + questionIndex,
+      step_index: getIntakeProgressStep(questionIndex),
       selected_option_key: opt,
     });
     setAnswers((prev) => {
@@ -850,7 +850,7 @@ export default function OnboardingIntakeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     trackOnboardingButtonClicked({
       step_key: `intake_q${questionIndex}`,
-      step_index: ONBOARDING_PROGRESS.intakeStart + questionIndex,
+      step_index: getIntakeProgressStep(questionIndex),
       button_key: holdCompleted ? 'hold_continue' : 'continue',
     });
     transitionDirRef.current = 'fwd';
@@ -861,7 +861,7 @@ export default function OnboardingIntakeScreen() {
     goNext(questionIndex);
   };
 
-  const progressStep = ONBOARDING_PROGRESS.intakeStart + questionIndex;
+  const progressStep = getIntakeProgressStep(questionIndex);
 
   return (
     <SafeAreaView style={styles.container}>

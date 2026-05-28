@@ -18,8 +18,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthSocialSignInButtons } from '@/components/auth/AuthSocialSignInButtons';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth, type SocialSignInResult } from '@/lib/auth-context';
-import { analytics } from '@/lib/analytics';
 import { trackSignupStarted, trackSignupCompleted } from '@/lib/lifecycle-analytics';
+import { trackOnboardingCompleted } from '@/lib/onboarding-analytics';
 import { bustCache } from '@/lib/api-cache';
 import { fetchJwsForTransaction, restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { clearOnboardingProgress, loadOnboardingAnswers } from '@/lib/onboarding-local-state';
@@ -372,10 +372,9 @@ export default function OnboardingSignupScreen() {
         new Promise<void>((r) => setTimeout(r, 3_000)),
       ]).catch(() => {});
 
-      // Seed initial MAC ring scores (20/20/20) for users who completed
-      // Grant's onboarding mini-lesson. ignoreDuplicates guards existing users.
+      // Seed initial MAC ring scores (20/20/20) for all new onboarding accounts.
+      // ON CONFLICT DO NOTHING in the RPC means existing users are never overwritten.
       loadOnboardingAnswers().then(async (answers) => {
-        if (!answers.grantComplete) return;
         await supabase
           .rpc('initialize_mac_scores', {
             p_mindfulness: 20,
@@ -409,7 +408,7 @@ export default function OnboardingSignupScreen() {
       if (!onboardingCompletedFiredRef.current) {
         onboardingCompletedFiredRef.current = true;
         trackSignupCompleted({ post_paywall: true });
-        analytics.capture('onboarding_completed', {
+        trackOnboardingCompleted({
           step_key: 'signup',
           step_index: ONBOARDING_PROGRESS.competitionDate + 2,
           source_route: '/signup',

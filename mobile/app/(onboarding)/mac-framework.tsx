@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { MAC_PILLAR_BY_TAG, MAC_PILLARS_ORDER } from '@/lib/mac-pillar-onboarding';
-import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+import { ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
@@ -20,8 +20,9 @@ export default function MacFrameworkScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Legacy screen: step 11 mirrors the active mac-question slot. */}
       <ProgressBar
-        step={ONBOARDING_PROGRESS.macFramework}
+        step={11}
         total={ONBOARDING_TOTAL_STEPS}
         onBack={onPop}
       />

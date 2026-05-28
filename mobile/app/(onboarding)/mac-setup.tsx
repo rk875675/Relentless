@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
@@ -55,7 +56,10 @@ export default function MacSetupScreen() {
         <View style={styles.bottom}>
           <TouchableOpacity
             style={styles.button}
-            onPress={() => router.push(nextRoute as any)}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push(nextRoute as any);
+            }}
           >
             <Text style={styles.buttonText}>Try a Quick Exercise</Text>
           </TouchableOpacity>
