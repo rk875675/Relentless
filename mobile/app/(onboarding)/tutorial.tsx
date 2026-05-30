@@ -17,6 +17,11 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ProgressRing, ScoreDelta } from '@/components/ProgressRing';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+import {
+  GRANT_CHIASSON_CREDENTIALS,
+  GRANT_CHIASSON_NAME,
+  GRANT_CHIASSON_TAGLINE,
+} from '@/lib/grant-attribution';
 import { colors, spacing } from '@/lib/theme';
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -313,8 +318,9 @@ function AnimatedWodCard({ active }: { active: boolean }) {
           />
         </View>
         <View>
-          <Text style={styles.wodAuthorName}>Grant Chiasson</Text>
-          <Text style={styles.wodAuthorCred}>Sport Psychologist</Text>
+          <Text style={styles.wodAuthorName}>{GRANT_CHIASSON_NAME}</Text>
+          <Text style={styles.wodAuthorCred}>{GRANT_CHIASSON_CREDENTIALS}</Text>
+          <Text style={styles.wodAuthorTagline}>{GRANT_CHIASSON_TAGLINE}</Text>
         </View>
       </Animated.View>
 
@@ -753,6 +759,9 @@ const styles = StyleSheet.create({
   },
   wodAuthorCred: {
     fontSize: 11, fontWeight: '500', color: colors.accentLight, marginTop: 1,
+  },
+  wodAuthorTagline: {
+    fontSize: 10, fontWeight: '500', color: colors.textMuted, marginTop: 1,
   },
   wodMetaPill: {
     alignSelf: 'flex-start',

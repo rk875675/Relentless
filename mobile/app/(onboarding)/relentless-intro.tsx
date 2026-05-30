@@ -10,7 +10,7 @@ import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
 const BULLETS = [
   'Daily 3–5 min mental skills sessions',
-  'Built by professional sport psychologists',
+  'Backed by sports psychology',
 ] as const;
 
 export default function RelentlessIntroScreen() {

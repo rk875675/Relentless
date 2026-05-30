@@ -48,7 +48,7 @@ export default function WeCanTrainScreen() {
             <View style={styles.headlineCluster}>
               <Text style={styles.headline}>We can train this.</Text>
               <Text style={styles.subheadline}>
-                Short daily sessions built on the MAC framework — used by elite sport psychologists.
+                Short daily sessions built on the MAC framework — backed by sports psychology.
               </Text>
             </View>
 

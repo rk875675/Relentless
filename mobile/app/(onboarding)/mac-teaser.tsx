@@ -41,7 +41,7 @@ export default function MacTeaserScreen() {
           <View style={styles.content}>
             <Text style={styles.headline}>Here's how{'\n'}we tap into it.</Text>
             <Text style={styles.sub}>
-              We use a framework called MAC — built by sport psychologists and used by elite athletes to unlock consistent mental performance.
+              We use a framework called MAC — backed by sports psychology and used by elite athletes to unlock consistent mental performance.
             </Text>
 
             <Animated.View

@@ -126,6 +126,9 @@ function safePct(n: number | undefined): number {
 
 /** Outbound Grant Chiasson sessions page (referral partner). */
 const GRANT_CHIASSON_REFERRAL_URL = 'https://grantchiasson.com/home';
+/** Inline name + compact creds shown on the WOD coach row. */
+const GRANT_CHIASSON_NAME = 'Grant Chiasson';
+const GRANT_CHIASSON_WOD_SUBTITLE = 'M.S., MPM';
 
 /** For gains, return the base (pre-gain) so purple stops before the green overlay. */
 function ringBasePct(score: number | undefined, delta: ScoreDelta | undefined | null): number {
@@ -412,6 +415,19 @@ export default function HomeScreen() {
     router.push(`/lesson/${targetId}` as any);
   };
 
+  const handleScheduleSession = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    trackPartnerReferralCtaClicked({
+      referral_partner_key: 'grant_chiasson',
+      cta_placement: 'home_wod_card',
+      outbound_url: GRANT_CHIASSON_REFERRAL_URL,
+      authenticated: Boolean(session),
+      onboarding_completed: onboardingComplete,
+      premium: hasPremiumAccess,
+    });
+    void Linking.openURL(GRANT_CHIASSON_REFERRAL_URL);
+  };
+
   const mins = lesson ? approxLessonMinutes(lesson.duration_seconds) : 0;
   const streakIsReset = showMissReflection && !missJournalDismissed && streak?.current_streak === 0;
 
@@ -608,17 +624,16 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        <TouchableOpacity
-          style={styles.workoutCardOuter}
-          activeOpacity={0.85}
-          onPress={lesson ? () => void handleStartWorkout() : lastWod ? () => void handleStartWorkout(lastWod.id) : undefined}
-          disabled={loading || (!lesson && !lastWod)}
-        >
+        <View style={styles.workoutCardOuter}>
           <View style={styles.workoutCardInner}>
             {loading ? (
               <WorkoutCardSkeleton />
             ) : lesson ? (
-              <>
+              <TouchableOpacity
+                style={styles.wodTapArea}
+                activeOpacity={0.9}
+                onPress={() => void handleStartWorkout()}
+              >
                 {/* TOP — label + day number */}
                 <View style={styles.wodTopSection}>
                   <View style={styles.workoutLabelPill}>
@@ -634,7 +649,7 @@ export default function HomeScreen() {
                   <Text style={styles.workoutTitle}>{lesson.title}</Text>
                 </View>
 
-                {/* BOTTOM — coach row + cta */}
+                {/* BOTTOM — coach row + actions */}
                 <View style={styles.wodBottomSection}>
                   <View style={styles.wodDivider} />
                   <View style={styles.workoutAuthorRow}>
@@ -646,34 +661,60 @@ export default function HomeScreen() {
                       />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.workoutAuthorName}>Grant Chiasson</Text>
-                      <Text style={styles.workoutAuthorCred}>Sport Psychologist</Text>
+                      <Text style={styles.workoutAuthorName}>{GRANT_CHIASSON_NAME}</Text>
+                      <Text style={styles.workoutAuthorCred}>{GRANT_CHIASSON_WOD_SUBTITLE}</Text>
                     </View>
                     <View style={styles.workoutMetaPill}>
                       <Text style={styles.workoutMeta}>{mins} min</Text>
                     </View>
                   </View>
-                  <View style={styles.wodStartRow}>
-                    <Text style={styles.wodStartText}>Begin session</Text>
-                    <Ionicons name="chevron-forward" size={15} color={colors.accentLight} />
+                  <View style={styles.wodActionRow}>
+                    <View style={styles.wodBeginBtn}>
+                      <Text style={styles.wodBeginBtnText}>Begin session</Text>
+                      <Ionicons name="chevron-forward" size={16} color={colors.white} />
+                    </View>
+                    <TouchableOpacity
+                      style={styles.wodScheduleBtn}
+                      activeOpacity={0.85}
+                      onPress={handleScheduleSession}
+                    >
+                      <Ionicons name="calendar-outline" size={17} color={colors.accentLight} />
+                      <Text style={styles.wodScheduleBtnText}>Schedule</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
-              </>
+              </TouchableOpacity>
             ) : (
-              <View style={styles.workoutDoneBody}>
-                <Ionicons name="checkmark-circle" size={40} color={colors.success} style={{ marginBottom: 14 }} />
-                <Text style={styles.workoutTitleDone}>All caught up!</Text>
-                <Text style={styles.workoutDesc}>Come back tomorrow for the next workout</Text>
-                {lastWod && (
-                  <View style={styles.repeatBtn}>
-                    <Ionicons name="refresh" size={14} color={colors.accent} style={{ marginRight: 6 }} />
-                    <Text style={styles.repeatBtnText}>Repeat Today's Workout</Text>
-                  </View>
-                )}
-              </View>
+              <TouchableOpacity
+                style={styles.wodTapArea}
+                activeOpacity={lastWod ? 0.9 : 1}
+                onPress={lastWod ? () => void handleStartWorkout(lastWod.id) : undefined}
+              >
+                <View style={styles.workoutDoneBody}>
+                  <Ionicons name="checkmark-circle" size={40} color={colors.success} style={{ marginBottom: 14 }} />
+                  <Text style={styles.workoutTitleDone}>All caught up!</Text>
+                  <Text style={styles.workoutDesc}>Come back tomorrow for the next workout</Text>
+                </View>
+                <View style={styles.wodActionRow}>
+                  {lastWod && (
+                    <View style={styles.wodBeginBtn}>
+                      <Ionicons name="refresh" size={15} color={colors.white} style={{ marginRight: 6 }} />
+                      <Text style={styles.wodBeginBtnText}>Repeat workout</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    style={styles.wodScheduleBtn}
+                    activeOpacity={0.85}
+                    onPress={handleScheduleSession}
+                  >
+                    <Ionicons name="calendar-outline" size={17} color={colors.accentLight} />
+                    <Text style={styles.wodScheduleBtnText}>Schedule</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
             )}
           </View>
-        </TouchableOpacity>
+        </View>
       )}
 
       {!error && lesson && lastWod && lastWod.id !== lesson.id && (
@@ -737,30 +778,6 @@ export default function HomeScreen() {
           )}
         </View>
       </View>
-
-      {/* Coach CTA — PRD: subtle outbound path to coach for 1:1 help */}
-      <TouchableOpacity
-        style={styles.ctaCard}
-        activeOpacity={0.8}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          trackPartnerReferralCtaClicked({
-            referral_partner_key: 'grant_chiasson',
-            cta_placement: 'home_sessions_card',
-            outbound_url: GRANT_CHIASSON_REFERRAL_URL,
-            authenticated: Boolean(session),
-            onboarding_completed: onboardingComplete,
-            premium: hasPremiumAccess,
-          });
-          void Linking.openURL(GRANT_CHIASSON_REFERRAL_URL);
-        }}
-      >
-        <Text style={styles.ctaTitle}>Want to go deeper?</Text>
-        <Text style={styles.ctaByline}>Sessions with Grant</Text>
-        <Text style={styles.ctaSub}>
-          Personalized coaching for your specific goals
-        </Text>
-      </TouchableOpacity>
     </ScrollView>
 
     <Modal visible={showFreebieModal} transparent animationType="none">
@@ -1020,6 +1037,50 @@ const styles = StyleSheet.create({
   wodStartText: {
     fontSize: 13,
     fontWeight: '600',
+    color: colors.accentLight,
+    letterSpacing: 0.2,
+  },
+  wodTapArea: {
+    flex: 1,
+    width: '100%',
+  },
+  wodActionRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+  },
+  wodBeginBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.accent,
+    borderRadius: 14,
+    paddingVertical: 15,
+    paddingHorizontal: 18,
+  },
+  wodBeginBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.white,
+    letterSpacing: 0.2,
+  },
+  wodScheduleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSubtle,
+    paddingVertical: 15,
+    paddingHorizontal: 18,
+  },
+  wodScheduleBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.accentLight,
     letterSpacing: 0.2,
   },

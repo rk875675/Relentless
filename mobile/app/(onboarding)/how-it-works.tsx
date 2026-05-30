@@ -39,7 +39,7 @@ export default function HowItWorksScreen() {
           <Text style={styles.badge}>THE METHOD</Text>
           <Text style={styles.title}>Built on the MAC framework</Text>
           <Text style={styles.body}>
-            Used by elite sport psychologists to help athletes perform under pressure.
+            Backed by sports psychology to help athletes perform under pressure.
           </Text>
 
           <View style={styles.pillars}>
@@ -57,7 +57,7 @@ export default function HowItWorksScreen() {
           </View>
 
           <Text style={styles.footer}>
-            Daily sessions, 3-5 minutes, guided by sport psychologists
+            Daily sessions, 3-5 minutes, guided by mental performance coaches
           </Text>
         </View>
 

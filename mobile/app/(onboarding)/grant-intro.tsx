@@ -26,6 +26,11 @@ import {
   trackOnboardingGrantVideoCompleted,
 } from '@/lib/onboarding-analytics';
 import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
+import {
+  GRANT_CHIASSON_CREDENTIALS,
+  GRANT_CHIASSON_NAME,
+  GRANT_CHIASSON_TAGLINE,
+} from '@/lib/grant-attribution';
 import { colors, spacing } from '@/lib/theme';
 
 // Grant's onboarding intro is delivered as two video segments split by the journal:
@@ -371,12 +376,12 @@ export default function GrantIntroScreen() {
           <View style={styles.readyCard}>
             <GrantPhoto />
 
-            <Text style={styles.readyTitle}>Grant</Text>
+            <Text style={styles.readyTitle}>{GRANT_CHIASSON_NAME}</Text>
             <Text style={styles.readyCredentials}>
-              M.S., CMPC · Mental Performance Coach
+              {GRANT_CHIASSON_CREDENTIALS}
             </Text>
             <Text style={styles.readyBio}>
-              Former D1 QB. Founder of GCMP. Trains competitive athletes using the MAC framework.
+              {GRANT_CHIASSON_TAGLINE}. Founder of GCMP. Trains competitive athletes using the MAC framework.
             </Text>
 
             <View style={styles.readyMetaRow}>

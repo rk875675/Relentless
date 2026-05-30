@@ -51,7 +51,7 @@ export default function TutorialHomeDetailScreen() {
           <View style={styles.annotation}>
             <Ionicons name="play-circle" size={16} color={colors.accent} />
             <Text style={styles.annotationText}>
-              This is your guided daily workout — a 3–5 min audio session designed by a sport psychologist. Complete it every day to build your streak.
+              This is your guided daily workout — a 3–5 min audio session from a mental performance coach. Complete it every day to build your streak.
             </Text>
           </View>
 
