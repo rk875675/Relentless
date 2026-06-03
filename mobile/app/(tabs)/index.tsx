@@ -21,6 +21,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 import { getDeviceLocalCalendarYmd, HOME_PROGRAM_ANCHOR_HEADERS } from '@/lib/device-calendar';
 import { ProgressRing, type ScoreDelta } from '@/components/ProgressRing';
 import { WorkoutCardSkeleton } from '@/components/Skeleton';
@@ -39,6 +40,126 @@ import {
 } from '@/lib/core-analytics';
 
 const { height: screenHeight } = Dimensions.get('window');
+
+// ---------------------------------------------------------------------------
+// DEV-ONLY multi-coach WOD preview.
+//
+// Every lesson pack loaded by scripts/03_loader.py gets one entry here, so its
+// program renders as its own Workout-of-the-Day card, day-synced to the dev
+// program-day tool (Profile > Dev Tools). It opens the exact same lesson player
+// as the real WOD.
+//
+// Wrapped in __DEV__ at the render site, so it is physically stripped from
+// production / TestFlight / App Store builds — it can NEVER appear for any user
+// on prod, including is_dev accounts. It only shows lessons that exist in the
+// database this build points at (EXPO_PUBLIC_SUPABASE_URL); the lesson detail
+// endpoint serves these production_ready=false lessons to is_dev accounts.
+//
+// To add a coach after a loader run: append an entry below using the lesson ids
+// the loader prints (also saved in loader_review_<coach>_<program>.json), keyed
+// by `sequence`. (A future dynamic version will read the `programs` table.)
+// ---------------------------------------------------------------------------
+type DevWodProgram = {
+  coachName: string;
+  coachSubtitle: string;
+  programTitle: string;
+  /** sequence (== program day) -> deterministic lesson id from the loader */
+  lessonsBySequence: Record<number, string>;
+};
+
+const DEV_WOD_PROGRAMS: DevWodProgram[] = [
+  {
+    coachName: 'New Coachex',
+    coachSubtitle: 'M.S.',
+    programTitle: 'Example Golf one',
+    lessonsBySequence: {
+      1: 'c667a937-c498-5a6a-b271-bc9165b0ce00',
+    },
+  },
+];
+
+type DevWodLesson = { id: string; title: string; duration_seconds: number };
+
+function DevWodSection() {
+  const router = useRouter();
+  const [day, setDay] = useState<number | null>(null);
+  const [lessons, setLessons] = useState<Record<string, DevWodLesson | null>>({});
+
+  // Track the dev program day (the same value Profile > Dev Tools changes).
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      supabase.rpc('dev_get_program_day').then((res: { data: unknown }) => {
+        if (active && typeof res.data === 'number') setDay(res.data);
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  // Resolve each program's lesson for the current day (sequence == day).
+  useEffect(() => {
+    if (day == null) return;
+    let active = true;
+    (async () => {
+      const next: Record<string, DevWodLesson | null> = {};
+      await Promise.all(
+        DEV_WOD_PROGRAMS.map(async (p) => {
+          const id = p.lessonsBySequence[day];
+          if (!id) {
+            next[p.programTitle] = null;
+            return;
+          }
+          const res = await apiFetch<DevWodLesson>(`/lessons/${id}`);
+          next[p.programTitle] = res.data ?? null;
+        }),
+      );
+      if (active) setLessons(next);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [day]);
+
+  if (DEV_WOD_PROGRAMS.length === 0) return null;
+
+  return (
+    <View style={styles.devWodWrap}>
+      <Text style={styles.devWodSectionLabel}>DEV · COACH WOD PREVIEW (day {day ?? '—'})</Text>
+      {DEV_WOD_PROGRAMS.map((p) => {
+        const id = day != null ? p.lessonsBySequence[day] : undefined;
+        const meta = lessons[p.programTitle];
+        return (
+          <View key={p.programTitle} style={styles.devWodCard}>
+            <Text style={styles.devWodProgramTitle}>{p.programTitle}</Text>
+            {id && meta ? (
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push(`/lesson/${id}` as any);
+                }}
+              >
+                <Text style={styles.devWodLessonTitle}>{meta.title}</Text>
+                <Text style={styles.devWodMeta}>
+                  {p.coachName} · {p.coachSubtitle} ·{' '}
+                  {Math.max(1, Math.round((meta.duration_seconds || 0) / 60))} min
+                </Text>
+                <View style={styles.devWodBeginRow}>
+                  <Text style={styles.devWodBeginText}>Begin session</Text>
+                  <Ionicons name="chevron-forward" size={15} color={colors.accentLight} />
+                </View>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.devWodEmpty}>No lesson for day {day ?? '—'}</Text>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
 
 type Lesson = {
   id: string;
@@ -778,6 +899,9 @@ export default function HomeScreen() {
           )}
         </View>
       </View>
+
+      {__DEV__ && <DevWodSection />}
+
     </ScrollView>
 
     <Modal visible={showFreebieModal} transparent animationType="none">
@@ -1230,6 +1354,57 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     marginTop: spacing.md,
+  },
+  devWodWrap: {
+    marginTop: spacing.lg,
+  },
+  devWodSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    color: colors.textMuted,
+    marginBottom: 8,
+  },
+  devWodCard: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    backgroundColor: colors.surface,
+  },
+  devWodProgramTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    color: colors.accentLight,
+    marginBottom: 6,
+  },
+  devWodLessonTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  devWodMeta: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 10,
+  },
+  devWodBeginRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  devWodBeginText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.accentLight,
+    marginRight: 4,
+  },
+  devWodEmpty: {
+    fontSize: 13,
+    color: colors.textMuted,
   },
   journalLabel: {
     fontSize: 9,

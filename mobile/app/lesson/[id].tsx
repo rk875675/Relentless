@@ -78,6 +78,15 @@ type BoxBreathingMidOverlay = {
   text: string;
   duration_seconds: number;
 };
+// Flexible breathing (interactive_model: 'breathing'). The circle EXPANDS during
+// 'inhale', holds size during 'hold', and CONTRACTS during 'exhale'. The whole
+// pattern repeats rep_count times. Mirrors BreathingPhaseSchema on the server.
+type BreathingPhase = {
+  phase: 'inhale' | 'hold' | 'exhale';
+  duration_seconds: number;
+  haptic?: HapticIntensity;
+  label?: string;
+};
 type TimedExerciseBlock = {
   type: 'timed_exercise';
   duration_seconds: number;
@@ -88,6 +97,9 @@ type TimedExerciseBlock = {
   rep_count?: number;
   phase_labels?: BoxBreathingPhaseLabels;
   mid_overlay?: BoxBreathingMidOverlay;
+  // Flexible breathing: ordered inhale/hold/exhale phases repeated rep_count times.
+  // Present instead of steps[] when interactive_model === 'breathing'.
+  pattern?: BreathingPhase[];
   steps: ExerciseStep[];
 };
 type JournalPromptBlock = {
@@ -371,6 +383,89 @@ function breathAnimScalarFromWallMs(
   return 0;
 }
 
+/** Total seconds of one full breathing pattern cycle. */
+function patternCycleSeconds(pattern: BreathingPhase[]): number {
+  return pattern.reduce((sum, p) => sum + p.duration_seconds, 0);
+}
+
+/**
+ * Breath circle scalar 0..1 for a flexible pattern[], driven by wall-clock ms.
+ * inhale ramps 0→1, exhale ramps 1→0, hold stays at the level reached by the
+ * previous phase. Same contract as breathAnimScalarFromWallMs but for any
+ * ordered list of phases. No drift (wall-clock, not Animated.loop).
+ */
+function breathScalarFromPattern(wallMs: number, pattern: BreathingPhase[]): number {
+  const cycleMs = patternCycleSeconds(pattern) * 1000;
+  if (cycleMs <= 0) return 0;
+  let t = wallMs % cycleMs;
+  if (t < 0) t += cycleMs;
+  let level = 0; // circle size entering the current phase
+  for (const p of pattern) {
+    const dMs = p.duration_seconds * 1000;
+    if (t < dMs) {
+      const frac = dMs <= 0 ? 1 : t / dMs;
+      if (p.phase === 'inhale') return frac;
+      if (p.phase === 'exhale') return 1 - frac;
+      return level; // hold
+    }
+    t -= dMs;
+    level = p.phase === 'inhale' ? 1 : p.phase === 'exhale' ? 0 : level;
+  }
+  return level;
+}
+
+type BreathingPhaseInfo = {
+  repIndex: number;
+  globalPhaseIndex: number;
+  phase: BreathingPhase;
+  secondsLeft: number;
+  ended: boolean;
+};
+
+/**
+ * Resolve the current breathing phase from wall-clock ms: which rep, which phase,
+ * the seconds remaining in it, and a monotonically increasing global phase index
+ * (used to fire each phase's haptic exactly once on transition).
+ */
+function breathingPhaseAtMs(
+  wallMs: number,
+  pattern: BreathingPhase[],
+  repCount: number,
+): BreathingPhaseInfo {
+  const reps = Math.max(1, repCount);
+  const cycleSec = patternCycleSeconds(pattern);
+  const lastIdx = Math.max(0, pattern.length - 1);
+  if (cycleSec <= 0 || pattern.length === 0) {
+    return { repIndex: 0, globalPhaseIndex: 0, phase: pattern[0], secondsLeft: 0, ended: true };
+  }
+  const totalSec = cycleSec * reps;
+  const elapsedSec = wallMs / 1000;
+  const ended = elapsedSec >= totalSec;
+  const clamped = Math.min(Math.max(0, elapsedSec), totalSec - 0.0001);
+  const repIndex = Math.min(Math.floor(clamped / cycleSec), reps - 1);
+  let t = clamped - repIndex * cycleSec;
+  for (let i = 0; i < pattern.length; i++) {
+    const d = pattern[i].duration_seconds;
+    if (t < d) {
+      return {
+        repIndex,
+        globalPhaseIndex: repIndex * pattern.length + i,
+        phase: pattern[i],
+        secondsLeft: Math.max(1, Math.ceil(d - t)),
+        ended,
+      };
+    }
+    t -= d;
+  }
+  return {
+    repIndex,
+    globalPhaseIndex: repIndex * pattern.length + lastIdx,
+    phase: pattern[lastIdx],
+    secondsLeft: 0,
+    ended,
+  };
+}
+
 /** Estimated seconds each block contributes to the overall lesson length.
  *  Timed/interactive blocks use their actual duration; user-paced blocks use
  *  a per-step estimate so the bar moves at a reasonable pace per tap. */
@@ -485,6 +580,8 @@ export default function LessonPlayerScreen() {
   /** rAF loop drives coffee/milk/whiskey circle from wall clock (Animated.loop drifts vs Date.now). */
   const circleBreathRafRef = useRef<number | null>(null);
   const wallDrivenBreathTimingRef = useRef<[number, number, number, number] | null>(null);
+  /** Active flexible-breathing pattern; non-null while a pattern[] rAF loop runs. */
+  const patternBreathRef = useRef<BreathingPhase[] | null>(null);
   const exerciseWallClockStartRef = useRef(0);
   /** Throttle setExerciseWallMs from rAF so labels track the wall-driven bubble without 60Hz React updates. */
   const lastBreathWallMsUiRef = useRef(-1);
@@ -493,6 +590,8 @@ export default function LessonPlayerScreen() {
   const lastHapticSecRef = useRef(-1);
   // Box breathing phase tracking — fires haptic on phase transitions
   const lastBoxPhaseRef = useRef(-1);
+  // Flexible breathing (pattern[]) phase tracking — fires per-phase haptic once.
+  const lastPatternPhaseRef = useRef(-1);
 
   // Box breathing visual cues — motivational phrases that cycle every 10 s
   const [boxCueIndex, setBoxCueIndex] = useState(0);
@@ -633,6 +732,7 @@ export default function LessonPlayerScreen() {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (exerciseTimerRef.current) { clearInterval(exerciseTimerRef.current); exerciseTimerRef.current = null; }
     wallDrivenBreathTimingRef.current = null;
+    patternBreathRef.current = null;
     if (circleBreathRafRef.current != null) {
       cancelAnimationFrame(circleBreathRafRef.current);
       circleBreathRafRef.current = null;
@@ -824,6 +924,7 @@ export default function LessonPlayerScreen() {
       }, 2500);
     } else if (block.type === 'timed_exercise') {
       wallDrivenBreathTimingRef.current = null;
+      patternBreathRef.current = null;
       if (circleBreathRafRef.current != null) {
         cancelAnimationFrame(circleBreathRafRef.current);
         circleBreathRafRef.current = null;
@@ -844,6 +945,7 @@ export default function LessonPlayerScreen() {
       // Reset haptic + visual cue tracking
       lastHapticSecRef.current = -1;
       lastBoxPhaseRef.current = -1;
+      lastPatternPhaseRef.current = -1;
       lastBoxCueSecRef.current = -1;
       setBoxCueIndex(0);
       boxCueFade.setValue(0);
@@ -880,6 +982,25 @@ export default function LessonPlayerScreen() {
       const circleCfg = getCircleBreathModelConfig(model);
       const timing = circleCfg?.timing;
       const exerciseUsesWallDriveBreath = Boolean(circleCfg?.wallDrive);
+      const isPatternBreathing =
+        model === 'breathing' && Array.isArray(block.pattern) && (block.pattern?.length ?? 0) > 0;
+      if (isPatternBreathing && block.pattern) {
+        breathCircleAnim.setValue(0);
+        patternBreathRef.current = block.pattern;
+        const pat = block.pattern;
+        const pumpPattern = () => {
+          if (!patternBreathRef.current) return;
+          const w = Date.now() - exerciseWallClockStartRef.current;
+          breathCircleAnim.setValue(breathScalarFromPattern(w, pat));
+          if (w - lastBreathWallMsUiRef.current >= 32) {
+            lastBreathWallMsUiRef.current = w;
+            setExerciseWallMs(w);
+          }
+          if (!patternBreathRef.current) return;
+          circleBreathRafRef.current = requestAnimationFrame(pumpPattern);
+        };
+        circleBreathRafRef.current = requestAnimationFrame(pumpPattern);
+      }
       if (timing) {
         breathCircleAnim.setValue(0);
         const [inhaleMs, holdInMs, exhaleMs, holdOutMs] = timing;
@@ -916,8 +1037,17 @@ export default function LessonPlayerScreen() {
         const wallMs = now - exerciseWallClockStartRef.current;
         const secs = Math.floor(wallMs / 1000);
         setExerciseElapsed(secs);
-        if (!exerciseUsesWallDriveBreath) {
+        if (!exerciseUsesWallDriveBreath && !isPatternBreathing) {
           setExerciseWallMs(wallMs);
+        }
+
+        // --- Haptics: flexible breathing (pattern[]) per-phase transitions ---
+        if (isPatternBreathing && block.pattern) {
+          const info = breathingPhaseAtMs(wallMs, block.pattern, block.rep_count ?? 1);
+          if (info.globalPhaseIndex !== lastPatternPhaseRef.current) {
+            lastPatternPhaseRef.current = info.globalPhaseIndex;
+            if (info.phase?.haptic) fireHaptic(info.phase.haptic);
+          }
         }
 
         // --- Haptics: box_breathing phase transitions (step-level) ---
@@ -944,7 +1074,7 @@ export default function LessonPlayerScreen() {
         }
 
         // --- Step advancement (non-box-breathing) + step-level haptics ---
-        if (block.interactive_model !== 'box_breathing') {
+        if (block.interactive_model !== 'box_breathing' && !isPatternBreathing) {
           let cumulative = 0;
           for (let i = 0; i < block.steps.length; i++) {
             const prevCumulative = cumulative;
@@ -975,7 +1105,7 @@ export default function LessonPlayerScreen() {
         }
 
         // --- Box breathing visual cues — cycle every 10 s ---
-        if (block.interactive_model === 'box_breathing' && block.visual_cues?.length) {
+        if ((block.interactive_model === 'box_breathing' || isPatternBreathing) && block.visual_cues?.length) {
           const cueIdx = Math.min(Math.floor(secs / 10), block.visual_cues.length - 1);
           if (cueIdx !== lastBoxCueSecRef.current) {
             lastBoxCueSecRef.current = cueIdx;
@@ -994,6 +1124,7 @@ export default function LessonPlayerScreen() {
         if (done) {
           if (exerciseTimerRef.current) { clearInterval(exerciseTimerRef.current); exerciseTimerRef.current = null; }
           wallDrivenBreathTimingRef.current = null;
+          patternBreathRef.current = null;
           if (circleBreathRafRef.current != null) {
             cancelAnimationFrame(circleBreathRafRef.current);
             circleBreathRafRef.current = null;
@@ -1324,6 +1455,25 @@ export default function LessonPlayerScreen() {
       const circleCfg = getCircleBreathModelConfig(model);
       const timing = circleCfg?.timing;
       const exerciseUsesWallDriveBreath = Boolean(circleCfg?.wallDrive);
+      const isPatternBreathing =
+        model === 'breathing' && Array.isArray(block.pattern) && (block.pattern?.length ?? 0) > 0;
+      if (isPatternBreathing && block.pattern) {
+        breathCircleAnim.setValue(0);
+        patternBreathRef.current = block.pattern;
+        const pat = block.pattern;
+        const pumpPattern = () => {
+          if (!patternBreathRef.current) return;
+          const w = Date.now() - exerciseWallClockStartRef.current;
+          breathCircleAnim.setValue(breathScalarFromPattern(w, pat));
+          if (w - lastBreathWallMsUiRef.current >= 32) {
+            lastBreathWallMsUiRef.current = w;
+            setExerciseWallMs(w);
+          }
+          if (!patternBreathRef.current) return;
+          circleBreathRafRef.current = requestAnimationFrame(pumpPattern);
+        };
+        circleBreathRafRef.current = requestAnimationFrame(pumpPattern);
+      }
 
       if (timing) {
         const [inhaleMs, holdInMs, exhaleMs, holdOutMs] = timing;
@@ -1360,8 +1510,17 @@ export default function LessonPlayerScreen() {
         const wallMs = now - exerciseWallClockStartRef.current;
         const secs = Math.floor(wallMs / 1000);
         setExerciseElapsed(secs);
-        if (!exerciseUsesWallDriveBreath) {
+        if (!exerciseUsesWallDriveBreath && !isPatternBreathing) {
           setExerciseWallMs(wallMs);
+        }
+
+        // --- Haptics: flexible breathing (pattern[]) per-phase transitions ---
+        if (isPatternBreathing && block.pattern) {
+          const info = breathingPhaseAtMs(wallMs, block.pattern, block.rep_count ?? 1);
+          if (info.globalPhaseIndex !== lastPatternPhaseRef.current) {
+            lastPatternPhaseRef.current = info.globalPhaseIndex;
+            if (info.phase?.haptic) fireHaptic(info.phase.haptic);
+          }
         }
 
         if (block.interactive_model === 'box_breathing') {
@@ -1385,7 +1544,7 @@ export default function LessonPlayerScreen() {
           }
         }
 
-        if (block.interactive_model !== 'box_breathing') {
+        if (block.interactive_model !== 'box_breathing' && !isPatternBreathing) {
           let cumulative = 0;
           for (let i = 0; i < block.steps.length; i++) {
             const prevCumulative = cumulative;
@@ -1414,7 +1573,7 @@ export default function LessonPlayerScreen() {
           }
         }
 
-        if (block.interactive_model === 'box_breathing' && block.visual_cues?.length) {
+        if ((block.interactive_model === 'box_breathing' || isPatternBreathing) && block.visual_cues?.length) {
           const cueIdx = Math.min(Math.floor(secs / 10), block.visual_cues.length - 1);
           if (cueIdx !== lastBoxCueSecRef.current) {
             lastBoxCueSecRef.current = cueIdx;
@@ -1431,6 +1590,7 @@ export default function LessonPlayerScreen() {
         if (done) {
           if (exerciseTimerRef.current) { clearInterval(exerciseTimerRef.current); exerciseTimerRef.current = null; }
           wallDrivenBreathTimingRef.current = null;
+          patternBreathRef.current = null;
           if (circleBreathRafRef.current != null) {
             cancelAnimationFrame(circleBreathRafRef.current);
             circleBreathRafRef.current = null;
@@ -1478,6 +1638,7 @@ export default function LessonPlayerScreen() {
     voiceoverStartPending.current = false;
     audioFallbackActive.current = false;
     wallDrivenBreathTimingRef.current = null;
+    patternBreathRef.current = null;
     if (circleBreathRafRef.current != null) {
       cancelAnimationFrame(circleBreathRafRef.current);
       circleBreathRafRef.current = null;
@@ -2170,6 +2331,103 @@ export default function LessonPlayerScreen() {
                         <Text style={[styles.exercisePhaseLabel, { color: progressBarColor }]}>{phaseLabel}</Text>
                       </View>
                       {/* Fixed-height cue area — prevents card resize when phrase changes. */}
+                      <View style={styles.boxCueArea}>
+                        <Animated.Text style={[styles.exerciseText, { opacity: boxCueFade }]} numberOfLines={2}>
+                          {exBlock.visual_cues?.[boxCueIndex] ?? ''}
+                        </Animated.Text>
+                      </View>
+                    </>
+                  )}
+                </Animated.View>
+                <View style={styles.progressBarTrack}>
+                  <Animated.View
+                    style={[
+                      styles.progressBarFill,
+                      { width: progressBarWidth, backgroundColor: progressBarColor },
+                    ]}
+                  />
+                </View>
+              </View>
+            );
+          }
+
+          // ── Flexible breathing (interactive_model: 'breathing', pattern[]) ──
+          if (exBlock.interactive_model === 'breathing' && exBlock.pattern?.length) {
+            const repCount = exBlock.rep_count ?? 1;
+            const info = breathingPhaseAtMs(exerciseWallMs, exBlock.pattern, repCount);
+            const PHASE_DISPLAY: Record<BreathingPhase['phase'], string> = {
+              inhale: 'Inhale',
+              hold: 'Hold',
+              exhale: 'Exhale',
+            };
+            const phaseLabel = info.phase?.label ?? PHASE_DISPLAY[info.phase?.phase ?? 'inhale'];
+            const countdown = info.secondsLeft;
+            const currentRep = Math.min(repCount, info.repIndex + 1);
+            const cycleSec = patternCycleSeconds(exBlock.pattern);
+            const elapsedSec = exerciseWallMs / 1000;
+            const overlay = exBlock.mid_overlay;
+            const overlayActive = overlay
+              ? elapsedSec >= overlay.after_rep * cycleSec &&
+                elapsedSec < overlay.after_rep * cycleSec + overlay.duration_seconds
+              : false;
+            return (
+              <View style={styles.centered}>
+                {exBlock.rep_count ? (
+                  <View style={styles.boxRepCounter} pointerEvents="none">
+                    <Text style={[styles.boxRepCounterText, { color: progressBarColor }]}>
+                      {`Rep ${currentRep} of ${repCount}`}
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={styles.breathCircleWrapper}>
+                  <Animated.View
+                    style={[
+                      styles.breathCircle,
+                      {
+                        backgroundColor: progressBarColor,
+                        opacity: circleOpacity,
+                        transform: [{ scale: circleScale }],
+                        shadowColor: progressBarColor,
+                        shadowOffset: { width: 0, height: 0 },
+                        shadowOpacity: 0.5,
+                        shadowRadius: 30,
+                        elevation: 12,
+                      },
+                    ]}
+                  />
+                  {isMultiMac && (
+                    <View style={styles.breathRimOverlay} pointerEvents="none">
+                      <MacAlternatingRing size={200} strokeWidth={5} colors={macAccentColorsRaw} />
+                    </View>
+                  )}
+                  <Text style={[styles.breathCountdown, { position: 'absolute' }]}>{countdown}</Text>
+                </View>
+                <Animated.View
+                  style={[
+                    styles.exerciseCard,
+                    {
+                      borderColor: progressBarColor,
+                      borderTopWidth: 2,
+                      transform: [{ scale: cardScale }],
+                      shadowColor: progressBarColor,
+                      shadowOffset: { width: 0, height: 0 },
+                      shadowOpacity: 0.25,
+                      shadowRadius: 20,
+                      elevation: 8,
+                    },
+                  ]}
+                >
+                  {overlayActive && overlay ? (
+                    <View style={styles.boxCueArea}>
+                      <Text style={[styles.exerciseOverlayText, { color: progressBarColor }]}>
+                        {overlay.text}
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      <View style={styles.boxPhaseLabelRow}>
+                        <Text style={[styles.exercisePhaseLabel, { color: progressBarColor }]}>{phaseLabel}</Text>
+                      </View>
                       <View style={styles.boxCueArea}>
                         <Animated.Text style={[styles.exerciseText, { opacity: boxCueFade }]} numberOfLines={2}>
                           {exBlock.visual_cues?.[boxCueIndex] ?? ''}

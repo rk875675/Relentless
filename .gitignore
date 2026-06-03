@@ -12,3 +12,12 @@ content/audio/
 
 # Local scratch paths for audio concat / deploy experiments
 tmp_audio_deployed/
+
+# Dev lesson-pack ingestion working dir (extracted pack assets, generated JSON)
+scripts/_dev_pack/
+
+# Loader handoff bundle (generated deliverable for the partner)
+loader_handoff/
+
+# Loader review artifacts (generated per run; not source)
+loader_review_*.json

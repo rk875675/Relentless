@@ -36,7 +36,7 @@ const UuidSchema = z.string().uuid();
 const METADATA_COLUMNS =
   "id, coach_id, title, duration_seconds, lesson_type, sort_order";
 const DETAIL_COLUMNS =
-  "id, coach_id, title, duration_seconds, lesson_type, voiceover_url, on_screen_text, reflection_prompt, content_blocks, sort_order";
+  "id, coach_id, title, duration_seconds, lesson_type, voiceover_url, on_screen_text, reflection_prompt, content_blocks, sort_order, production_ready";
 
 const PROGRAM_VERSION = "v1";
 const AUDIO_BUCKET = "lesson-audio";
@@ -176,10 +176,24 @@ async function handleList(
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
-  const { data: lessons, error, count } = await supabase
+  // Profile drives both the past-WOD gating below and the preview gate: lessons
+  // flagged production_ready = false are catalog-visible ONLY to is_dev accounts.
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select("current_program_day, is_dev")
+    .eq("id", userId)
+    .maybeSingle();
+  const isDev = profileRow?.is_dev === true;
+  const currentProgramDay = typeof profileRow?.current_program_day === "number"
+    ? profileRow.current_program_day
+    : 1;
+
+  let lessonsQuery = supabase
     .from("lessons")
     .select(METADATA_COLUMNS, { count: "exact" })
-    .eq("published", true)
+    .eq("published", true);
+  if (!isDev) lessonsQuery = lessonsQuery.eq("production_ready", true);
+  const { data: lessons, error, count } = await lessonsQuery
     .order("sort_order", { ascending: true })
     .range(from, to);
 
@@ -199,15 +213,6 @@ async function handleList(
     arr.push(c.category);
     categoryMap.set(c.lesson_id, arr);
   }
-
-  const { data: profileRow } = await supabase
-    .from("profiles")
-    .select("current_program_day")
-    .eq("id", userId)
-    .maybeSingle();
-  const currentProgramDay = typeof profileRow?.current_program_day === "number"
-    ? profileRow.current_program_day
-    : 1;
 
   // Completions used only for day 30 in Past WODs (current_program_day caps at 30).
   // Days 1–29 there use program_day < current_program_day only.
@@ -299,6 +304,19 @@ async function handleDetail(
 
   if (error || !lesson) {
     return errorResponse(404, "NOT_FOUND", "Lesson not found", requestId);
+  }
+
+  // Preview gate: not-production-ready lessons load ONLY for is_dev accounts.
+  // Everyone else gets the same 404 as a non-existent lesson.
+  if ((lesson as { production_ready?: boolean }).production_ready === false) {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("is_dev")
+      .eq("id", userId)
+      .maybeSingle();
+    if (prof?.is_dev !== true) {
+      return errorResponse(404, "NOT_FOUND", "Lesson not found", requestId);
+    }
   }
 
   const { data: categories } = await supabase

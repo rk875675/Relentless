@@ -28,13 +28,12 @@ LESSON_DIR = os.path.join(os.path.dirname(__file__), '..', 'content', 'lessons')
 MIGS_DIR   = os.path.join(os.path.dirname(__file__), '..', 'supabase', 'migrations')
 OUT_MIG    = os.path.join(MIGS_DIR, '20260508000000_wod_days_23_30_corrected.sql')
 
-SUPABASE_URL     = "https://tnetahaviblrrjixzvbd.supabase.co"
-SERVICE_ROLE_KEY = (
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-    ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRuZXRhaGF2aWJscnJqaXh6dmJkIiwicm9sZSI6"
-    "InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDMwNDgwMCwiZXhwIjoyMDg5ODgwODAwfQ"
-    ".6cQlEidIUoGziBrEwZ-S94hUcjwxKILBUdHtP22zWNM"
-)
+# Service-role key is an ADMIN SECRET — provide via env, never hardcode:
+#   npx supabase projects api-keys  ->  set SUPABASE_SERVICE_ROLE_KEY before running.
+SUPABASE_URL     = os.environ.get("SUPABASE_URL", "https://tnetahaviblrrjixzvbd.supabase.co")
+SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+if not SERVICE_ROLE_KEY:
+    sys.exit("Set SUPABASE_SERVICE_ROLE_KEY in your environment before running (never hardcode it).")
 BUCKET = "lesson-audio"
 
 # (local_filename, storage_path)

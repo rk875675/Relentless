@@ -54,6 +54,16 @@ const BoxBreathingMidOverlaySchema = z.object({
   duration_seconds: z.number().int().positive(),
 }).strict();
 
+// A single phase of a flexible breathing pattern (interactive_model: "breathing").
+// The circle EXPANDS during "inhale", holds its size during "hold", and
+// CONTRACTS during "exhale". One pattern repeats rep_count times.
+const BreathingPhaseSchema = z.object({
+  phase: z.enum(["inhale", "hold", "exhale"]),
+  duration_seconds: z.number().int().positive(),
+  haptic: HapticIntensitySchema.optional(),
+  label: z.string().min(1).optional(),
+}).strict();
+
 const TimedExerciseBlockSchema = z.object({
   type: z.literal("timed_exercise"),
   duration_seconds: z.number().int().positive(),
@@ -72,7 +82,16 @@ const TimedExerciseBlockSchema = z.object({
   phase_labels: BoxBreathingPhaseLabelsSchema.optional(),
   // box_breathing only: overlay shown after a specific rep boundary.
   mid_overlay: BoxBreathingMidOverlaySchema.optional(),
-  steps: z.array(ExerciseStepSchema).min(1),
+  // Flexible breathing (interactive_model: "breathing"): an ordered list of
+  // inhale/hold/exhale phases that repeats rep_count times. New coaches use this
+  // instead of the legacy box_breathing steps[] path.
+  pattern: z.array(BreathingPhaseSchema).min(1).optional(),
+  // steps[] is the legacy box_breathing / body_scan / text-step path. Optional
+  // now: a timed_exercise must provide EITHER steps[] OR pattern[]. This is
+  // enforced in ContentBlocksSchema below rather than here, because a
+  // z.discriminatedUnion member must be a plain ZodObject — wrapping this in
+  // .superRefine() (a ZodEffects) would break the union at module load.
+  steps: z.array(ExerciseStepSchema).min(1).optional(),
 }).strict();
 
 const JournalPromptBlockSchema = z.object({
@@ -256,6 +275,19 @@ const ContentBlockSchema = z.discriminatedUnion("type", [
 
 export const ContentBlocksSchema = z.object({
   blocks: z.array(ContentBlockSchema).min(1),
-}).strict();
+}).strict().superRefine((val, ctx) => {
+  // A timed_exercise must define EITHER steps[] (legacy box_breathing / body_scan
+  // / text steps) OR pattern[] (flexible breathing). Enforced here because the
+  // check cannot live on the discriminated-union member itself (see above).
+  val.blocks.forEach((block, i) => {
+    if (block.type === "timed_exercise" && !block.steps && !block.pattern) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["blocks", i],
+        message: "timed_exercise requires either steps[] (box_breathing) or pattern[] (breathing).",
+      });
+    }
+  });
+});
 
 export type ContentBlocks = z.infer<typeof ContentBlocksSchema>;
