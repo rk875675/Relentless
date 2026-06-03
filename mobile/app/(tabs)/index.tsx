@@ -14,6 +14,7 @@ import {
   TextInput,
   RefreshControl,
   Linking,
+  type ImageSourcePropType,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -80,6 +81,86 @@ const DEV_WOD_PROGRAMS: DevWodProgram[] = [
 
 type DevWodLesson = { id: string; title: string; duration_seconds: number };
 
+// Single source of truth for the Workout-of-the-Day card. Used by the real WOD
+// and the dev multi-coach preview, so any change to the WOD UI applies to all
+// WODs. coachPhoto is optional — when absent a neutral placeholder avatar shows.
+// onSchedule is optional — when absent the Schedule CTA is hidden.
+type WodCardProps = {
+  title: string;
+  dayBadge?: string | null;
+  coachName: string;
+  coachSubtitle: string;
+  coachPhoto?: ImageSourcePropType | null;
+  minutes: number;
+  onPress: () => void;
+  onSchedule?: () => void;
+  beginLabel?: string;
+};
+
+function WodCard({
+  title,
+  dayBadge,
+  coachName,
+  coachSubtitle,
+  coachPhoto,
+  minutes,
+  onPress,
+  onSchedule,
+  beginLabel = 'Begin session',
+}: WodCardProps) {
+  return (
+    <TouchableOpacity style={styles.wodTapArea} activeOpacity={0.9} onPress={onPress}>
+      {/* TOP — label + day badge */}
+      <View style={styles.wodTopSection}>
+        <View style={styles.workoutLabelPill}>
+          <Text style={styles.workoutLabelText}>WORKOUT OF THE DAY</Text>
+        </View>
+        {dayBadge ? <Text style={styles.workoutDayBadge}>{dayBadge}</Text> : null}
+      </View>
+
+      {/* MIDDLE — title */}
+      <View style={styles.wodTitleSection}>
+        <Text style={styles.workoutTitle}>{title}</Text>
+      </View>
+
+      {/* BOTTOM — coach row + actions */}
+      <View style={styles.wodBottomSection}>
+        <View style={styles.wodDivider} />
+        <View style={styles.workoutAuthorRow}>
+          <View style={styles.workoutAuthorPhotoRing}>
+            {coachPhoto ? (
+              <Image source={coachPhoto} style={styles.workoutAuthorPhotoImg} resizeMode="cover" />
+            ) : (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="person" size={28} color={colors.textSecondary} />
+              </View>
+            )}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.workoutAuthorName}>{coachName}</Text>
+            <Text style={styles.workoutAuthorCred}>{coachSubtitle}</Text>
+          </View>
+          <View style={styles.workoutMetaPill}>
+            <Text style={styles.workoutMeta}>{minutes} min</Text>
+          </View>
+        </View>
+        <View style={styles.wodActionRow}>
+          <View style={styles.wodBeginBtn}>
+            <Text style={styles.wodBeginBtnText}>{beginLabel}</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.white} />
+          </View>
+          {onSchedule ? (
+            <TouchableOpacity style={styles.wodScheduleBtn} activeOpacity={0.85} onPress={onSchedule}>
+              <Ionicons name="calendar-outline" size={17} color={colors.accentLight} />
+              <Text style={styles.wodScheduleBtnText}>Schedule</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 function DevWodSection() {
   const router = useRouter();
   const [day, setDay] = useState<number | null>(null);
@@ -131,29 +212,25 @@ function DevWodSection() {
         const id = day != null ? p.lessonsBySequence[day] : undefined;
         const meta = lessons[p.programTitle];
         return (
-          <View key={p.programTitle} style={styles.devWodCard}>
-            <Text style={styles.devWodProgramTitle}>{p.programTitle}</Text>
-            {id && meta ? (
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  router.push(`/lesson/${id}` as any);
-                }}
-              >
-                <Text style={styles.devWodLessonTitle}>{meta.title}</Text>
-                <Text style={styles.devWodMeta}>
-                  {p.coachName} · {p.coachSubtitle} ·{' '}
-                  {Math.max(1, Math.round((meta.duration_seconds || 0) / 60))} min
-                </Text>
-                <View style={styles.devWodBeginRow}>
-                  <Text style={styles.devWodBeginText}>Begin session</Text>
-                  <Ionicons name="chevron-forward" size={15} color={colors.accentLight} />
-                </View>
-              </TouchableOpacity>
-            ) : (
-              <Text style={styles.devWodEmpty}>No lesson for day {day ?? '—'}</Text>
-            )}
+          <View key={p.programTitle} style={styles.workoutCardOuter}>
+            <View style={styles.workoutCardInner}>
+              {id && meta ? (
+                <WodCard
+                  title={meta.title}
+                  dayBadge={`Day ${day} · ${p.programTitle}`}
+                  coachName={p.coachName}
+                  coachSubtitle={p.coachSubtitle}
+                  coachPhoto={null}
+                  minutes={approxLessonMinutes(meta.duration_seconds)}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push(`/lesson/${id}` as any);
+                  }}
+                />
+              ) : (
+                <Text style={styles.devWodEmpty}>No lesson for day {day ?? '—'}</Text>
+              )}
+            </View>
           </View>
         );
       })}
@@ -750,61 +827,20 @@ export default function HomeScreen() {
             {loading ? (
               <WorkoutCardSkeleton />
             ) : lesson ? (
-              <TouchableOpacity
-                style={styles.wodTapArea}
-                activeOpacity={0.9}
+              <WodCard
+                title={lesson.title}
+                dayBadge={
+                  typeof lesson.program_day === 'number'
+                    ? `Day ${lesson.program_day} · 30-day program`
+                    : null
+                }
+                coachName={GRANT_CHIASSON_NAME}
+                coachSubtitle={GRANT_CHIASSON_WOD_SUBTITLE}
+                coachPhoto={require('../../assets/images/grant_chiasson.png')}
+                minutes={mins}
                 onPress={() => void handleStartWorkout()}
-              >
-                {/* TOP — label + day number */}
-                <View style={styles.wodTopSection}>
-                  <View style={styles.workoutLabelPill}>
-                    <Text style={styles.workoutLabelText}>WORKOUT OF THE DAY</Text>
-                  </View>
-                  {typeof lesson.program_day === 'number' && (
-                    <Text style={styles.workoutDayBadge}>Day {lesson.program_day} · 30-day program</Text>
-                  )}
-                </View>
-
-                {/* MIDDLE — title fills remaining space */}
-                <View style={styles.wodTitleSection}>
-                  <Text style={styles.workoutTitle}>{lesson.title}</Text>
-                </View>
-
-                {/* BOTTOM — coach row + actions */}
-                <View style={styles.wodBottomSection}>
-                  <View style={styles.wodDivider} />
-                  <View style={styles.workoutAuthorRow}>
-                    <View style={styles.workoutAuthorPhotoRing}>
-                      <Image
-                        source={require('../../assets/images/grant_chiasson.png')}
-                        style={styles.workoutAuthorPhotoImg}
-                        resizeMode="cover"
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.workoutAuthorName}>{GRANT_CHIASSON_NAME}</Text>
-                      <Text style={styles.workoutAuthorCred}>{GRANT_CHIASSON_WOD_SUBTITLE}</Text>
-                    </View>
-                    <View style={styles.workoutMetaPill}>
-                      <Text style={styles.workoutMeta}>{mins} min</Text>
-                    </View>
-                  </View>
-                  <View style={styles.wodActionRow}>
-                    <View style={styles.wodBeginBtn}>
-                      <Text style={styles.wodBeginBtnText}>Begin session</Text>
-                      <Ionicons name="chevron-forward" size={16} color={colors.white} />
-                    </View>
-                    <TouchableOpacity
-                      style={styles.wodScheduleBtn}
-                      activeOpacity={0.85}
-                      onPress={handleScheduleSession}
-                    >
-                      <Ionicons name="calendar-outline" size={17} color={colors.accentLight} />
-                      <Text style={styles.wodScheduleBtnText}>Schedule</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableOpacity>
+                onSchedule={handleScheduleSession}
+              />
             ) : (
               <TouchableOpacity
                 style={styles.wodTapArea}
@@ -1364,43 +1400,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: colors.textMuted,
     marginBottom: 8,
-  },
-  devWodCard: {
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: colors.border,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-    backgroundColor: colors.surface,
-  },
-  devWodProgramTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    color: colors.accentLight,
-    marginBottom: 6,
-  },
-  devWodLessonTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 4,
-  },
-  devWodMeta: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginBottom: 10,
-  },
-  devWodBeginRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  devWodBeginText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.accentLight,
-    marginRight: 4,
   },
   devWodEmpty: {
     fontSize: 13,
