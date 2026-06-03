@@ -2360,7 +2360,8 @@ export default function LessonPlayerScreen() {
               hold: 'Hold',
               exhale: 'Exhale',
             };
-            const phaseLabel = info.phase?.label ?? PHASE_DISPLAY[info.phase?.phase ?? 'inhale'];
+            const phaseTag = PHASE_DISPLAY[info.phase?.phase ?? 'inhale'];
+            const phaseInstruction = info.phase?.label ?? phaseTag;
             const countdown = info.secondsLeft;
             const currentRep = Math.min(repCount, info.repIndex + 1);
             const cycleSec = patternCycleSeconds(exBlock.pattern);
@@ -2426,12 +2427,10 @@ export default function LessonPlayerScreen() {
                   ) : (
                     <>
                       <View style={styles.boxPhaseLabelRow}>
-                        <Text style={[styles.exercisePhaseLabel, { color: progressBarColor }]}>{phaseLabel}</Text>
+                        <Text style={[styles.exercisePhaseLabel, { color: progressBarColor }]}>{phaseTag}</Text>
                       </View>
                       <View style={styles.boxCueArea}>
-                        <Animated.Text style={[styles.exerciseText, { opacity: boxCueFade }]} numberOfLines={2}>
-                          {exBlock.visual_cues?.[boxCueIndex] ?? ''}
-                        </Animated.Text>
+                        <Text style={styles.exerciseText} numberOfLines={2}>{phaseInstruction}</Text>
                       </View>
                     </>
                   )}
