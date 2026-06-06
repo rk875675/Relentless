@@ -398,6 +398,12 @@ verify_jwt = false
 [functions.account]
 verify_jwt = false
 
+[functions.push-tokens]
+verify_jwt = false
+
+[functions.push-reminders]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

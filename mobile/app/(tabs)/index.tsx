@@ -6,6 +6,7 @@ import {
   Image,
   Keyboard,
   Modal,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -38,7 +39,10 @@ import {
   trackStreakViewed,
   trackProgressRingViewed,
   trackReflectionSaved,
+  trackPushRemindersEnabled,
+  trackPushPermissionDenied,
 } from '@/lib/core-analytics';
+import { registerForPushNotifications } from '@/lib/push-notifications';
 
 const { height: screenHeight } = Dimensions.get('window');
 
@@ -294,6 +298,10 @@ function streakFreebieModalAckKey(userId: string): string {
   return `relentless:streak_freebie_ack_ymd:${userId}`;
 }
 
+function pushPromptShownKey(userId: string): string {
+  return `relentless:push_prompt_shown:${userId}`;
+}
+
 const MISS_REFLECTION_JOURNAL_PATH = '/journal?entry_type=miss_reflection&limit=1';
 
 type MissReflectionJournalListResponse = {
@@ -365,6 +373,8 @@ export default function HomeScreen() {
   const [missJournalDismissed, setMissJournalDismissed] = useState(false);
   const [showFreebieModal, setShowFreebieModal] = useState(false);
   const [keyboardBottomPad, setKeyboardBottomPad] = useState(0);
+  const [showPushPrompt, setShowPushPrompt] = useState(false);
+  const [pushPromptBusy, setPushPromptBusy] = useState(false);
   const freebieScale = useRef(new Animated.Value(0)).current;
   const freebieOpacity = useRef(new Animated.Value(0)).current;
   const deltaDateRef = useRef<string | null>(null);
@@ -534,6 +544,34 @@ export default function HomeScreen() {
     setJournalSavedHint(false);
   }, [lesson?.id]);
 
+  // Show the push notification pre-permission prompt once, after the first
+  // successful home load. Uses `loading` (state) not `initialLoadDone` (ref)
+  // so the effect reliably re-runs when data is ready. Delayed 1.5s so the
+  // WOD card has rendered before the modal appears.
+  useEffect(() => {
+    if (!currentUserId || loading) return;
+    let cancelled = false;
+    void (async () => {
+      const key = pushPromptShownKey(currentUserId);
+      const shown = await AsyncStorage.getItem(key);
+      if (shown || cancelled) return;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('push_reminders_enabled')
+        .eq('id', currentUserId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (profile?.push_reminders_enabled) {
+        await AsyncStorage.setItem(key, 'true');
+        return;
+      }
+      setTimeout(() => {
+        if (!cancelled) setShowPushPrompt(true);
+      }, 1500);
+    })();
+    return () => { cancelled = true; };
+  }, [currentUserId, loading]);
+
   useEffect(() => {
     if (!showFreebieModal) return;
     freebieScale.setValue(0);
@@ -576,6 +614,27 @@ export default function HomeScreen() {
       setShowFreebieModal(false);
     });
   };
+
+  const dismissPushPrompt = useCallback(async () => {
+    if (!currentUserId) return;
+    await AsyncStorage.setItem(pushPromptShownKey(currentUserId), 'true');
+    setShowPushPrompt(false);
+  }, [currentUserId]);
+
+  const acceptPushPrompt = useCallback(async () => {
+    if (!currentUserId || pushPromptBusy) return;
+    setPushPromptBusy(true);
+    await AsyncStorage.setItem(pushPromptShownKey(currentUserId), 'true');
+    const result = await registerForPushNotifications();
+    setPushPromptBusy(false);
+    setShowPushPrompt(false);
+    if (result.ok) {
+      trackPushRemindersEnabled({ source: 'home_prompt' });
+    } else if (result.reason === 'permission_denied') {
+      trackPushPermissionDenied({ source: 'home_prompt' });
+      // System prompt was denied — silently respect; user can enable in Profile > Settings.
+    }
+  }, [currentUserId, pushPromptBusy]);
 
   const flushPreWorkoutJournal = useCallback(async () => {
     const trimmed = journalText.trim();
@@ -962,6 +1021,36 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </Animated.View>
       </Animated.View>
+    </Modal>
+
+    <Modal visible={showPushPrompt} transparent animationType="fade">
+      <View style={styles.pushPromptOverlay}>
+        <View style={styles.pushPromptCard}>
+          <View style={styles.pushPromptIconWrap}>
+            <Ionicons name="notifications-outline" size={36} color={colors.accent} />
+          </View>
+          <Text style={styles.pushPromptTitle}>Daily workout reminders</Text>
+          <Text style={styles.pushPromptBody}>
+            Get a reminder each evening so you never miss a day. We only send one per day, only when you haven{"'"}t trained yet.
+          </Text>
+          <TouchableOpacity
+            style={[styles.pushPromptPrimaryBtn, pushPromptBusy && { opacity: 0.6 }]}
+            onPress={() => { void acceptPushPrompt(); }}
+            disabled={pushPromptBusy}
+          >
+            <Text style={styles.pushPromptPrimaryText}>
+              {pushPromptBusy ? 'Setting up…' : 'Turn on reminders'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.pushPromptSecondaryBtn}
+            onPress={() => { void dismissPushPrompt(); }}
+            disabled={pushPromptBusy}
+          >
+            <Text style={styles.pushPromptSecondaryText}>Not now</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     </Modal>
 
     </View>
@@ -1560,5 +1649,71 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: '700',
+  },
+
+  // Push notification pre-permission prompt
+  pushPromptOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingBottom: 40,
+  },
+  pushPromptCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 28,
+    alignItems: 'center',
+  },
+  pushPromptIconWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: colors.accentSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  pushPromptTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 10,
+    letterSpacing: 0.2,
+  },
+  pushPromptBody: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 28,
+  },
+  pushPromptPrimaryBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 12,
+  },
+  pushPromptPrimaryText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  pushPromptSecondaryBtn: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    width: '100%',
+  },
+  pushPromptSecondaryText: {
+    color: colors.textMuted,
+    fontSize: 15,
+    fontWeight: '500',
   },
 });

@@ -23,10 +23,15 @@ export const SUPERWALL_ONBOARDING_PLACEMENT =
 /**
  * App Store product ids (configure the same ids in Superwall / App Store Connect).
  * Reference only — not passed to the SDK unless you add placement params later.
+ *
+ * .b variants are split-test prices in the same subscription group as the originals.
+ * Superwall experiments control which variant a user sees; the backend is product-ID-agnostic.
  */
 export const STOREKIT_PRODUCT_IDS = {
   monthly: 'com.relentless.monthly',
   annual: 'com.relentless.annual',
+  monthlyB: 'com.relentless.monthly.b',
+  annualB: 'com.relentless.annual.b',
 } as const;
 
 const isNativeMobile = Platform.OS === 'ios' || Platform.OS === 'android';

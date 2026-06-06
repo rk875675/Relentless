@@ -60,3 +60,37 @@ export function trackReflectionPromptViewed(properties?: CoreProps): void {
 export function trackReflectionSaved(properties?: CoreProps): void {
   captureCoreEvent('reflection_saved', properties);
 }
+
+/** Push notifications (server-driven workout reminders) */
+export function trackPushRemindersEnabled(
+  properties: CoreProps & { source: 'profile_toggle' | 'home_prompt' },
+): void {
+  captureCoreEvent('push_reminders_enabled', properties);
+}
+
+export function trackPushRemindersDisabled(
+  properties: CoreProps & { source: 'profile_toggle' | 'home_prompt' },
+): void {
+  captureCoreEvent('push_reminders_disabled', properties);
+}
+
+export function trackPushPermissionDenied(
+  properties: CoreProps & { source: 'profile_toggle' | 'home_prompt' },
+): void {
+  captureCoreEvent('push_permission_denied', properties);
+}
+
+/** App Store review prompt */
+export function trackAppStoreReviewPromptEligible(properties?: CoreProps): void {
+  captureCoreEvent('app_store_review_prompt_eligible', properties);
+}
+
+export function trackAppStoreReviewPromptRequested(properties?: CoreProps): void {
+  captureCoreEvent('app_store_review_prompt_requested', properties);
+}
+
+export function trackAppStoreReviewPromptSkipped(
+  properties: CoreProps & { reason: string },
+): void {
+  captureCoreEvent('app_store_review_prompt_skipped', properties);
+}

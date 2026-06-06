@@ -27,6 +27,7 @@ import { setPendingGainDeltas } from '@/lib/pending-deltas';
 import { colors, spacing } from '@/lib/theme';
 import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
 import { trackLessonViewed, trackLessonStarted, trackLessonCompleted, trackReflectionSaved } from '@/lib/core-analytics';
+import { incrementLessonsCompleted, maybeRequestAppStoreReview } from '@/lib/app-store-review-prompt';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import FormattedJournalBody from '@/components/FormattedJournalBody';
 import PromptCards from '@/components/lesson/PromptCards';
@@ -865,6 +866,7 @@ export default function LessonPlayerScreen() {
       }
       bustCache('/lessons/next', '/progress', '/streak');
       trackLessonCompleted({ lesson_id: currentLesson.id });
+      incrementLessonsCompleted();
       setPhase('done');
     }
   }, []);
@@ -3422,6 +3424,7 @@ export default function LessonPlayerScreen() {
                   const now = new Date();
                   const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                   if (preStreakDateRef.current === localToday) {
+                    maybeRequestAppStoreReview();
                     router.back();
                     return;
                   }
@@ -3453,7 +3456,13 @@ export default function LessonPlayerScreen() {
                   ? "Great start. Come back tomorrow to keep it going."
                   : `You've shown up ${streakCount} days in a row. Keep building.`}
               </Text>
-              <TouchableOpacity style={[styles.primaryBtn, { marginTop: spacing.xl }]} onPress={() => router.back()}>
+              <TouchableOpacity
+                style={[styles.primaryBtn, { marginTop: spacing.xl }]}
+                onPress={() => {
+                  maybeRequestAppStoreReview();
+                  router.back();
+                }}
+              >
                 <Text style={styles.primaryBtnText}>Done</Text>
               </TouchableOpacity>
             </Animated.View>

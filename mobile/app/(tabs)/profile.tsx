@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
   Alert,
@@ -8,6 +9,7 @@ import {
   Platform,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -27,6 +29,12 @@ import { MAX_SPORT_LEN, OTHER_SENTINEL, PRESET_SPORTS, isPresetSport } from '@/l
 import { SUPERWALL_ENABLED } from '@/lib/superwall-config';
 import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { supabase } from '@/lib/supabase';
+import { registerForPushNotifications, disablePushReminders } from '@/lib/push-notifications';
+import {
+  trackPushRemindersEnabled,
+  trackPushRemindersDisabled,
+  trackPushPermissionDenied,
+} from '@/lib/core-analytics';
 
 const MAX_DISPLAY_NAME_LEN = 80;
 
@@ -81,6 +89,8 @@ export default function ProfileScreen() {
   const [nameSaving, setNameSaving] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [pushRemindersEnabled, setPushRemindersEnabled] = useState(false);
+  const [pushRemindersBusy, setPushRemindersBusy] = useState(false);
   const [devToolsVisible, setDevToolsVisible] = useState(false);
   const [profileStatsError, setProfileStatsError] = useState('');
   const [profileStatsLoading, setProfileStatsLoading] = useState(false);
@@ -152,6 +162,54 @@ export default function ProfileScreen() {
 
   const [devDay, setDevDay] = useState<number | null>(null);
   const [devDayBusy, setDevDayBusy] = useState(false);
+
+  const handlePushRemindersToggle = useCallback(async (value: boolean) => {
+    if (pushRemindersBusy) return;
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    setPushRemindersBusy(true);
+    setPushRemindersEnabled(value); // optimistic
+    if (pushRemindersCacheKey) void AsyncStorage.setItem(pushRemindersCacheKey, String(value));
+    Haptics.selectionAsync();
+
+    if (value) {
+      const result = await registerForPushNotifications();
+      if (!result.ok) {
+        setPushRemindersEnabled(false); // revert
+        if (pushRemindersCacheKey) void AsyncStorage.setItem(pushRemindersCacheKey, 'false');
+        setPushRemindersBusy(false);
+        if (result.reason === 'permission_denied') {
+          trackPushPermissionDenied({ source: 'profile_toggle' });
+          Alert.alert(
+            'Notifications blocked',
+            'To receive workout reminders, enable notifications for Relentless in Settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ],
+          );
+        } else {
+          Alert.alert('Could not enable reminders', result.message ?? 'Please try again.');
+        }
+        return;
+      }
+      trackPushRemindersEnabled({ source: 'profile_toggle' });
+    } else {
+      const err = await disablePushReminders(userId);
+      if (err) {
+        setPushRemindersEnabled(true); // revert
+        if (pushRemindersCacheKey) void AsyncStorage.setItem(pushRemindersCacheKey, 'true');
+        setPushRemindersBusy(false);
+        Alert.alert('Could not disable reminders', err);
+        return;
+      }
+      trackPushRemindersDisabled({ source: 'profile_toggle' });
+    }
+
+    setPushRemindersBusy(false);
+  }, [pushRemindersBusy, session?.user?.id]);
+
   const brandTapCount = useRef(0);
   const brandTapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -194,6 +252,12 @@ export default function ProfileScreen() {
     setProfileStatsError(errs.length > 0 ? errs.join(' · ') : '');
   }, []);
 
+  // Load push reminders toggle state — AsyncStorage cache for instant render,
+  // DB sync in background to stay accurate.
+  const pushRemindersCacheKey = session?.user?.id
+    ? `relentless:push_reminders_enabled:${session.user.id}`
+    : null;
+
   useFocusEffect(
     useCallback(() => {
       void refreshUserState().catch(() => {});
@@ -202,7 +266,26 @@ export default function ProfileScreen() {
         supabase.rpc('dev_get_program_day')
           .then(({ data }) => { if (typeof data === 'number') setDevDay(data); });
       }
-    }, [isDevAccount, refreshUserState, loadProfileStats]),
+      const userId = session?.user?.id;
+      if (!userId || !pushRemindersCacheKey) return;
+      // Instant: load from cache
+      void AsyncStorage.getItem(pushRemindersCacheKey).then((cached) => {
+        if (cached !== null) setPushRemindersEnabled(cached === 'true');
+      });
+      // Background: sync from DB and update cache
+      void supabase
+        .from('profiles')
+        .select('push_reminders_enabled')
+        .eq('id', userId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            const v = data.push_reminders_enabled === true;
+            setPushRemindersEnabled(v);
+            void AsyncStorage.setItem(pushRemindersCacheKey, String(v));
+          }
+        });
+    }, [isDevAccount, refreshUserState, loadProfileStats, session?.user?.id, pushRemindersCacheKey]),
   );
 
   const handleRestore = async () => {
@@ -452,6 +535,13 @@ export default function ProfileScreen() {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             router.push('/journal' as any);
           }}
+        />
+        <ProfileToggleRow
+          icon="notifications-outline"
+          label="Workout reminders"
+          value={pushRemindersEnabled}
+          disabled={pushRemindersBusy}
+          onValueChange={(v) => { void handlePushRemindersToggle(v); }}
           last
         />
       </View>
@@ -818,6 +908,40 @@ function ProfileRow({
         <Text style={styles.rowValue}>{value}</Text>
       )}
     </TouchableOpacity>
+  );
+}
+
+function ProfileToggleRow({
+  icon,
+  label,
+  value,
+  disabled,
+  onValueChange,
+  last,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: boolean;
+  disabled?: boolean;
+  onValueChange: (v: boolean) => void;
+  last?: boolean;
+}) {
+  return (
+    <View style={[styles.profileRow, last && styles.profileRowLast]}>
+      <View style={styles.rowLeft}>
+        <View style={styles.rowIconWrap}>
+          <Ionicons name={icon} size={17} color={colors.accentLight} />
+        </View>
+        <Text style={styles.rowLabel}>{label}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        disabled={disabled}
+        trackColor={{ false: colors.border, true: colors.accent }}
+        thumbColor={colors.white}
+      />
+    </View>
   );
 }
 

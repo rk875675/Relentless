@@ -10,6 +10,8 @@ import {
 const PRODUCT_IDS = {
   monthly: "com.relentless.monthly",
   annual: "com.relentless.annual",
+  monthlyB: "com.relentless.monthly.b",
+  annualB: "com.relentless.annual.b",
 } as const;
 
 const REMINDER_WINDOWS = {
@@ -19,6 +21,16 @@ const REMINDER_WINDOWS = {
     maxHoursBeforeExpiration: 36,
   },
   [PRODUCT_IDS.annual]: {
+    reminderType: "annual_trial_day_5",
+    minHoursBeforeExpiration: 24,
+    maxHoursBeforeExpiration: 72,
+  },
+  [PRODUCT_IDS.monthlyB]: {
+    reminderType: "monthly_trial_day_2",
+    minHoursBeforeExpiration: 0,
+    maxHoursBeforeExpiration: 36,
+  },
+  [PRODUCT_IDS.annualB]: {
     reminderType: "annual_trial_day_5",
     minHoursBeforeExpiration: 24,
     maxHoursBeforeExpiration: 72,
@@ -95,7 +107,7 @@ Deno.serve(async (req) => {
     .from("entitlements")
     .select("user_id, product_id, expires_at")
     .eq("status", "trial")
-    .in("product_id", [PRODUCT_IDS.monthly, PRODUCT_IDS.annual])
+    .in("product_id", [PRODUCT_IDS.monthly, PRODUCT_IDS.annual, PRODUCT_IDS.monthlyB, PRODUCT_IDS.annualB])
     .gt("expires_at", now.toISOString())
     .lte("expires_at", maxExpiresAt.toISOString())
     .order("expires_at", { ascending: true })
@@ -198,7 +210,12 @@ function toReminderCandidate(
 }
 
 function isReminderProduct(productId: string): productId is ProductId {
-  return productId === PRODUCT_IDS.monthly || productId === PRODUCT_IDS.annual;
+  return (
+    productId === PRODUCT_IDS.monthly ||
+    productId === PRODUCT_IDS.annual ||
+    productId === PRODUCT_IDS.monthlyB ||
+    productId === PRODUCT_IDS.annualB
+  );
 }
 
 async function claimReminder(
@@ -309,10 +326,9 @@ async function sendReminderEmail(args: {
 }
 
 function buildReminderEmail(productId: ProductId, expiresAt: string) {
-  const planLabel = productId === PRODUCT_IDS.annual ? "annual" : "monthly";
-  const renewalText = productId === PRODUCT_IDS.annual
-    ? "your annual plan starts"
-    : "your monthly plan starts";
+  const isAnnual = productId === PRODUCT_IDS.annual || productId === PRODUCT_IDS.annualB;
+  const planLabel = isAnnual ? "annual" : "monthly";
+  const renewalText = isAnnual ? "your annual plan starts" : "your monthly plan starts";
   const formattedDate = new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Relentless",
     "slug": "relentless",
-    "version": "1.3.4",
+    "version": "1.3.5",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "relentless",
@@ -13,7 +13,7 @@
       "backgroundColor": "#2d2c2c"
     },
     "ios": {
-      "buildNumber": "21",
+      "buildNumber": "22",
       "supportsTablet": false,
       "usesAppleSignIn": true,
       "bundleIdentifier": "com.relentlessmentaltoughness.relentless",
@@ -29,7 +29,18 @@
       "expo-iap",
       "expo-web-browser",
       "expo-apple-authentication",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-notifications",
+        {
+          "iosDisplayInForeground": false,
+          "iosDisplayNotificationBanner": true,
+          "iosDisplayNotificationSound": true,
+          "infoPlist": {
+            "NSUserNotificationUsageDescription": "Relentless sends one evening reminder on days you haven't completed your workout."
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
@@ -38,10 +49,11 @@
       "router": {},
       "eas": {
         "projectId": "3cac0b27-c2b7-4368-a154-b4292e7d7030"
-      }
+      },
+      "enableAppStoreReviewPrompt": true
     },
     "android": {
-      "versionCode": 21,
+      "versionCode": 22,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
