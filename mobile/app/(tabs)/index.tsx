@@ -73,14 +73,15 @@ type DevWodProgram = {
 };
 
 const DEV_WOD_PROGRAMS: DevWodProgram[] = [
-  {
-    coachName: 'New Coachex',
-    coachSubtitle: 'M.S.',
-    programTitle: 'Example Golf one',
-    lessonsBySequence: {
-      1: 'c667a937-c498-5a6a-b271-bc9165b0ce00',
-    },
-  },
+  // Empty = the DEV coach WOD preview is hidden. After re-loading a pack with
+  // the loader, re-add its entry here to preview it (lesson ids are printed by
+  // the loader / in loader_review_<coach>_<program>.json), e.g.:
+  // {
+  //   coachName: 'New Coachex',
+  //   coachSubtitle: 'M.S.',
+  //   programTitle: 'Example Golf one',
+  //   lessonsBySequence: { 1: 'c667a937-c498-5a6a-b271-bc9165b0ce00' },
+  // },
 ];
 
 type DevWodLesson = { id: string; title: string; duration_seconds: number };
