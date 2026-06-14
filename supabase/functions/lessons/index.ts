@@ -34,7 +34,7 @@ const PaginationSchema = z.object({
 const UuidSchema = z.string().uuid();
 
 const METADATA_COLUMNS =
-  "id, coach_id, title, duration_seconds, lesson_type, sort_order";
+  "id, coach_id, title, duration_seconds, lesson_type, sort_order, program_id";
 const DETAIL_COLUMNS =
   "id, coach_id, title, duration_seconds, lesson_type, voiceover_url, on_screen_text, reflection_prompt, content_blocks, sort_order, production_ready, description, program_id, sequence";
 
@@ -351,7 +351,56 @@ async function handleList(
     })
     .sort((a, b) => (a.program_day as number) - (b.program_day as number));
 
-  const sorted = [...regular, ...wods];
+  // Attach program_title and coach_name to WOD items so the client can render
+  // per-program bubbles without a second round-trip.
+  const programIdSet = new Set<string>();
+  for (const w of wods) {
+    const pid = (w as { program_id?: string | null }).program_id;
+    if (pid) programIdSet.add(pid);
+  }
+
+  const programMeta = new Map<string, { title: string; coach_name: string }>();
+  if (programIdSet.size > 0) {
+    const pids = [...programIdSet];
+    const { data: progRows } = await supabase
+      .from("programs")
+      .select("id, title, coach_id")
+      .in("id", pids);
+
+    const coachIdSet = new Set<string>();
+    for (const p of progRows ?? []) coachIdSet.add(p.coach_id as string);
+
+    const { data: coachRows } = coachIdSet.size > 0
+      ? await supabase
+          .from("coaches")
+          .select("id, name")
+          .in("id", [...coachIdSet])
+      : { data: [] };
+
+    const coachNameById = new Map<string, string>();
+    for (const c of coachRows ?? []) {
+      coachNameById.set(c.id as string, c.name as string);
+    }
+
+    for (const p of progRows ?? []) {
+      programMeta.set(p.id as string, {
+        title: p.title as string,
+        coach_name: coachNameById.get(p.coach_id as string) ?? "",
+      });
+    }
+  }
+
+  const wodsWithMeta = wods.map((w) => {
+    const pid = (w as { program_id?: string | null }).program_id ?? null;
+    const meta = pid ? programMeta.get(pid) : undefined;
+    return {
+      ...w,
+      program_title: meta?.title ?? null,
+      coach_name: meta?.coach_name ?? null,
+    };
+  });
+
+  const sorted = [...regular, ...wodsWithMeta];
 
   return successResponse({ items: sorted, page, limit, total: count ?? 0 }, requestId);
 }

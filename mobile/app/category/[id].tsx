@@ -8,6 +8,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { apiFetch } from '@/lib/api';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { LessonListSkeleton } from '@/components/Skeleton';
@@ -21,6 +22,9 @@ type Lesson = {
   lesson_type: string;
   categories: string[];
   program_day?: number | null;
+  program_id?: string | null;
+  program_title?: string | null;
+  coach_name?: string | null;
 };
 
 type LessonsResponse = {
@@ -28,6 +32,13 @@ type LessonsResponse = {
   page: number;
   limit: number;
   total: number;
+};
+
+type ProgramBubble = {
+  program_id: string;
+  program_title: string;
+  coach_name: string;
+  wod_count: number;
 };
 
 const MAC_LABELS: Record<string, string> = {
@@ -44,7 +55,8 @@ const MAC_COLORS: Record<string, string> = {
 
 type ListItem =
   | { kind: 'lesson'; lesson: Lesson }
-  | { kind: 'divider' };
+  | { kind: 'divider' }
+  | { kind: 'program-bubble'; bubble: ProgramBubble };
 
 export default function CategoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -98,28 +110,39 @@ export default function CategoryScreen() {
     fetchLessons();
   }, [id]);
 
-  // Split into regular library lessons and past WODs; server already sorts them
-  // but we insert a visual divider between the two groups.
   const regularLessons = lessons.filter((l) => !l.program_day);
   const wodLessons = lessons.filter((l) => !!l.program_day);
 
+  // Build one bubble per distinct program from eligible past WODs.
+  const programBubbles: ProgramBubble[] = [];
+  const seenProgramIds = new Set<string>();
+  for (const w of wodLessons) {
+    const pid = w.program_id ?? 'unknown';
+    if (!seenProgramIds.has(pid)) {
+      seenProgramIds.add(pid);
+      programBubbles.push({
+        program_id: pid,
+        program_title: w.program_title ?? 'Past WODs',
+        coach_name: w.coach_name ?? '',
+        wod_count: wodLessons.filter((x) => (x.program_id ?? 'unknown') === pid).length,
+      });
+    }
+  }
+
   const listData: ListItem[] = [
     ...regularLessons.map((l): ListItem => ({ kind: 'lesson', lesson: l })),
-    ...(wodLessons.length > 0
+    ...(programBubbles.length > 0
       ? [
           { kind: 'divider' } as ListItem,
-          ...wodLessons.map((l): ListItem => ({ kind: 'lesson', lesson: l })),
+          ...programBubbles.map((b): ListItem => ({ kind: 'program-bubble', bubble: b })),
         ]
       : []),
   ];
 
   const renderLesson = (lesson: Lesson) => {
     const mins = approxLessonMinutes(lesson.duration_seconds);
-    const dayLabel = lesson.program_day ? `DAY ${lesson.program_day}` : null;
     const isLibrary =
       lesson.lesson_type === 'library' || lesson.lesson_type === 'library_long';
-    const macAccentDurationPill =
-      isLibrary || lesson.program_day != null;
 
     return (
       <TouchableOpacity
@@ -127,9 +150,6 @@ export default function CategoryScreen() {
         activeOpacity={0.8}
         onPress={() => router.push(`/lesson/${lesson.id}` as any)}
       >
-        {dayLabel && (
-          <Text style={styles.cardDayLabel}>{dayLabel}</Text>
-        )}
         <View style={styles.cardRow}>
           <View style={styles.cardLeft}>
             <Text style={styles.cardTitle}>{lesson.title}</Text>
@@ -137,20 +157,40 @@ export default function CategoryScreen() {
           </View>
           <View style={[
             styles.cardDurationPill,
-            macAccentDurationPill && {
-              backgroundColor: `${categoryColor}1e`,
-              borderColor: `${categoryColor}55`,
-            },
+            { backgroundColor: `${categoryColor}1e`, borderColor: `${categoryColor}55` },
           ]}>
-            <Text style={[
-              styles.cardDurationText,
-              macAccentDurationPill && { color: categoryColor },
-            ]}>{mins} min</Text>
+            <Text style={[styles.cardDurationText, { color: categoryColor }]}>{mins} min</Text>
           </View>
         </View>
       </TouchableOpacity>
     );
   };
+
+  const renderProgramBubble = (bubble: ProgramBubble) => (
+    <TouchableOpacity
+      style={styles.programBubble}
+      activeOpacity={0.8}
+      onPress={() =>
+        router.push(`/program-wods/${bubble.program_id}?category=${id}` as any)
+      }
+    >
+      <View style={styles.programBubbleLeft}>
+        <Text style={styles.programBubbleTitle}>{bubble.program_title}</Text>
+        {bubble.coach_name ? (
+          <Text style={styles.programBubbleMeta}>
+            {bubble.coach_name}
+            {' · '}
+            {bubble.wod_count} {bubble.wod_count === 1 ? 'lesson' : 'lessons'}
+          </Text>
+        ) : (
+          <Text style={styles.programBubbleMeta}>
+            {bubble.wod_count} {bubble.wod_count === 1 ? 'lesson' : 'lessons'}
+          </Text>
+        )}
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+    </TouchableOpacity>
+  );
 
   return (
     <>
@@ -162,9 +202,11 @@ export default function CategoryScreen() {
           !loading && (error || lessons.length === 0) && styles.listCentered,
         ]}
         data={listData}
-        keyExtractor={(item, index) =>
-          item.kind === 'divider' ? `divider-${index}` : item.lesson.id
-        }
+        keyExtractor={(item, index) => {
+          if (item.kind === 'divider') return `divider-${index}`;
+          if (item.kind === 'program-bubble') return `prog-${item.bubble.program_id}`;
+          return item.lesson.id;
+        }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -194,10 +236,13 @@ export default function CategoryScreen() {
             return (
               <View style={styles.dividerRow}>
                 <View style={styles.dividerLine} />
-                <Text style={styles.dividerLabel}>Past WODs</Text>
+                <Text style={styles.dividerLabel}>Lesson Packs</Text>
                 <View style={styles.dividerLine} />
               </View>
             );
+          }
+          if (item.kind === 'program-bubble') {
+            return renderProgramBubble(item.bubble);
           }
           return renderLesson(item.lesson);
         }}
@@ -231,13 +276,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginBottom: 12,
   },
-  cardDayLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.textMuted,
-    letterSpacing: 1.5,
-    marginBottom: 8,
-  },
   cardRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -256,32 +294,6 @@ const styles = StyleSheet.create({
   cardTime: {
     fontSize: 12,
     color: colors.textMuted,
-  },
-  cardBadge: {
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    borderWidth: 1,
-    marginLeft: 12,
-  },
-  cardBadgeShort: {
-    backgroundColor: 'rgba(96,165,250,0.12)',
-    borderColor: 'rgba(96,165,250,0.3)',
-  },
-  cardBadgeLong: {
-    backgroundColor: 'rgba(139,92,246,0.12)',
-    borderColor: 'rgba(139,92,246,0.3)',
-  },
-  cardBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  cardBadgeTextShort: {
-    color: colors.ringMindfulness,
-  },
-  cardBadgeTextLong: {
-    color: colors.accentLight,
   },
   cardDurationPill: {
     backgroundColor: colors.surfaceLight,
@@ -313,6 +325,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
     letterSpacing: 0.5,
+  },
+  programBubble: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  programBubbleLeft: {
+    flex: 1,
+  },
+  programBubbleTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  programBubbleMeta: {
+    fontSize: 13,
+    color: colors.textMuted,
   },
   emptyText: {
     color: colors.textMuted,
