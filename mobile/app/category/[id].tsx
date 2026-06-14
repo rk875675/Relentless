@@ -36,6 +36,15 @@ type LessonsResponse = {
   total: number;
 };
 
+type RecommendedProgram = {
+  id: string;
+  title: string;
+  coach_name: string;
+  coach_avatar_url?: string | null;
+};
+
+type ProgramsResponse = { items: RecommendedProgram[] };
+
 type ProgramBubble = {
   program_id: string;
   program_title: string;
@@ -68,12 +77,13 @@ export default function CategoryScreen() {
   const categoryColor = MAC_COLORS[id ?? ''] ?? colors.accentLight;
 
   const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [allPrograms, setAllPrograms] = useState<RecommendedProgram[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  // UX-PERF: cache-then-network for lesson catalog
-  const cacheKey = '/lessons?limit=50';
+  const lessonsCacheKey = '/lessons?limit=50';
+  const programsCacheKey = '/programs';
 
   const applyLessons = (items: Lesson[]) => {
     setLessons(
@@ -85,26 +95,45 @@ export default function CategoryScreen() {
     );
   };
 
+  const applyPrograms = (items: RecommendedProgram[]) => {
+    setAllPrograms(items ?? []);
+  };
+
   const fetchLessons = async (isPull = false) => {
     setError('');
     if (isPull) {
       setRefreshing(true);
-      bustCache(cacheKey);
+      bustCache(lessonsCacheKey);
+      bustCache(programsCacheKey);
     } else {
-      const cached = getCached<LessonsResponse>(cacheKey);
-      if (cached) {
-        applyLessons(cached.items);
+      const cachedLessons = getCached<LessonsResponse>(lessonsCacheKey);
+      const cachedPrograms = getCached<ProgramsResponse>(programsCacheKey);
+      if (cachedLessons) {
+        applyLessons(cachedLessons.items);
         setLoading(false);
-        return;
       }
+      if (cachedPrograms) {
+        applyPrograms(cachedPrograms.items);
+      }
+      if (cachedLessons) return;
     }
-    const { data, error: err } = await apiFetch<LessonsResponse>(cacheKey);
-    if (err) {
-      setError(err);
-    } else if (data) {
-      applyLessons(data.items);
-      setCached(cacheKey, data);
+
+    const [lessonsRes, programsRes] = await Promise.all([
+      apiFetch<LessonsResponse>(lessonsCacheKey),
+      apiFetch<ProgramsResponse>(programsCacheKey),
+    ]);
+
+    if (lessonsRes.error) {
+      setError(lessonsRes.error);
+    } else if (lessonsRes.data) {
+      applyLessons(lessonsRes.data.items);
+      setCached(lessonsCacheKey, lessonsRes.data);
     }
+    if (programsRes.data) {
+      applyPrograms(programsRes.data.items);
+      setCached(programsCacheKey, programsRes.data);
+    }
+
     setLoading(false);
     setRefreshing(false);
   };
@@ -116,9 +145,12 @@ export default function CategoryScreen() {
   const regularLessons = lessons.filter((l) => !l.program_day);
   const wodLessons = lessons.filter((l) => !!l.program_day);
 
-  // Build one bubble per distinct program from eligible past WODs.
+  // Build one bubble per distinct program.
+  // 1) Programs with eligible past WOD lessons in this category (real count).
+  // 2) Programs from /programs that don't have WOD lessons yet (dev-preview packs).
   const programBubbles: ProgramBubble[] = [];
   const seenProgramIds = new Set<string>();
+
   for (const w of wodLessons) {
     const pid = w.program_id ?? 'unknown';
     if (!seenProgramIds.has(pid)) {
@@ -129,6 +161,20 @@ export default function CategoryScreen() {
         coach_name: w.coach_name ?? '',
         coach_avatar_url: w.coach_avatar_url ?? null,
         wod_count: wodLessons.filter((x) => (x.program_id ?? 'unknown') === pid).length,
+      });
+    }
+  }
+
+  // Add any additional programs (dev-visible packs with no lessons yet).
+  for (const p of allPrograms) {
+    if (!seenProgramIds.has(p.id)) {
+      seenProgramIds.add(p.id);
+      programBubbles.push({
+        program_id: p.id,
+        program_title: p.title,
+        coach_name: p.coach_name,
+        coach_avatar_url: p.coach_avatar_url ?? null,
+        wod_count: 0,
       });
     }
   }
@@ -190,7 +236,9 @@ export default function CategoryScreen() {
         <Text style={styles.programBubbleTitle}>{bubble.program_title}</Text>
         <Text style={styles.programBubbleMeta}>
           {bubble.coach_name ? `${bubble.coach_name} · ` : ''}
-          {bubble.wod_count} {bubble.wod_count === 1 ? 'lesson' : 'lessons'}
+          {bubble.wod_count > 0
+            ? `${bubble.wod_count} ${bubble.wod_count === 1 ? 'lesson' : 'lessons'}`
+            : 'Coming soon'}
         </Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
