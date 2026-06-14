@@ -483,9 +483,11 @@ function nextLessonResponse(
   data: unknown,
   repeatLesson: Record<string, unknown> | null,
   requestId: string,
+  programComplete = false,
 ): Response {
   const body: Record<string, unknown> = { data, request_id: requestId };
   if (repeatLesson) body.repeat_lesson = repeatLesson;
+  if (programComplete) body.program_complete = true;
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -584,7 +586,28 @@ async function handleNext(
       ? await lookupRepeatLesson(supabase, completedDay)
       : null;
 
-  return nextLessonResponse(lessonData, repeatLesson, requestId);
+  // Sprint completion: current_program_day caps at 30 (see complete_lesson), so
+  // once the day-30 lesson is completed the user has finished the program. The
+  // "30-Day Sprint complete" screen is intentionally shown the DAY AFTER the
+  // day-30 lesson is finished (not the same day), so we compare the earliest
+  // day-30 completion date against the user's local today. Basing this on the
+  // day-30 completion row (rather than last_wod_completion_local_date) keeps it
+  // stable even if the user later does Library lessons.
+  let programComplete = false;
+  if (day >= 30) {
+    const { data: day30Completion } = await supabase
+      .from("user_lesson_completions")
+      .select("completion_local_date")
+      .eq("user_id", userId)
+      .eq("lesson_id", scheduleRow.lesson_id)
+      .order("completion_local_date", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const completedOn = day30Completion?.completion_local_date as string | undefined;
+    programComplete = typeof completedOn === "string" && completedOn < localTodayYmd;
+  }
+
+  return nextLessonResponse(lessonData, repeatLesson, requestId, programComplete);
 }
 
 // ---------------------------------------------------------------------------
