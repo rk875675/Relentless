@@ -43,34 +43,23 @@ export function Skeleton({ width = '100%', height = 16, borderRadius = 8, style 
 
 /**
  * Matches the workout card inner layout on Home:
- * top (pill + day badge) → flex title block → bottom (coach row + cta).
+ * header → hero photo → title + program line → action buttons.
  */
 export function WorkoutCardSkeleton() {
   return (
     <View style={wcs.container}>
-      <View style={wcs.topSection}>
-        <Skeleton width={160} height={28} borderRadius={999} style={wcs.pill} />
-        <Skeleton width={140} height={14} borderRadius={6} style={wcs.dayBadge} />
+      {/* Full-bleed hero (header is overlaid on the photo in the real card) —
+          negative margins match the card's top + horizontal padding */}
+      <View style={wcs.heroBleed}>
+        <Skeleton width="100%" height={285} borderRadius={0} />
       </View>
-
-      <View style={wcs.titleSection}>
-        <Skeleton width="85%" height={32} borderRadius={8} style={wcs.titleLine} />
-        <Skeleton width="55%" height={32} borderRadius={8} />
+      <View style={wcs.metaSection}>
+        <Skeleton width="65%" height={22} borderRadius={8} />
+        <Skeleton width="50%" height={14} borderRadius={6} />
       </View>
-
-      <View style={wcs.bottomSection}>
-        <View style={wcs.divider} />
-        <View style={wcs.authorRow}>
-          <Skeleton width={58} height={58} borderRadius={999} />
-          <View style={wcs.authorText}>
-            <Skeleton width={120} height={15} borderRadius={6} style={wcs.authorName} />
-            <Skeleton width={90} height={12} borderRadius={6} />
-          </View>
-          <Skeleton width={52} height={32} borderRadius={12} />
-        </View>
-        <View style={wcs.startRow}>
-          <Skeleton width={90} height={13} borderRadius={6} />
-        </View>
+      <View style={wcs.actionRow}>
+        <Skeleton width="48%" height={48} borderRadius={14} />
+        <Skeleton width="48%" height={48} borderRadius={14} />
       </View>
     </View>
   );
@@ -78,44 +67,97 @@ export function WorkoutCardSkeleton() {
 
 const wcs = StyleSheet.create({
   container: {
-    flex: 1,
     width: '100%',
   },
-  topSection: {
-    width: '100%',
-    marginBottom: 4,
+  heroBleed: {
+    marginHorizontal: -spacing.xl,
+    marginTop: -24,
   },
-  pill: { marginBottom: 10 },
-  dayBadge: { marginLeft: 14 },
-  titleSection: {
-    flex: 1,
-    justifyContent: 'center',
-    width: '100%',
-    paddingVertical: 12,
+  metaSection: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    gap: 8,
   },
-  titleLine: { marginBottom: 8 },
-  bottomSection: {
-    width: '100%',
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(167, 139, 250, 0.15)',
-    marginBottom: 18,
+});
+
+/** 2 centered program cards for the Programs screen. */
+export function ProgramListSkeleton() {
+  return (
+    <View style={pls.container}>
+      {[0, 1].map((i) => (
+        <View key={i} style={pls.card}>
+          <Skeleton width={84} height={84} borderRadius={999} style={pls.avatar} />
+          <Skeleton width={150} height={16} borderRadius={8} style={pls.coach} />
+          <Skeleton width={190} height={14} borderRadius={6} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const pls = StyleSheet.create({
+  container: { gap: spacing.md },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    alignItems: 'center',
   },
-  authorRow: {
+  avatar: { marginBottom: spacing.md },
+  coach: { marginBottom: 8 },
+});
+
+/** Compact "More programs" rail skeleton for Home (header + two rows). */
+export function MoreProgramsSkeleton() {
+  return (
+    <View style={mps.card}>
+      <Skeleton width={210} height={15} borderRadius={8} style={mps.header} />
+      {[0, 1].map((i) => (
+        <View key={i} style={mps.row}>
+          <Skeleton width={48} height={48} borderRadius={999} />
+          <View style={mps.rowText}>
+            <Skeleton width={130} height={14} borderRadius={6} style={mps.rowLine} />
+            <Skeleton width={170} height={12} borderRadius={6} />
+          </View>
+        </View>
+      ))}
+      <Skeleton width="100%" height={46} borderRadius={14} style={mps.btn} />
+    </View>
+  );
+}
+
+const mps = StyleSheet.create({
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  header: {
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 16,
+    backgroundColor: 'rgba(139, 92, 246, 0.07)',
+    borderRadius: 16,
+    padding: 10,
+    marginBottom: 10,
   },
-  authorText: {
-    flex: 1,
-  },
-  authorName: { marginBottom: 4 },
-  startRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
+  rowText: { flex: 1 },
+  rowLine: { marginBottom: 6 },
+  btn: { marginTop: 4 },
 });
 
 /** 3 card-shaped rectangles for journal / session-log list screens. */

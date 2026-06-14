@@ -36,7 +36,7 @@ const UuidSchema = z.string().uuid();
 const METADATA_COLUMNS =
   "id, coach_id, title, duration_seconds, lesson_type, sort_order";
 const DETAIL_COLUMNS =
-  "id, coach_id, title, duration_seconds, lesson_type, voiceover_url, on_screen_text, reflection_prompt, content_blocks, sort_order, production_ready";
+  "id, coach_id, title, duration_seconds, lesson_type, voiceover_url, on_screen_text, reflection_prompt, content_blocks, sort_order, production_ready, description, program_id, sequence";
 
 const PROGRAM_VERSION = "v1";
 const AUDIO_BUCKET = "lesson-audio";
@@ -104,6 +104,82 @@ async function resolveContentBlockUrls(
   }
 
   return { ...lesson, content_blocks: resolved };
+}
+
+// ---------------------------------------------------------------------------
+// Additive enrichment for the WOD card / lesson start screen: the lesson's
+// coach (with a signed avatar URL) and its program title + length. Never
+// throws — on any failure the fields come back null and the lesson payload
+// is unaffected. Older app builds simply ignore these extra fields.
+// ---------------------------------------------------------------------------
+type CoachInfo = {
+  coach_key: string | null;
+  name: string;
+  credentials: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  offer_label: string | null;
+  external_url: string | null;
+};
+
+async function loadCoachAndProgram(
+  supabase: ReturnType<typeof createServiceClient>,
+  lesson: Record<string, unknown>,
+): Promise<{
+  coach: CoachInfo | null;
+  program_title: string | null;
+  program_total_days: number | null;
+}> {
+  let coach: CoachInfo | null = null;
+  let programTitle: string | null = null;
+  let programTotalDays: number | null = null;
+
+  const coachId = (lesson.coach_id as string | null) ?? null;
+  if (coachId) {
+    const { data: c } = await supabase
+      .from("coaches")
+      .select("coach_key, name, credentials, bio, avatar_url, offer_label, external_url")
+      .eq("id", coachId)
+      .maybeSingle();
+    if (c) {
+      // avatar_url stores a storage path (loader uploads into the same bucket
+      // as lesson audio); sign it. Absolute URLs pass through untouched.
+      let avatarUrl = (c.avatar_url as string | null) ?? null;
+      if (avatarUrl && !/^https?:\/\//i.test(avatarUrl)) {
+        const { data: signed } = await supabase.storage
+          .from(AUDIO_BUCKET)
+          .createSignedUrl(avatarUrl, SIGNED_URL_TTL);
+        avatarUrl = signed?.signedUrl ?? null;
+      }
+      coach = {
+        coach_key: (c.coach_key as string | null) ?? null,
+        name: c.name as string,
+        credentials: (c.credentials as string | null) ?? null,
+        bio: (c.bio as string | null) ?? null,
+        avatar_url: avatarUrl,
+        offer_label: (c.offer_label as string | null) ?? null,
+        external_url: (c.external_url as string | null) ?? null,
+      };
+    }
+  }
+
+  const programId = (lesson.program_id as string | null) ?? null;
+  if (programId) {
+    const { data: p } = await supabase
+      .from("programs")
+      .select("title")
+      .eq("id", programId)
+      .maybeSingle();
+    if (p?.title) programTitle = p.title as string;
+
+    const { count } = await supabase
+      .from("lessons")
+      .select("id", { count: "exact", head: true })
+      .eq("program_id", programId);
+    if (typeof count === "number" && count > 0) programTotalDays = count;
+  }
+
+  return { coach, program_title: programTitle, program_total_days: programTotalDays };
 }
 
 Deno.serve(async (req) => {
@@ -325,9 +401,19 @@ async function handleDetail(
     .eq("lesson_id", parsed.data);
 
   const enriched = await resolveContentBlockUrls(supabase, lesson as Record<string, unknown>);
+  const extras = await loadCoachAndProgram(supabase, lesson as Record<string, unknown>);
+  const sequence = (lesson as { sequence?: number | null }).sequence;
 
   return successResponse(
-    { ...enriched, categories: (categories ?? []).map((c: { category: string }) => c.category) },
+    {
+      ...enriched,
+      categories: (categories ?? []).map((c: { category: string }) => c.category),
+      coach: extras.coach,
+      program_title: extras.program_title,
+      program_total_days: extras.program_total_days,
+      // Program day for the start-screen header; sequence == day for programs.
+      program_day: typeof sequence === "number" ? sequence : null,
+    },
     requestId,
   );
 }
@@ -481,12 +567,16 @@ async function handleNext(
     .eq("lesson_id", lesson.id);
 
   const enriched = await resolveContentBlockUrls(supabase, lesson as Record<string, unknown>);
+  const extras = await loadCoachAndProgram(supabase, lesson as Record<string, unknown>);
 
   const lessonData = {
     ...enriched,
     program_day: day,
     program_version: PROGRAM_VERSION,
     categories: (categories ?? []).map((c: { category: string }) => c.category),
+    coach: extras.coach,
+    program_title: extras.program_title,
+    program_total_days: extras.program_total_days,
   };
 
   const repeatLesson =

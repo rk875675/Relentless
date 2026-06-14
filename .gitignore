@@ -21,3 +21,6 @@ loader_handoff/
 
 # Loader review artifacts (generated per run; not source)
 loader_review_*.json
+
+# Local lesson-pack zips staged for the loader (audio assets, not source)
+_packs/

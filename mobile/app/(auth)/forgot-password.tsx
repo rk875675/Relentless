@@ -21,18 +21,26 @@ export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSend = async () => {
     const trimmed = email.trim();
     if (!trimmed) return;
     setLoading(true);
+    setError(null);
     try {
       const redirectTo = getPasswordRecoveryRedirectUrl();
       const { error: resetErr } = await supabase.auth.resetPasswordForEmail(trimmed, {
         redirectTo,
       });
-      if (resetErr) return;
+      if (resetErr) {
+        // Surface real failures (e.g. rate limits) instead of failing silently.
+        setError(resetErr.message);
+        return;
+      }
       setSuccess(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong. Try again.');
     } finally {
       setLoading(false);
     }
@@ -67,6 +75,8 @@ export default function ForgotPasswordScreen() {
               editable={!loading}
             />
           )}
+
+          {error && !success ? <Text style={styles.error}>{error}</Text> : null}
 
           {success ? (
             <TouchableOpacity style={styles.button} onPress={() => router.replace('/(auth)/login' as any)}>
@@ -138,6 +148,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   buttonText: { color: colors.background, fontSize: 16, fontWeight: '700' },
+  error: {
+    color: '#ff6b6b',
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 18,
+  },
   back: { marginTop: 24, alignItems: 'center' },
   backText: { color: colors.textSecondary, fontSize: 14 },
 });

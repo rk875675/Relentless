@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Animated,
-  Dimensions,
   Image,
   Keyboard,
   Modal,
@@ -15,6 +14,7 @@ import {
   TextInput,
   RefreshControl,
   Linking,
+  useWindowDimensions,
   type ImageSourcePropType,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -26,11 +26,10 @@ import { apiFetch } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { getDeviceLocalCalendarYmd, HOME_PROGRAM_ANCHOR_HEADERS } from '@/lib/device-calendar';
 import { ProgressRing, type ScoreDelta } from '@/components/ProgressRing';
-import { WorkoutCardSkeleton } from '@/components/Skeleton';
+import { MoreProgramsSkeleton, WorkoutCardSkeleton } from '@/components/Skeleton';
 import { getPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
-import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import {
   trackPartnerReferralCtaClicked,
@@ -44,204 +43,81 @@ import {
 } from '@/lib/core-analytics';
 import { registerForPushNotifications } from '@/lib/push-notifications';
 
-const { height: screenHeight } = Dimensions.get('window');
-
-// ---------------------------------------------------------------------------
-// DEV-ONLY multi-coach WOD preview.
-//
-// Every lesson pack loaded by scripts/03_loader.py gets one entry here, so its
-// program renders as its own Workout-of-the-Day card, day-synced to the dev
-// program-day tool (Profile > Dev Tools). It opens the exact same lesson player
-// as the real WOD.
-//
-// Wrapped in __DEV__ at the render site, so it is physically stripped from
-// production / TestFlight / App Store builds — it can NEVER appear for any user
-// on prod, including is_dev accounts. It only shows lessons that exist in the
-// database this build points at (EXPO_PUBLIC_SUPABASE_URL); the lesson detail
-// endpoint serves these production_ready=false lessons to is_dev accounts.
-//
-// To add a coach after a loader run: append an entry below using the lesson ids
-// the loader prints (also saved in loader_review_<coach>_<program>.json), keyed
-// by `sequence`. (A future dynamic version will read the `programs` table.)
-// ---------------------------------------------------------------------------
-type DevWodProgram = {
-  coachName: string;
-  coachSubtitle: string;
-  programTitle: string;
-  /** sequence (== program day) -> deterministic lesson id from the loader */
-  lessonsBySequence: Record<number, string>;
-};
-
-const DEV_WOD_PROGRAMS: DevWodProgram[] = [
-  // Empty = the DEV coach WOD preview is hidden. After re-loading a pack with
-  // the loader, re-add its entry here to preview it (lesson ids are printed by
-  // the loader / in loader_review_<coach>_<program>.json), e.g.:
-  // {
-  //   coachName: 'New Coachex',
-  //   coachSubtitle: 'M.S.',
-  //   programTitle: 'Example Golf one',
-  //   lessonsBySequence: { 1: 'c667a937-c498-5a6a-b271-bc9165b0ce00' },
-  // },
-];
-
-type DevWodLesson = { id: string; title: string; duration_seconds: number };
-
 // Single source of truth for the Workout-of-the-Day card. Used by the real WOD
 // and the dev multi-coach preview, so any change to the WOD UI applies to all
 // WODs. coachPhoto is optional — when absent a neutral placeholder avatar shows.
 // onSchedule is optional — when absent the Schedule CTA is hidden.
 type WodCardProps = {
   title: string;
-  dayBadge?: string | null;
-  coachName: string;
-  coachSubtitle: string;
+  /** e.g. "30-Day Sprint (Day 5/30)" */
+  programLine?: string | null;
   coachPhoto?: ImageSourcePropType | null;
-  minutes: number;
   onPress: () => void;
   onSchedule?: () => void;
-  beginLabel?: string;
 };
 
-function WodCard({
-  title,
-  dayBadge,
-  coachName,
-  coachSubtitle,
-  coachPhoto,
-  minutes,
-  onPress,
-  onSchedule,
-  beginLabel = 'Begin session',
-}: WodCardProps) {
+function WodCard({ title, programLine, coachPhoto, onPress, onSchedule }: WodCardProps) {
+  // Explicit pixel sizing so the hero can never collapse or misalign:
+  // card width = window - home content padding (20 × 2) - card border (1 × 2).
+  // The wrap is shifted left by the card's inner padding (32) so the photo
+  // runs flush to the card's edges; the square image inside is top-aligned,
+  // cropping the bottom rather than the face.
+  const { width: windowWidth } = useWindowDimensions();
+  const heroWidth = windowWidth - 42;
+  // Taller hero (≈1.2:1) — extends under the overlaid header and shows more
+  // of the photo ("zoomed out").
+  const heroHeight = Math.round(heroWidth / 1.2);
+
   return (
     <TouchableOpacity style={styles.wodTapArea} activeOpacity={0.9} onPress={onPress}>
-      {/* TOP — label + day badge */}
-      <View style={styles.wodTopSection}>
-        <View style={styles.workoutLabelPill}>
-          <Text style={styles.workoutLabelText}>WORKOUT OF THE DAY</Text>
-        </View>
-        {dayBadge ? <Text style={styles.workoutDayBadge}>{dayBadge}</Text> : null}
+      {/* HERO — coach photo, full-bleed to the card's top + side edges,
+          with the header overlaid on top of the image */}
+      <View style={[styles.wodHeroWrap, { width: heroWidth, height: heroHeight }]}>
+        {coachPhoto ? (
+          <Image
+            source={coachPhoto}
+            style={{ width: heroWidth, height: heroWidth }}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.wodHeroPlaceholder}>
+            <Ionicons name="person" size={64} color={colors.textSecondary} />
+          </View>
+        )}
+        <Text style={styles.wodHeader}>Workout of The Day</Text>
       </View>
 
-      {/* MIDDLE — title */}
-      <View style={styles.wodTitleSection}>
-        <Text style={styles.workoutTitle}>{title}</Text>
+      {/* Lesson title + program line */}
+      <View style={styles.wodMetaSection}>
+        <Text style={styles.wodLessonTitle}>{title}</Text>
+        {programLine ? <Text style={styles.wodProgramLine}>{programLine}</Text> : null}
       </View>
 
-      {/* BOTTOM — coach row + actions */}
-      <View style={styles.wodBottomSection}>
-        <View style={styles.wodDivider} />
-        <View style={styles.workoutAuthorRow}>
-          <View style={styles.workoutAuthorPhotoRing}>
-            {coachPhoto ? (
-              <Image source={coachPhoto} style={styles.workoutAuthorPhotoImg} resizeMode="cover" />
-            ) : (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="person" size={28} color={colors.textSecondary} />
-              </View>
-            )}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.workoutAuthorName}>{coachName}</Text>
-            <Text style={styles.workoutAuthorCred}>{coachSubtitle}</Text>
-          </View>
-          <View style={styles.workoutMetaPill}>
-            <Text style={styles.workoutMeta}>{minutes} min</Text>
-          </View>
-        </View>
-        <View style={styles.wodActionRow}>
-          <View style={styles.wodBeginBtn}>
-            <Text style={styles.wodBeginBtnText}>{beginLabel}</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.white} />
-          </View>
-          {onSchedule ? (
-            <TouchableOpacity style={styles.wodScheduleBtn} activeOpacity={0.85} onPress={onSchedule}>
-              <Ionicons name="calendar-outline" size={17} color={colors.accentLight} />
-              <Text style={styles.wodScheduleBtnText}>Schedule</Text>
-            </TouchableOpacity>
-          ) : null}
+      <View style={styles.wodActionRow}>
+        {onSchedule ? (
+          <TouchableOpacity style={styles.wodScheduleBtn} activeOpacity={0.85} onPress={onSchedule}>
+            <Text style={styles.wodScheduleBtnText}>Schedule</Text>
+          </TouchableOpacity>
+        ) : null}
+        <View style={styles.wodBeginBtn}>
+          <Text style={styles.wodBeginBtnText}>Start</Text>
         </View>
       </View>
     </TouchableOpacity>
   );
 }
 
-function DevWodSection() {
-  const router = useRouter();
-  const [day, setDay] = useState<number | null>(null);
-  const [lessons, setLessons] = useState<Record<string, DevWodLesson | null>>({});
-
-  // Track the dev program day (the same value Profile > Dev Tools changes).
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      supabase.rpc('dev_get_program_day').then((res: { data: unknown }) => {
-        if (active && typeof res.data === 'number') setDay(res.data);
-      });
-      return () => {
-        active = false;
-      };
-    }, []),
-  );
-
-  // Resolve each program's lesson for the current day (sequence == day).
-  useEffect(() => {
-    if (day == null) return;
-    let active = true;
-    (async () => {
-      const next: Record<string, DevWodLesson | null> = {};
-      await Promise.all(
-        DEV_WOD_PROGRAMS.map(async (p) => {
-          const id = p.lessonsBySequence[day];
-          if (!id) {
-            next[p.programTitle] = null;
-            return;
-          }
-          const res = await apiFetch<DevWodLesson>(`/lessons/${id}`);
-          next[p.programTitle] = res.data ?? null;
-        }),
-      );
-      if (active) setLessons(next);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [day]);
-
-  if (DEV_WOD_PROGRAMS.length === 0) return null;
-
-  return (
-    <View style={styles.devWodWrap}>
-      <Text style={styles.devWodSectionLabel}>DEV · COACH WOD PREVIEW (day {day ?? '—'})</Text>
-      {DEV_WOD_PROGRAMS.map((p) => {
-        const id = day != null ? p.lessonsBySequence[day] : undefined;
-        const meta = lessons[p.programTitle];
-        return (
-          <View key={p.programTitle} style={styles.workoutCardOuter}>
-            <View style={styles.workoutCardInner}>
-              {id && meta ? (
-                <WodCard
-                  title={meta.title}
-                  dayBadge={`Day ${day} · ${p.programTitle}`}
-                  coachName={p.coachName}
-                  coachSubtitle={p.coachSubtitle}
-                  coachPhoto={null}
-                  minutes={approxLessonMinutes(meta.duration_seconds)}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    router.push(`/lesson/${id}` as any);
-                  }}
-                />
-              ) : (
-                <Text style={styles.devWodEmpty}>No lesson for day {day ?? '—'}</Text>
-              )}
-            </View>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
+/** Coach display data attached (additively) to lesson responses by the server. */
+type CoachSummary = {
+  coach_key?: string | null;
+  name: string;
+  credentials?: string | null;
+  bio?: string | null;
+  /** Signed URL when the coach photo lives in storage. */
+  avatar_url?: string | null;
+  offer_label?: string | null;
+  external_url?: string | null;
+};
 
 type Lesson = {
   id: string;
@@ -252,6 +128,18 @@ type Lesson = {
   /** Active program day (1–30) when returned from `/lessons/next` */
   program_day?: number;
   program_version?: string;
+  program_title?: string | null;
+  program_total_days?: number | null;
+  coach?: CoachSummary | null;
+};
+
+/** Row in the Home "More programs you might like" rail (GET /programs). */
+type RecommendedProgram = {
+  id: string;
+  title: string;
+  coach_name: string;
+  coach_sport?: string | null;
+  coach_avatar_url?: string | null;
 };
 
 type Progress = {
@@ -333,9 +221,23 @@ function safePct(n: number | undefined): number {
 
 /** Outbound Grant Chiasson sessions page (referral partner). */
 const GRANT_CHIASSON_REFERRAL_URL = 'https://grantchiasson.com/home';
-/** Inline name + compact creds shown on the WOD coach row. */
-const GRANT_CHIASSON_NAME = 'Grant Chiasson';
-const GRANT_CHIASSON_WOD_SUBTITLE = 'M.S., MPM';
+
+const GRANT_PHOTO = require('../../assets/images/grant_chiasson_hero.png');
+
+/** Signed avatar from the API when present; bundled Grant photo as the fallback for the original program. */
+function coachPhotoSource(coach?: CoachSummary | null): ImageSourcePropType | null {
+  if (coach?.avatar_url) return { uri: coach.avatar_url };
+  if (!coach || coach.coach_key === 'grant-chiasson') return GRANT_PHOTO;
+  return null;
+}
+
+/** "30-Day Sprint (Day 5/30)" — falls back to the original program's values when the API hasn't sent them. */
+function programLineFor(lesson: Lesson): string | null {
+  if (typeof lesson.program_day !== 'number') return null;
+  const title = lesson.program_title ?? '30-Day Sprint';
+  const total = lesson.program_total_days ?? 30;
+  return `${title} (Day ${lesson.program_day}/${total})`;
+}
 
 /** For gains, return the base (pre-gain) so purple stops before the green overlay. */
 function ringBasePct(score: number | undefined, delta: ScoreDelta | undefined | null): number {
@@ -376,6 +278,8 @@ export default function HomeScreen() {
   const [keyboardBottomPad, setKeyboardBottomPad] = useState(0);
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [pushPromptBusy, setPushPromptBusy] = useState(false);
+  /** null = not yet loaded this session (skeleton); [] = loaded, nothing to show. */
+  const [recPrograms, setRecPrograms] = useState<RecommendedProgram[] | null>(null);
   const freebieScale = useRef(new Animated.Value(0)).current;
   const freebieOpacity = useRef(new Animated.Value(0)).current;
   const deltaDateRef = useRef<string | null>(null);
@@ -538,6 +442,30 @@ export default function HomeScreen() {
     }, [fetchData]),
   );
 
+  // "More programs you might like" rail — hidden when the API returns nothing
+  // (which is always the case for non-dev users today). Cache-then-network so
+  // the skeleton only ever shows on the first load of a session.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      const cached = getCached<{ items: RecommendedProgram[] }>('/programs');
+      if (cached) setRecPrograms(cached.items ?? []);
+      void apiFetch<{ items: RecommendedProgram[] }>('/programs').then((res) => {
+        if (!active) return;
+        if (res.data) {
+          setRecPrograms(res.data.items ?? []);
+          setCached('/programs', res.data);
+        } else {
+          // Error: keep cached items if we had them, otherwise hide the rail.
+          setRecPrograms((prev) => prev ?? []);
+        }
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
   useEffect(() => {
     setJournalText('');
     lastSavedJournalRef.current = '';
@@ -686,7 +614,6 @@ export default function HomeScreen() {
     void Linking.openURL(GRANT_CHIASSON_REFERRAL_URL);
   };
 
-  const mins = lesson ? approxLessonMinutes(lesson.duration_seconds) : 0;
   const streakIsReset = showMissReflection && !missJournalDismissed && streak?.current_streak === 0;
 
   return (
@@ -889,15 +816,8 @@ export default function HomeScreen() {
             ) : lesson ? (
               <WodCard
                 title={lesson.title}
-                dayBadge={
-                  typeof lesson.program_day === 'number'
-                    ? `Day ${lesson.program_day} · 30-day program`
-                    : null
-                }
-                coachName={GRANT_CHIASSON_NAME}
-                coachSubtitle={GRANT_CHIASSON_WOD_SUBTITLE}
-                coachPhoto={require('../../assets/images/grant_chiasson.png')}
-                minutes={mins}
+                programLine={programLineFor(lesson)}
+                coachPhoto={coachPhotoSource(lesson.coach)}
                 onPress={() => void handleStartWorkout()}
                 onSchedule={handleScheduleSession}
               />
@@ -996,7 +916,48 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {__DEV__ && <DevWodSection />}
+      {/* More programs you might like — visual rail, rows are not tappable */}
+      {recPrograms === null && <MoreProgramsSkeleton />}
+      {recPrograms !== null && recPrograms.length > 0 && (
+        <View style={styles.moreProgramsCard}>
+          <Text style={styles.moreProgramsHeader}>More programs you might like:</Text>
+          {recPrograms.map((p) => (
+            <View key={p.id} style={styles.programRow}>
+              <View style={styles.programRowAvatar}>
+                {p.coach_avatar_url ? (
+                  <Image
+                    source={{ uri: p.coach_avatar_url }}
+                    style={styles.programRowAvatarImg}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.programRowAvatarPlaceholder}>
+                    <Ionicons name="person" size={22} color={colors.textSecondary} />
+                  </View>
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.programRowCoach}>
+                  {p.coach_name}
+                  {p.coach_sport ? ` (${p.coach_sport})` : ''}
+                </Text>
+                <Text style={styles.programRowTitle}>{p.title}</Text>
+              </View>
+            </View>
+          ))}
+          <TouchableOpacity
+            style={styles.exploreLibraryBtn}
+            activeOpacity={0.85}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/programs' as any);
+            }}
+          >
+            <Text style={styles.exploreLibraryBtnText}>Explore the full library</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
 
     </ScrollView>
 
@@ -1147,25 +1108,52 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: 24,
     paddingBottom: 24,
-    minHeight: screenHeight * 0.46,
   },
-  wodTopSection: {
-    width: '100%',
-    marginBottom: 4,
+  // Overlaid on top of the hero photo.
+  wodHeader: {
+    position: 'absolute',
+    top: 18,
+    left: 0,
+    right: 0,
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.white,
+    textAlign: 'center',
+    letterSpacing: 0.3,
+    textShadowColor: 'rgba(0, 0, 0, 0.65)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
   },
-  wodTitleSection: {
-    flex: 1,
-    justifyContent: 'center' as const,
-    width: '100%',
-    paddingVertical: 12,
+  // Hero dimensions are set inline in WodCard (explicit pixels from the window
+  // width); this style only positions it flush to the card's top + side edges.
+  wodHeroWrap: {
+    marginLeft: -spacing.xl,
+    marginTop: -24,
+    overflow: 'hidden',
   },
-  wodBottomSection: {
-    width: '100%',
+  wodHeroPlaceholder: {
+    width: '100%' as any,
+    height: '100%' as any,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
   },
-  wodDivider: {
-    height: 1,
-    backgroundColor: 'rgba(167, 139, 250, 0.15)',
-    marginBottom: 18,
+  wodMetaSection: {
+    paddingVertical: 14,
+  },
+  wodLessonTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    lineHeight: 26,
+  },
+  wodProgramLine: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
   },
   workoutLabelRow: {
     flexDirection: 'row',
@@ -1179,70 +1167,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start' as const,
   },
   workoutDoneBody: {
-    flex: 1,
     width: '100%',
+    minHeight: 180,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-  },
-  workoutLabelPill: {
-    alignSelf: 'flex-start' as const,
-    backgroundColor: colors.accentSubtle,
-    borderWidth: 1,
-    borderColor: 'rgba(167, 139, 250, 0.28)',
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    marginBottom: 10,
-  },
-  workoutLabelText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.accentLight,
-    letterSpacing: 1.2,
-  },
-  workoutDayBadge: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: colors.textMuted,
-    letterSpacing: 0.2,
-    paddingLeft: 14,
-  },
-  workoutTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    textAlign: 'left',
-    lineHeight: 36,
-  },
-  workoutAuthorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-  },
-  workoutAuthorPhotoRing: {
-    width: 58,
-    height: 58,
-    borderRadius: 999,
-    borderWidth: 2,
-    borderColor: 'rgba(167, 139, 250, 0.4)',
-    overflow: 'hidden',
-  },
-  workoutAuthorPhotoImg: {
-    width: '100%' as any,
-    height: '100%' as any,
-    transform: [{ scale: 1.6 }, { translateY: -5 }],
-  },
-  workoutAuthorName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  workoutAuthorCred: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: colors.accentLight,
-    marginTop: 2,
+    paddingVertical: spacing.lg,
   },
   workoutTitleDone: {
     fontSize: 20,
@@ -1263,20 +1192,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     marginTop: 10,
-  },
-  workoutMetaPill: {
-    backgroundColor: colors.accentSubtle,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(167, 139, 250, 0.3)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  workoutMeta: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.accentLight,
-    letterSpacing: 0.3,
   },
   wodStartRow: {
     flexDirection: 'row',
@@ -1317,6 +1232,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   wodScheduleBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1481,19 +1397,73 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     marginTop: spacing.md,
   },
-  devWodWrap: {
-    marginTop: spacing.lg,
+  moreProgramsCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
   },
-  devWodSectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    color: colors.textMuted,
-    marginBottom: 8,
+  moreProgramsHeader: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
   },
-  devWodEmpty: {
+  programRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(139, 92, 246, 0.14)',
+    borderRadius: 16,
+    padding: 10,
+    marginBottom: 10,
+  },
+  programRowAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  programRowAvatarImg: {
+    width: '100%' as any,
+    height: '100%' as any,
+  },
+  programRowAvatarPlaceholder: {
+    flex: 1,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  programRowCoach: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  programRowTitle: {
     fontSize: 13,
-    color: colors.textMuted,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    opacity: 0.85,
+    marginTop: 2,
+  },
+  exploreLibraryBtn: {
+    alignItems: 'center' as const,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSubtle,
+    paddingVertical: 13,
+    marginTop: 4,
+  },
+  exploreLibraryBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.accentLight,
+    letterSpacing: 0.2,
   },
   journalLabel: {
     fontSize: 9,

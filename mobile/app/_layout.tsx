@@ -10,6 +10,7 @@ import { PostHogRoot } from '@/components/PostHogRoot';
 import { SuperwallRoot } from '@/components/SuperwallRoot';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { parseAuthParamsFromUrl } from '@/lib/auth-redirects';
+import { setPendingRecoveryUrl } from '@/lib/recovery-link-store';
 import { clearInAppAuthHubEntry, takeInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { loadOnboardingProgress } from '@/lib/onboarding-local-state';
 import { prefetchHomeData } from '@/lib/api-cache';
@@ -51,10 +52,15 @@ function RouteGuard() {
   useEffect(() => {
     const maybeOpenRecovery = (url: string) => {
       if (recoveryNavRef.current) return;
-      if (!url.includes('access_token')) return;
-      if (!url.includes('type=recovery') && !url.includes('password-recovery')) return;
+      // Recovery links land on the password-recovery path (or carry type=recovery).
+      // The credential may be PKCE `code`, implicit tokens, or a `token_hash`.
+      if (!url.includes('password-recovery') && !url.includes('type=recovery')) return;
       const p = parseAuthParamsFromUrl(url);
-      if (p.access_token && p.refresh_token) {
+      const hasCredential = (p.access_token && p.refresh_token) || p.code || p.token_hash;
+      if (hasCredential) {
+        // Stash before navigating: on warm start this `url` event fires before the
+        // recovery screen mounts, and Linking.getInitialURL() returns null there.
+        setPendingRecoveryUrl(url);
         recoveryNavRef.current = true;
         router.replace('/(auth)/password-recovery' as any);
       }
@@ -249,6 +255,21 @@ function RouteGuard() {
           headerShown: true,
           animation: 'slide_from_right',
           headerBackTitle: 'Lesson',
+          headerStyle: { backgroundColor: '#000' },
+          headerTintColor: '#a78bfa',
+          headerTitleStyle: {
+            fontSize: 17,
+            fontWeight: '600',
+            color: '#f5f5f5',
+          },
+        }}
+      />
+      <Stack.Screen
+        name="programs"
+        options={{
+          headerShown: true,
+          animation: 'slide_from_right',
+          headerBackTitle: 'Home',
           headerStyle: { backgroundColor: '#000' },
           headerTintColor: '#a78bfa',
           headerTitleStyle: {

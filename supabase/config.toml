@@ -374,6 +374,9 @@ verify_jwt = false
 [functions.coaches]
 verify_jwt = false
 
+[functions.programs]
+verify_jwt = false
+
 [functions.onboarding-sample-lesson]
 verify_jwt = false
 
@@ -402,6 +405,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.push-reminders]
+verify_jwt = false
+
+[functions.auth-redirect]
 verify_jwt = false
 
 # [edge_runtime.secrets]

@@ -18,6 +18,14 @@ NO SECRETS IN THIS FILE. Reads from environment:
   SUPABASE_URL                 e.g. https://<ref>.supabase.co
   SUPABASE_SERVICE_ROLE_KEY    the rotated service-role key (never commit it)
 
+Optional — Coach Form (portal) project, the source of truth for coach profiles
+(coaches edit their profile there after exporting packs; one profile covers all
+of a coach's packs). When set, the loader merges the live profile over the
+pack manifest's coach snapshot:
+  COACHFORM_SUPABASE_URL       e.g. https://<portal-ref>.supabase.co
+  COACHFORM_SERVICE_ROLE_KEY   that project's service-role key
+  COACHFORM_ASSETS_BUCKET      portal photo bucket (default: coach-assets)
+
 Point these at STAGING first. Review on a dev account. Then run against prod.
 
 Usage:
@@ -49,6 +57,11 @@ AUDIO_BUCKET = os.environ.get("RELENTLESS_AUDIO_BUCKET", "lesson-audio")
 # until the browse UI is built, so they harmlessly live in lesson-audio for now.
 # Override RELENTLESS_IMAGE_BUCKET once a dedicated images bucket exists.
 IMAGE_BUCKET = os.environ.get("RELENTLESS_IMAGE_BUCKET", "lesson-audio")
+
+# Coach Form (portal) project — optional, see module docstring.
+COACHFORM_URL = os.environ.get("COACHFORM_SUPABASE_URL", "").strip().rstrip("/")
+COACHFORM_KEY = os.environ.get("COACHFORM_SERVICE_ROLE_KEY", "").strip()
+COACHFORM_ASSETS_BUCKET = os.environ.get("COACHFORM_ASSETS_BUCKET", "coach-assets")
 
 GAP_THRESHOLD = 1.2   # seconds of silence -> force a new caption cue
 MAX_CHARS = 75        # caption display limit
@@ -86,6 +99,11 @@ def _open(req, timeout):
         ) from None
 
 
+def rest_get(path_query):
+    req = Request(f"{URL}/rest/v1/{path_query}", headers=_auth_headers(json_body=False))
+    return json.loads(_open(req, timeout=60).read().decode("utf-8"))
+
+
 def rest_upsert(table, rows, on_conflict, returning=True):
     prefer = "resolution=merge-duplicates" + (",return=representation" if returning else "")
     url = f"{URL}/rest/v1/{table}?on_conflict={on_conflict}"
@@ -120,6 +138,53 @@ def content_type_for(path):
     if p.endswith(".jpg") or p.endswith(".jpeg"):
         return "image/jpeg"
     return "application/octet-stream"
+
+
+# ---------------------------------------------------------------------------
+# Coach Form (portal) profile merge. The portal's coaches table has no
+# coach_key; the Coach Form derives a pack's coach_key from the display name,
+# so we match by slug(display_name). Service-role key required (RLS bypass).
+# NOTE: a non-browser User-Agent is required — Supabase rejects sb_secret keys
+# sent from browser-looking clients.
+# ---------------------------------------------------------------------------
+def _coachform_headers():
+    return {"apikey": COACHFORM_KEY, "Authorization": f"Bearer {COACHFORM_KEY}",
+            "User-Agent": "relentless-loader/1.0"}
+
+
+def _slugify(name):
+    out = "".join(c if c.isalnum() else "-" for c in (name or "").strip().lower())
+    while "--" in out:
+        out = out.replace("--", "-")
+    return out.strip("-")
+
+
+def coachform_profile(coach_key, warnings):
+    """Fetch the canonical coach profile from the Coach Form project, matched by
+    slug(display_name) == coach_key. Returns None (with a warning) when the
+    portal is not configured or there is not exactly one match — never guesses."""
+    if not (COACHFORM_URL and COACHFORM_KEY):
+        return None
+    req = Request(f"{COACHFORM_URL}/rest/v1/coaches?select=*", headers=_coachform_headers())
+    rows = json.loads(_open(req, timeout=30).read().decode("utf-8"))
+    matches = [r for r in rows if _slugify(r.get("display_name")) == coach_key]
+    if len(matches) != 1:
+        warnings.append(
+            f"coach form: {len(matches)} profiles match coach_key {coach_key!r} "
+            "— using the pack manifest's coach snapshot instead"
+        )
+        return None
+    return matches[0]
+
+
+def coachform_photo_bytes(photo_path):
+    if not photo_path:
+        return None
+    req = Request(
+        f"{COACHFORM_URL}/storage/v1/object/{COACHFORM_ASSETS_BUCKET}/{photo_path}",
+        headers=_coachform_headers(),
+    )
+    return _open(req, timeout=120).read()
 
 
 # These lessons have NO ambient audio. The loader strips any ambient_audio key
@@ -361,6 +426,11 @@ def main():
     print(f"\nPack: coach={ck}  program={pk}  lessons={len(program['lessons'])}"
           f"  {'(DRY RUN)' if args.dry_run else ''}\n")
 
+    # --- Coach profile: live portal profile wins over the pack's snapshot ---
+    cf = coachform_profile(ck, warnings)
+    print("coach profile: merged from Coach Form portal" if cf
+          else "coach profile: pack manifest snapshot (portal not configured / no match)")
+
     # --- Upload coach photo + program cover ---
     def upload_image(rel):
         if not rel:
@@ -369,23 +439,48 @@ def main():
         if os.path.exists(local) and not args.dry_run:
             with open(local, "rb") as fh:
                 storage_upload(IMAGE_BUCKET, rel, fh.read(), content_type_for(rel))
-    upload_image(coach.get("photo"))
+
+    photo_rel = coach.get("photo") or (f"coach/{ck}.png" if cf and cf.get("photo_path") else None)
+    portal_photo = None
+    if cf and cf.get("photo_path") and not args.dry_run:
+        portal_photo = coachform_photo_bytes(cf["photo_path"])
+    if portal_photo and photo_rel:
+        storage_upload(IMAGE_BUCKET, photo_rel, portal_photo, content_type_for(photo_rel))
+    else:
+        upload_image(coach.get("photo"))
     upload_image(program.get("cover_image"))
 
     # --- Upsert coach (by coach_key) -> coach_id ---
+    def _trimmed(v):
+        return v.strip() if isinstance(v, str) and v.strip() else None
+
+    def pick(portal_field, manifest_value):
+        return (_trimmed(cf.get(portal_field)) if cf else None) or manifest_value
+
     coach_row = {
         "coach_key": ck,
-        "name": coach["display_name"],
-        "credentials": coach.get("credentials"),
-        "bio": coach.get("bio"),
-        "offer_label": coach.get("offer", {}).get("label"),
-        "external_url": coach.get("offer", {}).get("url"),
-        "avatar_url": coach.get("photo"),
+        "name": pick("display_name", coach["display_name"]),
+        "credentials": pick("credentials", coach.get("credentials")),
+        "bio": pick("bio", coach.get("bio")),
+        "offer_label": pick("offer_label", coach.get("offer", {}).get("label")),
+        "external_url": pick("offer_url", coach.get("offer", {}).get("url")),
+        "avatar_url": photo_rel,
     }
+    if cf:
+        coach_row["coachform_id"] = cf["id"]
     if args.dry_run:
         coach_id = "<dry-run-coach-id>"
     else:
-        coach_id = rest_upsert("coaches", [coach_row], on_conflict="coach_key")[0]["id"]
+        # Rename-safe convergence: coach_key derives from the display name, so a
+        # portal rename changes it. If a coach row already carries this portal
+        # id, update THAT row (its coach_key moves to the new slug) instead of
+        # forking a second coach.
+        existing = rest_get(f"coaches?coachform_id=eq.{cf['id']}&select=id") if cf else []
+        if existing:
+            coach_row["id"] = existing[0]["id"]
+            coach_id = rest_upsert("coaches", [coach_row], on_conflict="id")[0]["id"]
+        else:
+            coach_id = rest_upsert("coaches", [coach_row], on_conflict="coach_key")[0]["id"]
     print(f"coach_id = {coach_id}")
 
     # --- Upsert program (by coach_id + program_key) -> program_id ---
@@ -431,6 +526,9 @@ def main():
             "coach_id": coach_id,
             "program_id": program_id,
             "title": lesson["title"],
+            # Optional pre-lesson blurb (lessons.description). NULL = the app
+            # hides the description block, so older packs load unchanged.
+            "description": lesson.get("description"),
             "duration_seconds": duration,
             "lesson_type": "standard",
             "sequence": seq,

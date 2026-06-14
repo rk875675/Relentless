@@ -5,6 +5,8 @@ import {
   AppState,
   AppStateStatus,
   BackHandler,
+  Image,
+  Linking,
   PanResponder,
   Platform,
   ScrollView,
@@ -26,7 +28,7 @@ import { bustCache } from '@/lib/api-cache';
 import { setPendingGainDeltas } from '@/lib/pending-deltas';
 import { colors, spacing } from '@/lib/theme';
 import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
-import { trackLessonViewed, trackLessonStarted, trackLessonCompleted, trackReflectionSaved } from '@/lib/core-analytics';
+import { trackLessonViewed, trackLessonStarted, trackLessonCompleted, trackReflectionSaved, trackPartnerReferralCtaClicked } from '@/lib/core-analytics';
 import { incrementLessonsCompleted, maybeRequestAppStoreReview } from '@/lib/app-store-review-prompt';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import FormattedJournalBody from '@/components/FormattedJournalBody';
@@ -246,6 +248,18 @@ type ContentBlock =
   | ExamplesWithEntryBlock
   | AnchorEntryBlock;
 
+/** Coach display data attached (additively) to lesson responses by the server. */
+type CoachSummary = {
+  coach_key?: string | null;
+  name: string;
+  credentials?: string | null;
+  bio?: string | null;
+  /** Signed URL when the coach photo lives in storage. */
+  avatar_url?: string | null;
+  offer_label?: string | null;
+  external_url?: string | null;
+};
+
 type LessonDetail = {
   id: string;
   title: string;
@@ -256,7 +270,22 @@ type LessonDetail = {
   voiceover_url?: string | null;
   on_screen_text?: string | null;
   reflection_prompt?: string | null;
+  /** Optional coach-approved blurb shown on the start screen. */
+  description?: string | null;
+  program_day?: number | null;
+  program_title?: string | null;
+  program_total_days?: number | null;
+  coach?: CoachSummary | null;
 };
+
+const GRANT_PHOTO = require('../../assets/images/grant_chiasson_hero.png');
+
+/** Signed avatar from the API when present; bundled Grant photo as the fallback for the original program. */
+function coachAvatarSource(coach: CoachSummary): { uri: string } | number | null {
+  if (coach.avatar_url) return { uri: coach.avatar_url };
+  if (coach.coach_key === 'grant-chiasson') return GRANT_PHOTO;
+  return null;
+}
 
 type Phase =
   | 'loading'
@@ -2164,33 +2193,96 @@ export default function LessonPlayerScreen() {
         )}
 
         {phase === 'ready' && lesson && (
-          <View style={styles.readyRoot}>
+          <ScrollView
+            style={styles.readyRoot}
+            contentContainerStyle={styles.readyScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.readyCard}>
               <Text style={styles.readyTitle}>{lesson.title}</Text>
-              <View style={styles.readyMetaRow}>
-                <View style={styles.readyDurationPill}>
-                  <Text style={styles.readyDurationPillText}>
-                    {approxLessonMinutes(lesson.duration_seconds)} min
-                  </Text>
-                </View>
-              </View>
-              {lesson.lesson_type === 'standard' && (
-                <Text style={styles.readyTagline}>{STANDARD_WOD_READY_TAGLINE}</Text>
-              )}
-              {!hasBlocks && lesson.on_screen_text ? (
-                <View style={styles.readyDescWrap}>
-                  <Text style={styles.readyDesc}>{lesson.on_screen_text}</Text>
-                </View>
+              {typeof lesson.program_day === 'number' &&
+              lesson.program_title &&
+              lesson.program_total_days ? (
+                <Text style={styles.readyProgramLine}>
+                  {lesson.program_title} (Day {lesson.program_day}/{lesson.program_total_days})
+                </Text>
               ) : null}
+              {lesson.description ? (
+                <View style={styles.readyDescWrap}>
+                  <Text style={styles.readyDesc}>{lesson.description}</Text>
+                </View>
+              ) : (
+                <>
+                  {lesson.lesson_type === 'standard' && (
+                    <Text style={styles.readyTagline}>{STANDARD_WOD_READY_TAGLINE}</Text>
+                  )}
+                  {!hasBlocks && lesson.on_screen_text ? (
+                    <View style={styles.readyDescWrap}>
+                      <Text style={styles.readyDesc}>{lesson.on_screen_text}</Text>
+                    </View>
+                  ) : null}
+                </>
+              )}
               <TouchableOpacity
                 style={[styles.primaryBtn, styles.readyBeginBtn]}
                 onPress={startLesson}
                 activeOpacity={0.85}
               >
-                <Text style={styles.primaryBtnText}>Begin</Text>
+                <Text style={styles.primaryBtnText}>
+                  Begin - {approxLessonMinutes(lesson.duration_seconds)}min
+                </Text>
               </TouchableOpacity>
             </View>
-          </View>
+
+            {lesson.coach ? (
+              <View style={styles.coachCard}>
+                <View style={styles.coachHeaderRow}>
+                  <View style={styles.coachAvatarRing}>
+                    {coachAvatarSource(lesson.coach) ? (
+                      <Image
+                        source={coachAvatarSource(lesson.coach)!}
+                        style={styles.coachAvatarImg}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.coachAvatarPlaceholder}>
+                        <Ionicons name="person" size={26} color={colors.textSecondary} />
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.coachAboutLabel}>About your coach:</Text>
+                    <Text style={styles.coachName}>
+                      {lesson.coach.name}
+                      {lesson.coach.credentials ? `, ${lesson.coach.credentials}` : ''}
+                    </Text>
+                  </View>
+                </View>
+                {lesson.coach.bio ? <Text style={styles.coachBio}>{lesson.coach.bio}</Text> : null}
+                {lesson.coach.external_url ? (
+                  <TouchableOpacity
+                    style={styles.coachOfferBtn}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      const coach = lesson.coach;
+                      if (!coach?.external_url) return;
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      trackPartnerReferralCtaClicked({
+                        referral_partner_key: coach.coach_key ?? 'unknown',
+                        cta_placement: 'lesson_ready_coach_card',
+                        outbound_url: coach.external_url,
+                      });
+                      void Linking.openURL(coach.external_url);
+                    }}
+                  >
+                    <Text style={styles.coachOfferBtnText}>
+                      {lesson.coach.offer_label ?? 'Book a call'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
+          </ScrollView>
         )}
 
         {/* Block-mode: voiceover — text-centric, no timer */}
@@ -3551,6 +3643,9 @@ const styles = StyleSheet.create({
   },
   readyRoot: {
     flex: 1,
+  },
+  readyScrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xl,
@@ -3573,22 +3668,80 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     marginBottom: spacing.md,
   },
-  readyMetaRow: {
+  readyProgramLine: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: -spacing.sm,
+  },
+  coachCard: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginTop: spacing.md,
+  },
+  coachHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+  },
+  coachAvatarRing: {
+    width: 56,
+    height: 56,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: 'rgba(167, 139, 250, 0.4)',
+    overflow: 'hidden',
+  },
+  coachAvatarImg: {
+    width: '100%' as any,
+    height: '100%' as any,
+  },
+  coachAvatarPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
   },
-  readyDurationPill: {
-    backgroundColor: colors.accentSubtle,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-  },
-  readyDurationPillText: {
+  coachAboutLabel: {
     fontSize: 12,
-    fontWeight: '600',
-    color: colors.accent,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  coachName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    lineHeight: 20,
+  },
+  coachBio: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 21,
+    marginTop: spacing.md,
+  },
+  coachOfferBtn: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSubtle,
+    paddingVertical: 13,
+    marginTop: spacing.md,
+  },
+  coachOfferBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.accentLight,
     letterSpacing: 0.2,
   },
   readyTagline: {
