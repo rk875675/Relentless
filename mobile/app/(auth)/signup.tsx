@@ -100,7 +100,7 @@ export default function SignupScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#1A1A1B',
   },
   inner: {
     flex: 1,
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
   logo: {
     fontSize: 32,
     fontWeight: '900',
-    color: '#fff',
+    color: '#F2F2F7',
     textAlign: 'center',
     letterSpacing: 4,
     marginBottom: 8,
@@ -129,15 +129,15 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   input: {
-    backgroundColor: '#1a1a1a',
-    color: '#fff',
+    backgroundColor: '#2D2D2E',
+    color: '#F2F2F7',
     borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#424243',
   },
   button: {
     backgroundColor: '#fff',

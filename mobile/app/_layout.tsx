@@ -216,7 +216,7 @@ function RouteGuard() {
   }, [transitioning, fadeAnim]);
 
   if (!initialLoadDone.current && loading) {
-    return <View style={{ flex: 1, backgroundColor: '#000' }} />;
+    return <View style={{ flex: 1, backgroundColor: '#1A1A1B' }} />;
   }
 
   return (
@@ -224,7 +224,7 @@ function RouteGuard() {
     {transitioning && (
       <Animated.View
         pointerEvents="none"
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 999, opacity: fadeAnim }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#1A1A1B', zIndex: 999, opacity: fadeAnim }}
       />
     )}
     <Stack key={navPhase} screenOptions={{ headerShown: false, animation: 'fade' }}>
@@ -240,12 +240,12 @@ function RouteGuard() {
           headerShown: true,
           animation: 'slide_from_right',
           headerBackTitle: 'Lesson',
-          headerStyle: { backgroundColor: '#000' },
-          headerTintColor: '#a78bfa',
+          headerStyle: { backgroundColor: '#1A1A1B' },
+          headerTintColor: '#9B82D4',
           headerTitleStyle: {
             fontSize: 17,
             fontWeight: '600',
-            color: '#f5f5f5',
+            color: '#F2F2F7',
           },
         }}
       />
@@ -255,12 +255,12 @@ function RouteGuard() {
           headerShown: true,
           animation: 'slide_from_right',
           headerBackTitle: 'Lesson',
-          headerStyle: { backgroundColor: '#000' },
-          headerTintColor: '#a78bfa',
+          headerStyle: { backgroundColor: '#1A1A1B' },
+          headerTintColor: '#9B82D4',
           headerTitleStyle: {
             fontSize: 17,
             fontWeight: '600',
-            color: '#f5f5f5',
+            color: '#F2F2F7',
           },
         }}
       />
@@ -270,12 +270,12 @@ function RouteGuard() {
           headerShown: true,
           animation: 'slide_from_right',
           headerBackTitle: 'Home',
-          headerStyle: { backgroundColor: '#000' },
-          headerTintColor: '#a78bfa',
+          headerStyle: { backgroundColor: '#1A1A1B' },
+          headerTintColor: '#9B82D4',
           headerTitleStyle: {
             fontSize: 17,
             fontWeight: '600',
-            color: '#f5f5f5',
+            color: '#F2F2F7',
           },
         }}
       />
@@ -284,12 +284,12 @@ function RouteGuard() {
         options={{
           headerShown: true,
           headerBackTitle: 'Library',
-          headerStyle: { backgroundColor: '#000' },
-          headerTintColor: '#a78bfa',
+          headerStyle: { backgroundColor: '#1A1A1B' },
+          headerTintColor: '#9B82D4',
           headerTitleStyle: {
             fontSize: 17,
             fontWeight: '600',
-            color: '#f5f5f5',
+            color: '#F2F2F7',
           },
           title: '',
         }}

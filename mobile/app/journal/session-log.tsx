@@ -67,7 +67,7 @@ export default function SessionLogScreen() {
         options={{
           headerShown: true,
           headerBackTitle: 'Lesson',
-          headerStyle: { backgroundColor: '#000' },
+          headerStyle: { backgroundColor: '#1A1A1B' },
           headerTintColor: colors.accentLight,
           headerTitleStyle: {
             fontSize: 17,
