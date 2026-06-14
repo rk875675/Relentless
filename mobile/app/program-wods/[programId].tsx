@@ -24,6 +24,7 @@ type Lesson = {
   program_id?: string | null;
   program_title?: string | null;
   coach_name?: string | null;
+  coach_avatar_url?: string | null;
 };
 
 type LessonsResponse = {
@@ -49,7 +50,6 @@ export default function ProgramWodsScreen() {
 
   const [wods, setWods] = useState<Lesson[]>([]);
   const [programTitle, setProgramTitle] = useState('');
-  const [coachName, setCoachName] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -67,7 +67,6 @@ export default function ProgramWodsScreen() {
     setWods(filtered);
     if (filtered.length > 0) {
       setProgramTitle(filtered[0].program_title ?? '');
-      setCoachName(filtered[0].coach_name ?? '');
     }
   };
 
@@ -123,11 +122,6 @@ export default function ProgramWodsScreen() {
             onRefresh={() => void fetchLessons(true)}
             tintColor={colors.accent}
           />
-        }
-        ListHeaderComponent={
-          coachName
-            ? () => <Text style={styles.coachLabel}>{coachName}</Text>
-            : null
         }
         ListEmptyComponent={
           loading ? (
@@ -196,11 +190,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  coachLabel: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginBottom: 16,
   },
   errorWrap: {
     alignItems: 'center',

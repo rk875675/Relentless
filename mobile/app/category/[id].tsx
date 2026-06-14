@@ -3,6 +3,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Image,
   FlatList,
   TouchableOpacity,
   RefreshControl,
@@ -25,6 +26,7 @@ type Lesson = {
   program_id?: string | null;
   program_title?: string | null;
   coach_name?: string | null;
+  coach_avatar_url?: string | null;
 };
 
 type LessonsResponse = {
@@ -38,6 +40,7 @@ type ProgramBubble = {
   program_id: string;
   program_title: string;
   coach_name: string;
+  coach_avatar_url: string | null;
   wod_count: number;
 };
 
@@ -124,6 +127,7 @@ export default function CategoryScreen() {
         program_id: pid,
         program_title: w.program_title ?? 'Past WODs',
         coach_name: w.coach_name ?? '',
+        coach_avatar_url: w.coach_avatar_url ?? null,
         wod_count: wodLessons.filter((x) => (x.program_id ?? 'unknown') === pid).length,
       });
     }
@@ -174,19 +178,20 @@ export default function CategoryScreen() {
         router.push(`/program-wods/${bubble.program_id}?category=${id}` as any)
       }
     >
+      {bubble.coach_avatar_url ? (
+        <Image
+          source={{ uri: bubble.coach_avatar_url }}
+          style={styles.programBubbleAvatar}
+        />
+      ) : (
+        <View style={[styles.programBubbleAvatar, styles.programBubbleAvatarPlaceholder]} />
+      )}
       <View style={styles.programBubbleLeft}>
         <Text style={styles.programBubbleTitle}>{bubble.program_title}</Text>
-        {bubble.coach_name ? (
-          <Text style={styles.programBubbleMeta}>
-            {bubble.coach_name}
-            {' · '}
-            {bubble.wod_count} {bubble.wod_count === 1 ? 'lesson' : 'lessons'}
-          </Text>
-        ) : (
-          <Text style={styles.programBubbleMeta}>
-            {bubble.wod_count} {bubble.wod_count === 1 ? 'lesson' : 'lessons'}
-          </Text>
-        )}
+        <Text style={styles.programBubbleMeta}>
+          {bubble.coach_name ? `${bubble.coach_name} · ` : ''}
+          {bubble.wod_count} {bubble.wod_count === 1 ? 'lesson' : 'lessons'}
+        </Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
     </TouchableOpacity>
@@ -335,6 +340,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 14,
+  },
+  programBubbleAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  programBubbleAvatarPlaceholder: {
+    backgroundColor: colors.surfaceLight,
   },
   programBubbleLeft: {
     flex: 1,
@@ -343,7 +357,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: colors.textPrimary,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   programBubbleMeta: {
     fontSize: 13,

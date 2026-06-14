@@ -34,7 +34,7 @@ const PaginationSchema = z.object({
 const UuidSchema = z.string().uuid();
 
 const METADATA_COLUMNS =
-  "id, coach_id, title, duration_seconds, lesson_type, sort_order, program_id";
+  "id, coach_id, title, duration_seconds, lesson_type, sort_order, program_id, sequence";
 const DETAIL_COLUMNS =
   "id, coach_id, title, duration_seconds, lesson_type, voiceover_url, on_screen_text, reflection_prompt, content_blocks, sort_order, production_ready, description, program_id, sequence";
 
@@ -323,22 +323,38 @@ async function handleList(
   const items = (lessons ?? []).map((l: Record<string, unknown>) => {
     const lid = l.id as string;
 
+    // Prefer the program_schedule day; fall back to lesson.sequence for packs
+    // loaded via the new loader (they have program_id + sequence but no schedule row).
+    const schedDay = scheduledIds.has(lid) ? (dayNumberById.get(lid) ?? null) : null;
+    const seqDay: number | null =
+      schedDay === null &&
+      (l.program_id as string | null) != null &&
+      (l.sequence as number | null) != null
+        ? (l.sequence as number)
+        : null;
+
     return {
       ...l,
       categories: categoryMap.get(lid) ?? [],
-      program_day: scheduledIds.has(lid) ? (dayNumberById.get(lid) ?? null) : null,
+      program_day: schedDay ?? seqDay,
     };
   });
 
+  // v1 schedule gating: lesson is past-eligible once the program day has advanced.
+  // Non-schedule pack lessons: eligible only after the user has completed them.
   const pastWodLibraryEligible = (
     lessonId: string,
     programDay: number,
+    inSchedule: boolean,
   ): boolean => {
-    if (programDay < currentProgramDay) return true;
-    if (programDay === 30 && currentProgramDay === 30) {
-      return completedSet.has(lessonId);
+    if (inSchedule) {
+      if (programDay < currentProgramDay) return true;
+      if (programDay === 30 && currentProgramDay === 30) {
+        return completedSet.has(lessonId);
+      }
+      return false;
     }
-    return false;
+    return completedSet.has(lessonId);
   };
 
   // Regular lessons first (sort_order preserved), then eligible past WODs only.
@@ -347,19 +363,21 @@ async function handleList(
     .filter((l) => {
       const d = l.program_day as number | null;
       if (d === null) return false;
-      return pastWodLibraryEligible(l.id as string, d);
+      return pastWodLibraryEligible(l.id as string, d, scheduledIds.has(l.id as string));
     })
     .sort((a, b) => (a.program_day as number) - (b.program_day as number));
 
-  // Attach program_title and coach_name to WOD items so the client can render
-  // per-program bubbles without a second round-trip.
+  // Attach program_title, coach_name, and coach_avatar_url to WOD items so the
+  // client can render per-program bubbles without a second round-trip.
   const programIdSet = new Set<string>();
   for (const w of wods) {
     const pid = (w as { program_id?: string | null }).program_id;
     if (pid) programIdSet.add(pid);
   }
 
-  const programMeta = new Map<string, { title: string; coach_name: string }>();
+  type CoachMeta = { name: string; avatar_url: string | null };
+  const programMeta = new Map<string, { title: string; coach_name: string; coach_avatar_url: string | null }>();
+
   if (programIdSet.size > 0) {
     const pids = [...programIdSet];
     const { data: progRows } = await supabase
@@ -373,19 +391,31 @@ async function handleList(
     const { data: coachRows } = coachIdSet.size > 0
       ? await supabase
           .from("coaches")
-          .select("id, name")
+          .select("id, name, avatar_url")
           .in("id", [...coachIdSet])
       : { data: [] };
 
-    const coachNameById = new Map<string, string>();
-    for (const c of coachRows ?? []) {
-      coachNameById.set(c.id as string, c.name as string);
-    }
+    // Sign avatar storage paths; absolute URLs pass through untouched.
+    const coachById = new Map<string, CoachMeta>();
+    await Promise.all(
+      (coachRows ?? []).map(async (c) => {
+        let avatarUrl = (c.avatar_url as string | null) ?? null;
+        if (avatarUrl && !/^https?:\/\//i.test(avatarUrl)) {
+          const { data: signed } = await supabase.storage
+            .from(AUDIO_BUCKET)
+            .createSignedUrl(avatarUrl, SIGNED_URL_TTL);
+          avatarUrl = signed?.signedUrl ?? null;
+        }
+        coachById.set(c.id as string, { name: c.name as string, avatar_url: avatarUrl });
+      }),
+    );
 
     for (const p of progRows ?? []) {
+      const coach = coachById.get(p.coach_id as string);
       programMeta.set(p.id as string, {
         title: p.title as string,
-        coach_name: coachNameById.get(p.coach_id as string) ?? "",
+        coach_name: coach?.name ?? "",
+        coach_avatar_url: coach?.avatar_url ?? null,
       });
     }
   }
@@ -397,6 +427,7 @@ async function handleList(
       ...w,
       program_title: meta?.title ?? null,
       coach_name: meta?.coach_name ?? null,
+      coach_avatar_url: meta?.coach_avatar_url ?? null,
     };
   });
 
