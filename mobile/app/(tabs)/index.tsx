@@ -303,6 +303,10 @@ function pushPromptShownKey(userId: string): string {
   return `relentless:push_prompt_shown:${userId}`;
 }
 
+function programFeedbackSentKey(userId: string): string {
+  return `relentless:program_feedback_sent:${userId}`;
+}
+
 const MISS_REFLECTION_JOURNAL_PATH = '/journal?entry_type=miss_reflection&limit=1';
 
 type MissReflectionJournalListResponse = {
@@ -376,6 +380,11 @@ export default function HomeScreen() {
   const [keyboardBottomPad, setKeyboardBottomPad] = useState(0);
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [pushPromptBusy, setPushPromptBusy] = useState(false);
+  const [programComplete, setProgramComplete] = useState(false);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackSaved, setFeedbackSaved] = useState(false);
+  const [feedbackError, setFeedbackError] = useState('');
   const freebieScale = useRef(new Animated.Value(0)).current;
   const freebieOpacity = useRef(new Animated.Value(0)).current;
   const deltaDateRef = useRef<string | null>(null);
@@ -383,6 +392,7 @@ export default function HomeScreen() {
   const homeScrollYRef = useRef(0);
   const preWorkoutJournalFooterRef = useRef<View>(null);
   const missReflectionFooterRef = useRef<View>(null);
+  const sprintFeedbackFooterRef = useRef<View>(null);
   const journalCardRef = useRef<View>(null);
   const journalFocusedRef = useRef(false);
   const lastSavedJournalRef = useRef('');
@@ -452,6 +462,7 @@ export default function HomeScreen() {
         setLesson(cachedLesson.data);
         const rpt = cachedLesson.rawBody?.repeat_lesson;
         setLastWod(rpt ? (rpt as Lesson) : null);
+        setProgramComplete(cachedLesson.rawBody?.program_complete === true);
         setProgress(cachedProgress);
         setStreak(cachedStreak);
         setLoading(false);
@@ -497,6 +508,7 @@ export default function HomeScreen() {
     setLesson(nextLesson);
     const rpt = lessonRes.rawBody?.repeat_lesson;
     setLastWod(rpt ? (rpt as Lesson) : null);
+    if (!lessonRes.error) setProgramComplete(lessonRes.rawBody?.program_complete === true);
     const prog = progressRes.error ? emptyProgress : (progressRes.data ?? emptyProgress);
     setProgress(prog);
     const streakData = streakRes.error ? emptyStreak : (streakRes.data ?? emptyStreak);
@@ -544,6 +556,40 @@ export default function HomeScreen() {
     setJournalSaveError('');
     setJournalSavedHint(false);
   }, [lesson?.id]);
+
+  // Restore "feedback already sent" state so the completion screen shows the
+  // thank-you confirmation instead of the form on subsequent visits.
+  useEffect(() => {
+    if (!currentUserId) return;
+    let active = true;
+    void AsyncStorage.getItem(programFeedbackSentKey(currentUserId)).then((v) => {
+      if (active && v === 'true') setFeedbackSaved(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [currentUserId]);
+
+  const handleSubmitFeedback = useCallback(async () => {
+    const message = feedbackText.trim();
+    if (!message || feedbackSaving) return;
+    setFeedbackError('');
+    setFeedbackSaving(true);
+    const { error: fbErr } = await apiFetch('/program-feedback', {
+      method: 'POST',
+      body: { message },
+    });
+    setFeedbackSaving(false);
+    if (fbErr) {
+      setFeedbackError(fbErr);
+      return;
+    }
+    setFeedbackText('');
+    setFeedbackSaved(true);
+    if (currentUserId) {
+      void AsyncStorage.setItem(programFeedbackSentKey(currentUserId), 'true');
+    }
+  }, [feedbackText, feedbackSaving, currentUserId]);
 
   // Show the push notification pre-permission prompt once, after the first
   // successful home load. Uses `loading` (state) not `initialLoadDone` (ref)
@@ -881,6 +927,90 @@ export default function HomeScreen() {
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
+      ) : programComplete ? (
+        <View style={styles.sprintCard}>
+          <View style={styles.sprintIconWrap}>
+            <Ionicons name="trophy" size={32} color={colors.accentLight} />
+          </View>
+          <Text style={styles.sprintTitle}>You finished the{'\n'}Relentless 30-Day Sprint</Text>
+          <Text style={styles.sprintBody}>
+            Thirty days of showing up — that consistency is exactly what builds mental
+            toughness. Be proud of it.{'\n\n'}New programs are coming very soon. In the
+            meantime, keep training with the lessons in the Relentless Library.
+          </Text>
+          <TouchableOpacity
+            style={styles.sprintLibraryBtn}
+            activeOpacity={0.85}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/library' as any);
+            }}
+          >
+            <Ionicons name="library-outline" size={17} color={colors.white} />
+            <Text style={styles.sprintLibraryBtnText}>Go to the Library</Text>
+          </TouchableOpacity>
+
+          <View style={styles.sprintFeedbackBlock}>
+            {feedbackSaved ? (
+              <View style={styles.sprintThanksRow}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                <Text style={styles.sprintThanksText}>Thanks — we got your feedback.</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.sprintFeedbackLabel}>WE'D LOVE YOUR FEEDBACK</Text>
+                <Text style={styles.sprintFeedbackPrompt}>
+                  What did you think of the 30-day sprint? Anything we should add or change?
+                </Text>
+                <TextInput
+                  style={styles.sprintFeedbackInput}
+                  placeholder="Type your feedback..."
+                  placeholderTextColor={colors.textMuted}
+                  value={feedbackText}
+                  onChangeText={(t) => {
+                    setFeedbackText(t);
+                    if (feedbackError) setFeedbackError('');
+                  }}
+                  multiline
+                  scrollEnabled={false}
+                  editable={!feedbackSaving}
+                  maxLength={2000}
+                  onFocus={() =>
+                    scheduleScrollFooterAboveKeyboard(
+                      scrollRef,
+                      sprintFeedbackFooterRef,
+                      homeScrollYRef,
+                    )
+                  }
+                  onContentSizeChange={() =>
+                    scheduleScrollFooterAboveKeyboard(
+                      scrollRef,
+                      sprintFeedbackFooterRef,
+                      homeScrollYRef,
+                    )
+                  }
+                />
+                {feedbackError ? (
+                  <Text style={styles.missJournalError}>{feedbackError}</Text>
+                ) : null}
+                <View ref={sprintFeedbackFooterRef} collapsable={false}>
+                  <TouchableOpacity
+                    style={[
+                      styles.sprintSendBtn,
+                      (!feedbackText.trim() || feedbackSaving) && { opacity: 0.5 },
+                    ]}
+                    disabled={!feedbackText.trim() || feedbackSaving}
+                    onPress={() => void handleSubmitFeedback()}
+                  >
+                    <Text style={styles.sprintSendBtnText}>
+                      {feedbackSaving ? 'Sending...' : 'Send feedback'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
       ) : (
         <View style={styles.workoutCardOuter}>
           <View style={styles.workoutCardInner}>
@@ -934,7 +1064,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {!error && lesson && lastWod && lastWod.id !== lesson.id && (
+      {!error && !programComplete && lesson && lastWod && lastWod.id !== lesson.id && (
         <TouchableOpacity
           style={styles.repeatStandalone}
           onPress={() => void handleStartWorkout(lastWod.id)}
@@ -944,7 +1074,8 @@ export default function HomeScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Today's Focus — lightweight pre-session note */}
+      {/* Today's Focus — lightweight pre-session note (hidden once the sprint is done) */}
+      {!programComplete && (
       <View
         ref={journalCardRef}
         style={styles.journalCard}
@@ -995,6 +1126,7 @@ export default function HomeScreen() {
           )}
         </View>
       </View>
+      )}
 
       {__DEV__ && <DevWodSection />}
 
@@ -1141,6 +1273,112 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     overflow: 'hidden',
     marginBottom: spacing.md,
+  },
+  sprintCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.4)',
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
+    marginBottom: spacing.md,
+    alignItems: 'center',
+  },
+  sprintIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(167, 139, 250, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  sprintTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.white,
+    textAlign: 'center',
+    lineHeight: 28,
+    marginBottom: spacing.sm,
+  },
+  sprintBody: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 21,
+    marginBottom: spacing.lg,
+  },
+  sprintLibraryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.accent,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    alignSelf: 'stretch',
+  },
+  sprintLibraryBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  sprintFeedbackBlock: {
+    alignSelf: 'stretch',
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  sprintFeedbackLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: colors.accentLight,
+    marginBottom: 6,
+  },
+  sprintFeedbackPrompt: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 19,
+    marginBottom: spacing.sm,
+  },
+  sprintFeedbackInput: {
+    minHeight: 72,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    padding: 12,
+    fontSize: 14,
+    color: colors.white,
+    textAlignVertical: 'top',
+    marginBottom: spacing.sm,
+  },
+  sprintSendBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  sprintSendBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  sprintThanksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  sprintThanksText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.success,
   },
   workoutCardInner: {
     flexDirection: 'column',

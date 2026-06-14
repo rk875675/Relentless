@@ -397,9 +397,11 @@ function nextLessonResponse(
   data: unknown,
   repeatLesson: Record<string, unknown> | null,
   requestId: string,
+  programComplete = false,
 ): Response {
   const body: Record<string, unknown> = { data, request_id: requestId };
   if (repeatLesson) body.repeat_lesson = repeatLesson;
+  if (programComplete) body.program_complete = true;
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -494,7 +496,23 @@ async function handleNext(
       ? await lookupRepeatLesson(supabase, completedDay)
       : null;
 
-  return nextLessonResponse(lessonData, repeatLesson, requestId);
+  // Sprint completion: current_program_day caps at 30 (see complete_lesson), so
+  // once the day-30 lesson is completed the user has finished the program. We
+  // signal this to the client so it can render the "30-Day Sprint complete"
+  // screen instead of re-serving the day-30 WOD forever.
+  let programComplete = false;
+  if (day >= 30) {
+    const { data: day30Completion } = await supabase
+      .from("user_lesson_completions")
+      .select("lesson_id")
+      .eq("user_id", userId)
+      .eq("lesson_id", scheduleRow.lesson_id)
+      .limit(1)
+      .maybeSingle();
+    programComplete = !!day30Completion;
+  }
+
+  return nextLessonResponse(lessonData, repeatLesson, requestId, programComplete);
 }
 
 // ---------------------------------------------------------------------------
