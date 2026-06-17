@@ -50,6 +50,7 @@ export default function PasswordRecoveryScreen() {
   const [confirm, setConfirm] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const resolvedRef = useRef(false);
   // Isolated client so the recovery session never persists or logs the user in.
   const recoveryRef = useRef<ReturnType<typeof createRecoveryClient> | null>(null);
@@ -153,9 +154,10 @@ export default function PasswordRecoveryScreen() {
         setSaveError(upErr.message);
         return;
       }
-      // In-memory recovery session is discarded on unmount; just go to login.
+      // Discard the in-memory recovery session, then show a success screen with
+      // an explicit "Sign in" button instead of bouncing the user away.
       await recovery.auth.signOut();
-      router.replace('/(auth)/login' as any);
+      setDone(true);
     } finally {
       setSaving(false);
     }
@@ -188,6 +190,19 @@ export default function PasswordRecoveryScreen() {
 
   if (!sessionReady) {
     return null;
+  }
+
+  if (done) {
+    return (
+      <View style={styles.centerPadded}>
+        <Text style={styles.logo}>RELENTLESS</Text>
+        <Text style={styles.title}>Password updated</Text>
+        <Text style={styles.sub}>Your password has been changed. Sign in with your new password to continue.</Text>
+        <TouchableOpacity style={styles.button} onPress={() => router.replace('/(auth)/login' as any)}>
+          <Text style={styles.buttonText}>Sign in</Text>
+        </TouchableOpacity>
+      </View>
+    );
   }
 
   return (
