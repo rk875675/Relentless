@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  Alert,
   Animated,
   Image,
   Keyboard,
   Modal,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -30,6 +32,8 @@ import { MoreProgramsSkeleton, WorkoutCardSkeleton } from '@/components/Skeleton
 import { getPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
+import { coachAvatarSource } from '@/lib/coach-photo';
+import { selectProgram } from '@/lib/switch-program';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import {
   trackPartnerReferralCtaClicked,
@@ -42,6 +46,14 @@ import {
   trackPushPermissionDenied,
 } from '@/lib/core-analytics';
 import { registerForPushNotifications } from '@/lib/push-notifications';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { isWorkoutSchedulingEnabled } from '@/lib/app-env';
+import {
+  loadWorkoutSchedule,
+  setWorkoutSchedule,
+  clearWorkoutSchedule,
+  type WorkoutSchedule,
+} from '@/lib/workout-schedule';
 
 // Single source of truth for the Workout-of-the-Day card. Used by the real WOD
 // and the dev multi-coach preview, so any change to the WOD UI applies to all
@@ -140,6 +152,10 @@ type RecommendedProgram = {
   coach_name: string;
   coach_sport?: string | null;
   coach_avatar_url?: string | null;
+  /** Whether the user has previously started this pack (offer Continue vs Start). */
+  started?: boolean;
+  /** Stored day to resume from on Continue. */
+  current_day?: number | null;
 };
 
 type Progress = {
@@ -226,6 +242,20 @@ function safePct(n: number | undefined): number {
 /** Outbound Grant Chiasson sessions page (referral partner). */
 const GRANT_CHIASSON_REFERRAL_URL = 'https://grantchiasson.com/home';
 
+/**
+ * In-app workout scheduling is a non-production-only feature. In production
+ * builds this stays false, so the Schedule button keeps its existing behavior
+ * (the partner referral CTA) and nothing changes for any user.
+ */
+const WORKOUT_SCHEDULING_ENABLED = isWorkoutSchedulingEnabled();
+
+/** Formats a 24h local time as e.g. "7:05 AM" for confirmation copy. */
+function formatScheduleTime(hour: number, minute: number): string {
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  const ampm = hour < 12 ? 'AM' : 'PM';
+  return `${h12}:${minute.toString().padStart(2, '0')} ${ampm}`;
+}
+
 const GRANT_PHOTO = require('../../assets/images/grant_chiasson_hero.png');
 
 /** Signed avatar from the API when present; bundled Grant photo as the fallback for the original program. */
@@ -282,6 +312,15 @@ export default function HomeScreen() {
   const [keyboardBottomPad, setKeyboardBottomPad] = useState(0);
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [pushPromptBusy, setPushPromptBusy] = useState(false);
+  // In-app workout scheduling (non-production builds only — gated by
+  // WORKOUT_SCHEDULING_ENABLED). Independent of the server push reminders above.
+  const [schedulePickerVisible, setSchedulePickerVisible] = useState(false);
+  const [workoutSchedule, setWorkoutScheduleState] = useState<WorkoutSchedule | null>(null);
+  const [pendingScheduleTime, setPendingScheduleTime] = useState<Date>(() => {
+    const d = new Date();
+    d.setHours(7, 0, 0, 0);
+    return d;
+  });
   const [programComplete, setProgramComplete] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackSaving, setFeedbackSaving] = useState(false);
@@ -454,28 +493,67 @@ export default function HomeScreen() {
     }, [fetchData]),
   );
 
+  const refreshPrograms = useCallback(async () => {
+    const res = await apiFetch<{ items: RecommendedProgram[] }>('/programs');
+    if (res.data) {
+      setRecPrograms(res.data.items ?? []);
+      setCached('/programs', res.data);
+    } else {
+      // Error: keep cached items if we had them, otherwise hide the rail.
+      setRecPrograms((prev) => prev ?? []);
+    }
+  }, []);
+
   // "More programs you might like" rail — hidden when the API returns nothing
   // (which is always the case for non-dev users today). Cache-then-network so
   // the skeleton only ever shows on the first load of a session.
   useFocusEffect(
     useCallback(() => {
-      let active = true;
       const cached = getCached<{ items: RecommendedProgram[] }>('/programs');
       if (cached) setRecPrograms(cached.items ?? []);
-      void apiFetch<{ items: RecommendedProgram[] }>('/programs').then((res) => {
-        if (!active) return;
-        if (res.data) {
-          setRecPrograms(res.data.items ?? []);
-          setCached('/programs', res.data);
-        } else {
-          // Error: keep cached items if we had them, otherwise hide the rail.
-          setRecPrograms((prev) => prev ?? []);
+      void refreshPrograms();
+    }, [refreshPrograms]),
+  );
+
+  // Switch the active lesson pack. A previously-started pack offers Continue vs
+  // Restart; a new pack just starts at day 1. On success the daily WOD flips to
+  // the selected pack (caches busted + refetched). Completions are never lost.
+  const handleSwitchProgram = useCallback(
+    (p: RecommendedProgram) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      const applySelection = async (mode: 'continue' | 'restart') => {
+        const err = await selectProgram(p.id, mode);
+        if (err) {
+          Alert.alert('Could not switch program', err);
+          return;
         }
-      });
-      return () => {
-        active = false;
+        await fetchData();
+        await refreshPrograms();
       };
-    }, []),
+
+      if (p.started) {
+        Alert.alert(
+          p.title,
+          `You've started this pack${typeof p.current_day === 'number' ? ` (day ${p.current_day})` : ''}. Continue where you left off, or restart from day 1?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Restart', style: 'destructive', onPress: () => void applySelection('restart') },
+            { text: 'Continue', onPress: () => void applySelection('continue') },
+          ],
+        );
+      } else {
+        Alert.alert(
+          p.title,
+          'Make this your daily workout pack?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Start', onPress: () => void applySelection('restart') },
+          ],
+        );
+      }
+    },
+    [fetchData, refreshPrograms],
   );
 
   useEffect(() => {
@@ -647,8 +725,30 @@ export default function HomeScreen() {
     router.push(`/lesson/${targetId}` as any);
   };
 
+  useEffect(() => {
+    if (!WORKOUT_SCHEDULING_ENABLED) return;
+    void loadWorkoutSchedule().then((s) => {
+      if (!s) return;
+      setWorkoutScheduleState(s);
+      const d = new Date();
+      d.setHours(s.hour, s.minute, 0, 0);
+      setPendingScheduleTime(d);
+    });
+  }, []);
+
   const handleScheduleSession = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Non-production: open the in-app workout-time scheduler. No referral CTA.
+    if (WORKOUT_SCHEDULING_ENABLED) {
+      if (workoutSchedule) {
+        const d = new Date();
+        d.setHours(workoutSchedule.hour, workoutSchedule.minute, 0, 0);
+        setPendingScheduleTime(d);
+      }
+      setSchedulePickerVisible(true);
+      return;
+    }
+    // Production: unchanged partner referral CTA.
     trackPartnerReferralCtaClicked({
       referral_partner_key: 'grant_chiasson',
       cta_placement: 'home_wod_card',
@@ -658,6 +758,33 @@ export default function HomeScreen() {
       premium: hasPremiumAccess,
     });
     void Linking.openURL(GRANT_CHIASSON_REFERRAL_URL);
+  };
+
+  const handleSaveSchedule = async () => {
+    const hour = pendingScheduleTime.getHours();
+    const minute = pendingScheduleTime.getMinutes();
+    setSchedulePickerVisible(false);
+    const res = await setWorkoutSchedule(hour, minute);
+    if (res.ok) {
+      setWorkoutScheduleState(res.schedule);
+      Alert.alert(
+        'Reminder set',
+        `We'll remind you to do your workout at ${formatScheduleTime(hour, minute)} every day.`,
+      );
+    } else if (res.reason === 'permission_denied') {
+      Alert.alert(
+        'Notifications are off',
+        'Turn on notifications for Relentless in Settings to get workout reminders.',
+      );
+    } else {
+      Alert.alert('Could not set reminder', res.message ?? 'Please try again.');
+    }
+  };
+
+  const handleClearSchedule = async () => {
+    setSchedulePickerVisible(false);
+    await clearWorkoutSchedule();
+    setWorkoutScheduleState(null);
   };
 
   const streakIsReset = showMissReflection && !missJournalDismissed && streak?.current_streak === 0;
@@ -1048,17 +1175,22 @@ export default function HomeScreen() {
       </View>
       )}
 
-      {/* More programs you might like — visual rail, rows are not tappable */}
+      {/* More programs you might like — tap a row to switch your daily workout pack */}
       {recPrograms === null && <MoreProgramsSkeleton />}
       {recPrograms !== null && recPrograms.length > 0 && (
         <View style={styles.moreProgramsCard}>
           <Text style={styles.moreProgramsHeader}>More programs you might like:</Text>
           {recPrograms.map((p) => (
-            <View key={p.id} style={styles.programRow}>
+            <TouchableOpacity
+              key={p.id}
+              style={styles.programRow}
+              activeOpacity={0.85}
+              onPress={() => handleSwitchProgram(p)}
+            >
               <View style={styles.programRowAvatar}>
-                {p.coach_avatar_url ? (
+                {coachAvatarSource(p.coach_avatar_url, p.coach_name) ? (
                   <Image
-                    source={{ uri: p.coach_avatar_url }}
+                    source={coachAvatarSource(p.coach_avatar_url, p.coach_name)!}
                     style={styles.programRowAvatarImg}
                     resizeMode="cover"
                   />
@@ -1075,7 +1207,8 @@ export default function HomeScreen() {
                 </Text>
                 <Text style={styles.programRowTitle}>{p.title}</Text>
               </View>
-            </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
           ))}
           <TouchableOpacity
             style={styles.exploreLibraryBtn}
@@ -1146,6 +1279,51 @@ export default function HomeScreen() {
         </View>
       </View>
     </Modal>
+
+    {WORKOUT_SCHEDULING_ENABLED && schedulePickerVisible && (
+      <Modal visible transparent animationType="fade" onRequestClose={() => setSchedulePickerVisible(false)}>
+        <View style={styles.scheduleOverlay} pointerEvents="box-none">
+          <Pressable
+            style={styles.scheduleBackdrop}
+            accessibilityRole="button"
+            accessibilityLabel="Close schedule picker"
+            onPress={() => setSchedulePickerVisible(false)}
+          />
+          <View style={styles.scheduleSheet}>
+            <Text style={styles.scheduleTitle}>Schedule your workout</Text>
+            <Text style={styles.scheduleBody}>
+              Pick a time and we{"'"}ll remind you each day if you haven{"'"}t opened the app.
+            </Text>
+            <View style={styles.schedulePickerWrap}>
+              <DateTimePicker
+                value={pendingScheduleTime}
+                mode="time"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                textColor={colors.textPrimary}
+                onChange={(_event: any, selected?: Date) => {
+                  if (selected) setPendingScheduleTime(selected);
+                }}
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.pushPromptPrimaryBtn}
+              onPress={() => { void handleSaveSchedule(); }}
+            >
+              <Text style={styles.pushPromptPrimaryText}>Set reminder</Text>
+            </TouchableOpacity>
+            {workoutSchedule ? (
+              <TouchableOpacity style={styles.pushPromptSecondaryBtn} onPress={() => { void handleClearSchedule(); }}>
+                <Text style={styles.pushPromptSecondaryText}>Remove reminder</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.pushPromptSecondaryBtn} onPress={() => setSchedulePickerVisible(false)}>
+                <Text style={styles.pushPromptSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+    )}
 
     </View>
   );
@@ -1924,5 +2102,42 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 15,
     fontWeight: '500',
+  },
+  scheduleOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+  },
+  scheduleBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  scheduleSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 36,
+  },
+  scheduleTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: 0.2,
+  },
+  scheduleBody: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 8,
+  },
+  schedulePickerWrap: {
+    alignItems: 'center',
+    marginBottom: 12,
   },
 });
