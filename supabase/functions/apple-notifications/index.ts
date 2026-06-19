@@ -1,4 +1,5 @@
 import { createServiceClient } from "../_shared/supabase.ts";
+import { verifyAppleJws, type AppleJwsResult } from "../_shared/apple_jws.ts";
 
 // ---------------------------------------------------------------------------
 // Apple App Store Server Notifications v2 — PostHog proxy
@@ -149,12 +150,27 @@ Deno.serve(async (req) => {
     return new Response("OK", { status: 200 });
   }
 
-  const notification = decodeJwtPayload<NotificationPayload>(signedPayload);
-  if (!notification) {
+  // Verify Apple's signature on the outer signedPayload before trusting or
+  // acting on ANY of its contents. A payload whose Apple signature cannot be
+  // verified is a forgery and is rejected.
+  let verification: AppleJwsResult<NotificationPayload>;
+  try {
+    verification = await verifyAppleJws<NotificationPayload>(signedPayload);
+  } catch (err) {
+    // The verifier itself failed unexpectedly. Do NOT break Superwall's
+    // pipeline (they verify Apple signatures independently): forward the raw
+    // payload but do not act on it ourselves.
+    console.error("[apple-notifications] verifier crashed; forwarding without acting", err);
     await forwardToSuperwall(rawBody);
-    console.warn("[apple-notifications] Failed to decode signedPayload");
     return new Response("OK", { status: 200 });
   }
+
+  if (!verification.ok) {
+    console.warn("[apple-notifications] Rejected: Apple signature could not be verified");
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const notification = verification.payload;
 
   const { notificationType, data } = notification;
 

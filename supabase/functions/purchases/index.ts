@@ -12,6 +12,7 @@ import {
   checkIdempotencyKey,
   storeIdempotencyKey,
 } from "../_shared/idempotency.ts";
+import { verifyAppleJws } from "../_shared/apple_jws.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -167,15 +168,15 @@ Deno.serve(async (req) => {
         isSandbox = transactionResult.isSandbox;
       } else {
         // All Apple REST API paths failed. If the client sent the StoreKit-issued
-        // signed transaction info (JWS), decode it as a last-resort fallback.
-        // The JWS is signed by Apple and carries the bundleId — it cannot be
-        // forged without Apple's private key.
+        // signed transaction info (JWS), use it as a last-resort fallback — but
+        // ONLY after cryptographically verifying Apple's signature + x5c chain.
+        // An unverified JWS can be forged, so it must never grant entitlement.
         if (clientSignedTx) {
-          const directResult = resolveEntitlementFromSignedTransaction(clientSignedTx);
-          if (directResult.entitlementStatus !== "none") {
+          const directResult = await resolveEntitlementFromVerifiedClientJws(clientSignedTx);
+          if (directResult && directResult.entitlementStatus !== "none") {
             resolvedEntitlement = directResult;
             isSandbox = true;
-            console.warn("[purchases/restore] Used client signedTransactionInfo fallback (Apple API unavailable)", { requestId });
+            console.warn("[purchases/restore] Used Apple-verified client signedTransactionInfo fallback (Apple API unavailable)", { requestId });
           }
         }
         if (!resolvedEntitlement) {
@@ -204,13 +205,15 @@ Deno.serve(async (req) => {
       resolvedEntitlement = transactionResult.entitlement;
       isSandbox = transactionResult.isSandbox;
     } else {
-      // All Apple REST API paths failed. Try the client-provided JWS fallback.
+      // All Apple REST API paths failed. Try the client-provided JWS fallback —
+      // but only after verifying Apple's signature + x5c chain, so a forged
+      // token can never grant an entitlement.
       if (clientSignedTx) {
-        const directResult = resolveEntitlementFromSignedTransaction(clientSignedTx);
-        if (directResult.entitlementStatus !== "none") {
+        const directResult = await resolveEntitlementFromVerifiedClientJws(clientSignedTx);
+        if (directResult && directResult.entitlementStatus !== "none") {
           resolvedEntitlement = directResult;
           isSandbox = false;
-          console.warn("[purchases/restore] Used client signedTransactionInfo fallback (Apple API unavailable)", { requestId });
+          console.warn("[purchases/restore] Used Apple-verified client signedTransactionInfo fallback (Apple API unavailable)", { requestId });
         }
       }
       if (!resolvedEntitlement) {
@@ -573,6 +576,24 @@ type AppleTransactionPayload = {
   isTrialPeriod?: boolean;
   is_trial_period?: boolean;
 };
+
+/**
+ * Apple-authenticated path for the client-provided StoreKit JWS fallback.
+ *
+ * Unlike Apple's REST API responses (which arrive over Apple's authenticated
+ * TLS endpoint), the client-supplied JWS is attacker-controllable. We therefore
+ * verify the ES256 signature and the x5c certificate chain against Apple's
+ * pinned root BEFORE trusting any claim. Returns null when the JWS is not
+ * genuinely Apple-signed, so a forged token can never grant an entitlement.
+ */
+async function resolveEntitlementFromVerifiedClientJws(
+  signedTransactionInfo: string,
+): Promise<ResolvedEntitlement | null> {
+  const verified = await verifyAppleJws<AppleTransactionPayload>(signedTransactionInfo);
+  if (!verified.ok) return null;
+  if (verified.payload.bundleId !== BUNDLE_ID) return null;
+  return resolveEntitlementFromSignedTransaction(signedTransactionInfo);
+}
 
 function resolveEntitlementFromSignedTransaction(signedTransactionInfo: string): ResolvedEntitlement {
   const payload = decodeJwtPayload<AppleTransactionPayload>(signedTransactionInfo);
