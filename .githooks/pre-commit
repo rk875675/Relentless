@@ -1,0 +1,27 @@
+#!/bin/sh
+# Blocks commits that contain likely secret values (not just env var names).
+# Setup once per clone:  git config core.hooksPath .githooks
+# See .cursor/rules/no-hardcoded-secrets.mdc for the full policy.
+
+diff="$(git diff --cached -U0 -- . ':!*.lock' ':!*.lockb')"
+[ -z "$diff" ] && exit 0
+
+# Only scan added lines (start with a single '+', not '+++').
+added="$(printf '%s\n' "$diff" | grep -E '^\+[^+]')"
+[ -z "$added" ] && exit 0
+
+# Patterns for real secret VALUES. Deliberately excludes sb_publishable_/pk_/phc_
+# (those are public-by-design keys) and bare var names like SUPABASE_SERVICE_ROLE_KEY.
+pattern='sb_secret_[A-Za-z0-9_-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|(eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})'
+
+hits="$(printf '%s\n' "$added" | grep -E "$pattern")"
+if [ -n "$hits" ]; then
+  echo "pre-commit: blocked - a staged change looks like it contains a real secret value:" >&2
+  echo "$hits" | sed 's/^/  /' >&2
+  echo "" >&2
+  echo "Move it to a gitignored .env / CI secret store instead. If this is a false positive," >&2
+  echo "adjust the pattern in .githooks/pre-commit, don't bypass with --no-verify." >&2
+  exit 1
+fi
+
+exit 0
