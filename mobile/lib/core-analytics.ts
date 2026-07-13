@@ -38,6 +38,37 @@ export function trackLibraryUnlocked(properties?: CoreProps): void {
   captureCoreEvent('library_unlocked', properties);
 }
 
+/**
+ * Lesson pack (coach program) selection — covers every entry point where a
+ * user can view or act on a pack (Library, Programs list, Pack detail).
+ * `program_id` is the only stable identifier the /programs endpoints return
+ * (no coach_key/program_key slug there, unlike /lessons) — use it + the
+ * human-readable coach_name/program_title for breakdowns.
+ */
+export function trackPackOpened(
+  properties: CoreProps & {
+    program_id?: string | null;
+    program_title?: string | null;
+    coach_name?: string | null;
+    source_screen: 'library';
+  },
+): void {
+  captureCoreEvent('pack_opened', properties);
+}
+
+export function trackPackCtaClicked(
+  properties: CoreProps & {
+    program_id?: string | null;
+    program_title?: string | null;
+    coach_name?: string | null;
+    /** activate = first-time switch; try_day1 = preview without switching. */
+    action: 'activate' | 'continue' | 'restart' | 'try_day1' | 'start_today_workout';
+    source_screen: 'programs' | 'pack_detail';
+  },
+): void {
+  captureCoreEvent('pack_cta_clicked', properties);
+}
+
 /** Shell affordances */
 export function trackStreakViewed(properties?: CoreProps): void {
   captureCoreEvent('streak_viewed', properties);
@@ -48,7 +79,14 @@ export function trackProgressRingViewed(properties?: CoreProps): void {
 }
 
 /** Outbound referral partner (e.g. sports psych) — no PII beyond flags already safe for analytics */
-export function trackPartnerReferralCtaClicked(properties: CoreProps): void {
+export function trackPartnerReferralCtaClicked(
+  properties: CoreProps & {
+    program_id?: string | null;
+    program_key?: string | null;
+    program_title?: string | null;
+    coach_key?: string | null;
+  },
+): void {
   captureCoreEvent('partner_referral_cta_clicked', properties);
 }
 
@@ -93,4 +131,8 @@ export function trackAppStoreReviewPromptSkipped(
   properties: CoreProps & { reason: string },
 ): void {
   captureCoreEvent('app_store_review_prompt_skipped', properties);
+}
+
+export function trackAppStoreReviewManualTapped(properties?: CoreProps): void {
+  captureCoreEvent('app_store_review_manual_tapped', properties);
 }

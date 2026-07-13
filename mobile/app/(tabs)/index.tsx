@@ -33,8 +33,8 @@ import { getPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { coachAvatarSource } from '@/lib/coach-photo';
-import { selectProgram } from '@/lib/switch-program';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
+import { maybeRequestAppStoreReview } from '@/lib/app-store-review-prompt';
 import {
   trackPartnerReferralCtaClicked,
   trackWodViewed,
@@ -45,9 +45,10 @@ import {
   trackPushRemindersEnabled,
   trackPushPermissionDenied,
 } from '@/lib/core-analytics';
-import { registerForPushNotifications } from '@/lib/push-notifications';
+import { registerForPushNotifications, requestNotificationPermission } from '@/lib/push-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { isWorkoutSchedulingEnabled } from '@/lib/app-env';
+import { DEMO_ALL_BLOCKS_LESSON_ID, SHOW_DEMO_ALL_BLOCKS_LESSON } from '@/lib/dev-vault';
 import {
   loadWorkoutSchedule,
   setWorkoutSchedule,
@@ -140,7 +141,9 @@ type Lesson = {
   /** Active program day (1–30) when returned from `/lessons/next` */
   program_day?: number;
   program_version?: string;
+  program_id?: string | null;
   program_title?: string | null;
+  program_key?: string | null;
   program_total_days?: number | null;
   coach?: CoachSummary | null;
 };
@@ -207,8 +210,14 @@ function pushPromptShownKey(userId: string): string {
   return `relentless:push_prompt_shown:${userId}`;
 }
 
-function programFeedbackSentKey(userId: string): string {
-  return `relentless:program_feedback_sent:${userId}`;
+/**
+ * Per-user AND per-program: after finishing pack A and sending feedback, a
+ * later pack B completion must show the feedback form again, not the
+ * thank-you state. Legacy sprint completions (program_version 'v1' / no
+ * program_id) map to 'v1', which also matches the key's pre-pack behavior.
+ */
+function programFeedbackSentKey(userId: string, programId: string | null | undefined): string {
+  return `relentless:program_feedback_sent:${userId}:${programId ?? 'v1'}`;
 }
 
 const MISS_REFLECTION_JOURNAL_PATH = '/journal?entry_type=miss_reflection&limit=1';
@@ -249,6 +258,14 @@ const GRANT_CHIASSON_REFERRAL_URL = 'https://grantchiasson.com/home';
  */
 const WORKOUT_SCHEDULING_ENABLED = isWorkoutSchedulingEnabled();
 
+/**
+ * The server's push-reminders Edge Function only ever sends its evening_nudge
+ * reminder during this local hour (see `resolveReminderType` in
+ * supabase/functions/push-reminders/index.ts). Kept in sync manually since the
+ * two systems live in different deploy targets.
+ */
+const SERVER_EVENING_NUDGE_HOUR = 19;
+
 /** Formats a 24h local time as e.g. "7:05 AM" for confirmation copy. */
 function formatScheduleTime(hour: number, minute: number): string {
   const h12 = hour % 12 === 0 ? 12 : hour % 12;
@@ -286,6 +303,7 @@ export default function HomeScreen() {
     session,
     onboardingComplete,
     hasPremiumAccess,
+    isDevAccount,
   } = useAuth();
   const currentUserId = session?.user?.id ?? null;
   const router = useRouter();
@@ -340,6 +358,8 @@ export default function HomeScreen() {
   const journalFocusedRef = useRef(false);
   const lastSavedJournalRef = useRef('');
   const initialLoadDone = useRef(false);
+  /** Quiet retries for the post-purchase entitlement race (see fetchData). */
+  const entitlementRetryRef = useRef(0);
 
   const journalPrompt = "What's on your mind going into today's session?";
 
@@ -437,6 +457,25 @@ export default function HomeScreen() {
         : Promise.resolve(null),
     ]);
 
+    // Post-purchase race: a brand-new account can land on Home moments before
+    // the purchase sync has written its entitlement row (Apple sandbox is
+    // slow), so the server briefly 403s ENTITLEMENT_REQUIRED for a user who
+    // just paid. Retry quietly (up to 3x, backing off) behind the skeleton
+    // instead of flashing "Active subscription required" in red.
+    const entitlementBlocked =
+      lessonRes.errorCode === 'ENTITLEMENT_REQUIRED' ||
+      progressRes.errorCode === 'ENTITLEMENT_REQUIRED' ||
+      streakRes.errorCode === 'ENTITLEMENT_REQUIRED';
+    if (entitlementBlocked && entitlementRetryRef.current < 3) {
+      entitlementRetryRef.current += 1;
+      setRefreshing(false);
+      setTimeout(() => {
+        void fetchData(false);
+      }, 1500 * entitlementRetryRef.current);
+      return;
+    }
+    if (!entitlementBlocked) entitlementRetryRef.current = 0;
+
     if (lessonRes.error) {
       setError(lessonRes.error);
     }
@@ -457,7 +496,14 @@ export default function HomeScreen() {
     const streakData = streakRes.error ? emptyStreak : (streakRes.data ?? emptyStreak);
     setStreak(streakData);
 
-    if (nextLesson) trackWodViewed({ lesson_id: nextLesson.id });
+    if (nextLesson) {
+      trackWodViewed({
+        lesson_id: nextLesson.id,
+        program_id: nextLesson.program_id ?? null,
+        program_key: nextLesson.program_key ?? null,
+        coach_key: nextLesson.coach?.coach_key ?? null,
+      });
+    }
     if (!streakRes.error) trackStreakViewed({ current_streak: streakData.current_streak });
     if (!progressRes.error) trackProgressRingViewed();
 
@@ -493,6 +539,21 @@ export default function HomeScreen() {
     }, [fetchData]),
   );
 
+  // App Store review prompt: check eligibility on every return to Home, but
+  // never on the very first focus (Apple's guidelines say not to prompt at
+  // app launch). All real gating (min lessons, 90-day cooldown, flags) lives
+  // in maybeRequestAppStoreReview.
+  const skipFirstReviewCheckRef = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (skipFirstReviewCheckRef.current) {
+        skipFirstReviewCheckRef.current = false;
+        return;
+      }
+      void maybeRequestAppStoreReview();
+    }, []),
+  );
+
   const refreshPrograms = useCallback(async () => {
     const res = await apiFetch<{ items: RecommendedProgram[] }>('/programs');
     if (res.data) {
@@ -515,46 +576,13 @@ export default function HomeScreen() {
     }, [refreshPrograms]),
   );
 
-  // Switch the active lesson pack. A previously-started pack offers Continue vs
-  // Restart; a new pack just starts at day 1. On success the daily WOD flips to
-  // the selected pack (caches busted + refetched). Completions are never lost.
-  const handleSwitchProgram = useCallback(
-    (p: RecommendedProgram) => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-      const applySelection = async (mode: 'continue' | 'restart') => {
-        const err = await selectProgram(p.id, mode);
-        if (err) {
-          Alert.alert('Could not switch program', err);
-          return;
-        }
-        await fetchData();
-        await refreshPrograms();
-      };
-
-      if (p.started) {
-        Alert.alert(
-          p.title,
-          `You've started this pack${typeof p.current_day === 'number' ? ` (day ${p.current_day})` : ''}. Continue where you left off, or restart from day 1?`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Restart', style: 'destructive', onPress: () => void applySelection('restart') },
-            { text: 'Continue', onPress: () => void applySelection('continue') },
-          ],
-        );
-      } else {
-        Alert.alert(
-          p.title,
-          'Make this your daily workout pack?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Start', onPress: () => void applySelection('restart') },
-          ],
-        );
-      }
-    },
-    [fetchData, refreshPrograms],
-  );
+  // Tapping a featured program row goes straight to the full library (same
+  // destination as the "Explore the full library" button below) instead of
+  // popping a restart/continue/cancel prompt right on Home.
+  const goToLibrary = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/programs' as any);
+  }, [router]);
 
   useEffect(() => {
     setJournalText('');
@@ -564,26 +592,38 @@ export default function HomeScreen() {
   }, [lesson?.id]);
 
   // Restore "feedback already sent" state so the completion screen shows the
-  // thank-you confirmation instead of the form on subsequent visits.
+  // thank-you confirmation instead of the form on subsequent visits. Keyed per
+  // program; the un-suffixed legacy key (written before packs existed) still
+  // counts for sprint users who already sent feedback.
   useEffect(() => {
     if (!currentUserId) return;
+    const programId = lesson?.program_id ?? null;
     let active = true;
-    void AsyncStorage.getItem(programFeedbackSentKey(currentUserId)).then((v) => {
-      if (active && v === 'true') setFeedbackSaved(true);
-    });
+    void (async () => {
+      const v = await AsyncStorage.getItem(programFeedbackSentKey(currentUserId, programId));
+      const legacy =
+        lesson?.program_version === 'v1' || !lesson?.program_title
+          ? await AsyncStorage.getItem(`relentless:program_feedback_sent:${currentUserId}`)
+          : null;
+      if (active) setFeedbackSaved(v === 'true' || legacy === 'true');
+    })();
     return () => {
       active = false;
     };
-  }, [currentUserId]);
+  }, [currentUserId, lesson?.program_id, lesson?.program_version, lesson?.program_title]);
 
   const handleSubmitFeedback = useCallback(async () => {
     const message = feedbackText.trim();
     if (!message || feedbackSaving) return;
     setFeedbackError('');
     setFeedbackSaving(true);
+    // Label pack feedback with the program title; the legacy sprint keeps the
+    // server default ('v1') so existing rows stay consistent.
+    const programTitle =
+      lesson?.program_version !== 'v1' ? lesson?.program_title ?? null : null;
     const { error: fbErr } = await apiFetch('/program-feedback', {
       method: 'POST',
-      body: { message },
+      body: { message, ...(programTitle ? { program: programTitle } : {}) },
     });
     setFeedbackSaving(false);
     if (fbErr) {
@@ -593,9 +633,12 @@ export default function HomeScreen() {
     setFeedbackText('');
     setFeedbackSaved(true);
     if (currentUserId) {
-      void AsyncStorage.setItem(programFeedbackSentKey(currentUserId), 'true');
+      void AsyncStorage.setItem(
+        programFeedbackSentKey(currentUserId, lesson?.program_id ?? null),
+        'true',
+      );
     }
-  }, [feedbackText, feedbackSaving, currentUserId]);
+  }, [feedbackText, feedbackSaving, currentUserId, lesson]);
 
   // Show the push notification pre-permission prompt once, after the first
   // successful home load. Uses `loading` (state) not `initialLoadDone` (ref)
@@ -719,7 +762,14 @@ export default function HomeScreen() {
     const targetId = overrideId ?? lesson?.id;
     if (!targetId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    trackWodStarted({ lesson_id: targetId, is_repeat: Boolean(overrideId) });
+    const attributionLesson = overrideId ? lastWod : lesson;
+    trackWodStarted({
+      lesson_id: targetId,
+      is_repeat: Boolean(overrideId),
+      program_id: attributionLesson?.program_id ?? null,
+      program_key: attributionLesson?.program_key ?? null,
+      coach_key: attributionLesson?.coach?.coach_key ?? null,
+    });
     await flushPreWorkoutJournal();
     bustCache('/lessons/next', '/progress', '/streak');
     router.push(`/lesson/${targetId}` as any);
@@ -736,10 +786,25 @@ export default function HomeScreen() {
     });
   }, []);
 
-  const handleScheduleSession = () => {
+  const handleScheduleSession = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     // Non-production: open the in-app workout-time scheduler. No referral CTA.
     if (WORKOUT_SCHEDULING_ENABLED) {
+      // Ask for notification permission in direct response to this tap, before
+      // opening the picker — Apple-compliant (user-initiated) and the feature
+      // degrades gracefully (picker never opens) if denied.
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        Alert.alert(
+          'Notifications are off',
+          'Workout reminders need notifications turned on. Enable them in Settings to schedule a reminder.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => void Linking.openSettings() },
+          ],
+        );
+        return;
+      }
       if (workoutSchedule) {
         const d = new Date();
         d.setHours(workoutSchedule.hour, workoutSchedule.minute, 0, 0);
@@ -748,16 +813,25 @@ export default function HomeScreen() {
       setSchedulePickerVisible(true);
       return;
     }
-    // Production: unchanged partner referral CTA.
+    // Production: partner referral CTA, tied to the active lesson pack's
+    // coach (falls back to the last WOD's coach when there's no upcoming
+    // lesson, e.g. "All caught up"). Grant's URL/key remain the default only
+    // when no coach data is available at all.
+    const ctaCoach = lesson?.coach ?? lastWod?.coach ?? null;
+    const outboundUrl = ctaCoach?.external_url ?? GRANT_CHIASSON_REFERRAL_URL;
     trackPartnerReferralCtaClicked({
-      referral_partner_key: 'grant_chiasson',
+      referral_partner_key: ctaCoach?.coach_key ?? 'grant-chiasson',
       cta_placement: 'home_wod_card',
-      outbound_url: GRANT_CHIASSON_REFERRAL_URL,
+      outbound_url: outboundUrl,
       authenticated: Boolean(session),
       onboarding_completed: onboardingComplete,
       premium: hasPremiumAccess,
+      program_id: lesson?.program_id ?? null,
+      program_key: lesson?.program_key ?? null,
+      program_title: lesson?.program_title ?? null,
+      coach_key: ctaCoach?.coach_key ?? null,
     });
-    void Linking.openURL(GRANT_CHIASSON_REFERRAL_URL);
+    void Linking.openURL(outboundUrl);
   };
 
   const handleSaveSchedule = async () => {
@@ -767,6 +841,19 @@ export default function HomeScreen() {
     const res = await setWorkoutSchedule(hour, minute);
     if (res.ok) {
       setWorkoutScheduleState(res.schedule);
+      // Notification permission was already granted (gated before the picker
+      // opened) — also register the push token so the account's server-side
+      // reminder setup (push_reminders_enabled) stays consistent with this
+      // local schedule, EXCEPT when the chosen time falls inside the server's
+      // fixed evening-nudge hour (19:00–19:59, see push-reminders Edge
+      // Function) — registering there would guarantee a same-hour duplicate
+      // (the local reminder + the server's evening_nudge push). Skipping the
+      // registration in that case leaves any existing server reminder state
+      // untouched (multi_day_miss reminders keep working) while avoiding the
+      // new duplicate. Fire-and-forget: local reminder is already saved above.
+      if (hour !== SERVER_EVENING_NUDGE_HOUR) {
+        void registerForPushNotifications();
+      }
       Alert.alert(
         'Reminder set',
         `We'll remind you to do your workout at ${formatScheduleTime(hour, minute)} every day.`,
@@ -986,23 +1073,61 @@ export default function HomeScreen() {
           <View style={styles.sprintIconWrap}>
             <Ionicons name="trophy" size={32} color={colors.accentLight} />
           </View>
-          <Text style={styles.sprintTitle}>You finished the{'\n'}Relentless 30-Day Sprint</Text>
-          <Text style={styles.sprintBody}>
-            Thirty days of showing up — that consistency is exactly what builds mental
-            toughness. Be proud of it.{'\n\n'}New programs are coming very soon. In the
-            meantime, keep training with the lessons in the Relentless Library.
-          </Text>
+          {lesson?.program_version === 'v1' || !lesson?.program_title ? (
+            <>
+              <Text style={styles.sprintTitle}>You finished the{'\n'}Relentless 30-Day Sprint</Text>
+              <Text style={styles.sprintBody}>
+                Thirty days of showing up — that consistency is exactly what builds mental
+                toughness. Be proud of it.{'\n\n'}Keep training — try another program, or
+                revisit lessons in the Relentless Library.
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.sprintTitle}>You finished{'\n'}{lesson.program_title}</Text>
+              <Text style={styles.sprintBody}>
+                Every lesson, done — that consistency is exactly what builds mental
+                toughness. Be proud of it.{'\n\n'}Keep training — try another program, or
+                revisit lessons in the Relentless Library.
+              </Text>
+            </>
+          )}
           <TouchableOpacity
             style={styles.sprintLibraryBtn}
+            activeOpacity={0.85}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/programs' as any);
+            }}
+          >
+            <Ionicons name="rocket-outline" size={17} color={colors.white} />
+            <Text style={styles.sprintLibraryBtnText}>Try another program</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.sprintSecondaryBtn}
             activeOpacity={0.85}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push('/library' as any);
             }}
           >
-            <Ionicons name="library-outline" size={17} color={colors.white} />
-            <Text style={styles.sprintLibraryBtnText}>Go to the Library</Text>
+            <Ionicons name="library-outline" size={17} color={colors.accentLight} />
+            <Text style={styles.sprintSecondaryBtnText}>Go to the Library</Text>
           </TouchableOpacity>
+          {WORKOUT_SCHEDULING_ENABLED ? (
+            <TouchableOpacity
+              style={styles.sprintSecondaryBtn}
+              activeOpacity={0.85}
+              onPress={() => void handleScheduleSession()}
+            >
+              <Ionicons name="calendar-outline" size={17} color={colors.accentLight} />
+              <Text style={styles.sprintSecondaryBtnText}>
+                {workoutSchedule
+                  ? `Reminder set for ${formatScheduleTime(workoutSchedule.hour, workoutSchedule.minute)}`
+                  : 'Schedule a daily reminder'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           <View style={styles.sprintFeedbackBlock}>
             {feedbackSaved ? (
@@ -1014,7 +1139,9 @@ export default function HomeScreen() {
               <>
                 <Text style={styles.sprintFeedbackLabel}>WE'D LOVE YOUR FEEDBACK</Text>
                 <Text style={styles.sprintFeedbackPrompt}>
-                  What did you think of the 30-day sprint? Anything we should add or change?
+                  {lesson?.program_version !== 'v1' && lesson?.program_title
+                    ? `What did you think of ${lesson.program_title}? Anything we should add or change?`
+                    : 'What did you think of the 30-day sprint? Anything we should add or change?'}
                 </Text>
                 <TextInput
                   style={styles.sprintFeedbackInput}
@@ -1175,17 +1302,17 @@ export default function HomeScreen() {
       </View>
       )}
 
-      {/* More programs you might like — tap a row to switch your daily workout pack */}
+      {/* Featured programs — tap a row (or "Explore the full library") to browse programs */}
       {recPrograms === null && <MoreProgramsSkeleton />}
       {recPrograms !== null && recPrograms.length > 0 && (
         <View style={styles.moreProgramsCard}>
-          <Text style={styles.moreProgramsHeader}>More programs you might like:</Text>
+          <Text style={styles.moreProgramsHeader}>Featured programs:</Text>
           {recPrograms.map((p) => (
             <TouchableOpacity
               key={p.id}
               style={styles.programRow}
               activeOpacity={0.85}
-              onPress={() => handleSwitchProgram(p)}
+              onPress={goToLibrary}
             >
               <View style={styles.programRowAvatar}>
                 {coachAvatarSource(p.coach_avatar_url, p.coach_name) ? (
@@ -1213,16 +1340,23 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={styles.exploreLibraryBtn}
             activeOpacity={0.85}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/programs' as any);
-            }}
+            onPress={goToLibrary}
           >
             <Text style={styles.exploreLibraryBtnText}>Explore the full library</Text>
           </TouchableOpacity>
         </View>
       )}
 
+      {/* Vaulted dev demo — set SHOW_DEMO_ALL_BLOCKS_LESSON in dev-vault.ts to re-enable. */}
+      {SHOW_DEMO_ALL_BLOCKS_LESSON && (isDevAccount || __DEV__) && (
+        <TouchableOpacity
+          style={styles.demoAllBlocksBtn}
+          activeOpacity={0.85}
+          onPress={() => router.push(`/lesson/${DEMO_ALL_BLOCKS_LESSON_ID}` as any)}
+        >
+          <Text style={styles.demoAllBlocksBtnText}>Demo: All Block Types</Text>
+        </TouchableOpacity>
+      )}
 
     </ScrollView>
 
@@ -1456,6 +1590,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: colors.white,
+  },
+  sprintSecondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    alignSelf: 'stretch',
+    marginTop: spacing.sm,
+  },
+  sprintSecondaryBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.accentLight,
   },
   sprintFeedbackBlock: {
     alignSelf: 'stretch',
@@ -1880,6 +2033,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.accentLight,
     letterSpacing: 0.2,
+  },
+  demoAllBlocksBtn: {
+    marginTop: 32,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.textMuted,
+    alignItems: 'center' as const,
+  },
+  demoAllBlocksBtnText: {
+    fontSize: 13,
+    color: colors.textMuted,
   },
   journalLabel: {
     fontSize: 9,

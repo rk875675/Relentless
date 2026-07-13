@@ -14,6 +14,15 @@
  *
  * Gated to non-production builds — callers should guard with
  * `isWorkoutSchedulingEnabled()` from `./app-env`.
+ *
+ * Double-fire reconciliation: the server's evening reminder (`push-reminders`
+ * Edge Function) only fires at 19:00–19:59 user local time, and only if the
+ * user hasn't completed today's WOD by then. Callers of `setWorkoutSchedule`
+ * should skip registering the server-side push token/flag (see
+ * `registerForPushNotifications` in `./push-notifications`) when the chosen
+ * hour equals the server's fixed evening-nudge hour, so the two systems never
+ * fire within the same hour for the same user. See `SERVER_EVENING_NUDGE_HOUR`
+ * usage in `app/(tabs)/index.tsx`.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';

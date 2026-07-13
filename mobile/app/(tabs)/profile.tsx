@@ -34,9 +34,14 @@ import {
   trackPushRemindersEnabled,
   trackPushRemindersDisabled,
   trackPushPermissionDenied,
+  trackAppStoreReviewManualTapped,
 } from '@/lib/core-analytics';
 
 const MAX_DISPLAY_NAME_LEN = 80;
+
+// Deep link straight to Apple's review composer for this app.
+// App Store Connect app ID — matches ascAppId in mobile/eas.json.
+const APP_STORE_REVIEW_URL = 'https://apps.apple.com/app/id6762413686?action=write-review';
 
 type Streak = {
   current_streak: number;
@@ -319,6 +324,12 @@ export default function ProfileScreen() {
     Linking.openURL('https://apps.apple.com/account/subscriptions');
   };
 
+  const handleRateApp = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    trackAppStoreReviewManualTapped();
+    Linking.openURL(APP_STORE_REVIEW_URL);
+  };
+
   const performAccountDeletion = async () => {
     if (deleteBusy) return;
     setDeleteBusy(true);
@@ -536,6 +547,14 @@ export default function ProfileScreen() {
             router.push('/journal' as any);
           }}
         />
+        {Platform.OS === 'ios' && (
+          <ProfileRow
+            icon="star-outline"
+            label="Rate Relentless"
+            chevron
+            onPress={handleRateApp}
+          />
+        )}
         <ProfileToggleRow
           icon="notifications-outline"
           label="Workout reminders"

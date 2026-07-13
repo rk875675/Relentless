@@ -100,6 +100,8 @@ type TimedExerciseBlock = {
   rep_count?: number;
   phase_labels?: BoxBreathingPhaseLabels;
   mid_overlay?: BoxBreathingMidOverlay;
+  /** Coach Portal packs: multiple optional overlays (replaces single mid_overlay). */
+  mid_overlays?: BoxBreathingMidOverlay[];
   // Flexible breathing: ordered inhale/hold/exhale phases repeated rep_count times.
   // Present instead of steps[] when interactive_model === 'breathing'.
   pattern?: BreathingPhase[];
@@ -254,6 +256,7 @@ type CoachSummary = {
   name: string;
   credentials?: string | null;
   bio?: string | null;
+  long_bio?: string | null;
   /** Signed URL when the coach photo lives in storage. */
   avatar_url?: string | null;
   offer_label?: string | null;
@@ -273,7 +276,9 @@ type LessonDetail = {
   /** Optional coach-approved blurb shown on the start screen. */
   description?: string | null;
   program_day?: number | null;
+  program_id?: string | null;
   program_title?: string | null;
+  program_key?: string | null;
   program_total_days?: number | null;
   coach?: CoachSummary | null;
 };
@@ -297,6 +302,7 @@ type Phase =
   | 'completing'
   | 'done'
   | 'streak'
+  | 'pack_complete'
   | 'error';
 
 /** Shown on the ready screen for program (standard) WODs only; same copy as former home card subtitle. */
@@ -416,6 +422,32 @@ function breathAnimScalarFromWallMs(
 /** Total seconds of one full breathing pattern cycle. */
 function patternCycleSeconds(pattern: BreathingPhase[]): number {
   return pattern.reduce((sum, p) => sum + p.duration_seconds, 0);
+}
+
+/**
+ * Active mid-exercise overlay for a breathing block at the given elapsed time.
+ * Supports the Coach Portal's mid_overlays array (multiple overlays), falling
+ * back to the legacy single mid_overlay. Each overlay shows for its
+ * duration_seconds starting the moment rep `after_rep` completes.
+ */
+function activeBreathingOverlay(
+  block: TimedExerciseBlock,
+  elapsedSec: number,
+  cycleSec: number,
+): BoxBreathingMidOverlay | null {
+  if (cycleSec <= 0) return null;
+  const overlays = block.mid_overlays?.length
+    ? block.mid_overlays
+    : block.mid_overlay
+      ? [block.mid_overlay]
+      : [];
+  for (const ov of overlays) {
+    const startSec = ov.after_rep * cycleSec;
+    if (elapsedSec >= startSec && elapsedSec < startSec + ov.duration_seconds) {
+      return ov;
+    }
+  }
+  return null;
 }
 
 /**
@@ -540,12 +572,23 @@ export default function LessonPlayerScreen() {
     phaseRef.current = phase;
   }, [phase]);
   const [errorMsg, setErrorMsg] = useState('');
+  const [coachBioExpanded, setCoachBioExpanded] = useState(false);
   const [journalText, setJournalText] = useState('');
   const [journalExerciseContext, setJournalExerciseContext] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [doneDeltas, setDoneDeltas] = useState<Record<string, { amount: number; reason: string }> | null>(null);
+  /** Journal POST in completeLesson() failed — surfaced as a non-blocking notice; never blocks completion. */
+  const [journalSaveFailed, setJournalSaveFailed] = useState(false);
   const [streakCount, setStreakCount] = useState(0);
   const preStreakDateRef = useRef<string | null>(null);
+  // Set when THIS completion finished the user's active lesson pack (server-
+  // authoritative pack_completed flag). Drives the celebratory pack_complete
+  // phase after the Workout Complete screen.
+  const [packComplete, setPackComplete] = useState<{ title: string | null } | null>(null);
+  const [packFeedbackText, setPackFeedbackText] = useState('');
+  const [packFeedbackSaving, setPackFeedbackSaving] = useState(false);
+  const [packFeedbackSaved, setPackFeedbackSaved] = useState(false);
+  const [packFeedbackError, setPackFeedbackError] = useState('');
   // Accumulates written content from component-block exercises for the journal.
   const journalPartsRef = useRef<string[]>([]);
 
@@ -746,7 +789,12 @@ export default function LessonPlayerScreen() {
         setJournalExerciseContext('');
         loadedLessonIdRef.current = id;
         setLesson(data);
-        trackLessonViewed({ lesson_id: data.id });
+        trackLessonViewed({
+          lesson_id: data.id,
+          program_id: data.program_id ?? null,
+          program_key: data.program_key ?? null,
+          coach_key: data.coach?.coach_key ?? null,
+        });
         setPhase('ready');
       })();
       return () => {
@@ -867,14 +915,19 @@ export default function LessonPlayerScreen() {
     else if (prompt && exerciseParts.length === 0) journalTail.push(prompt);
     const parts = [...exerciseParts, ...journalTail].filter(Boolean);
     if (parts.length > 0) {
-      await apiFetch('/journal', {
+      const { error: journalErr } = await apiFetch('/journal', {
         method: 'POST',
         body: { body: parts.join('\n\n---\n\n'), lesson_id: currentLesson.id },
       });
+      // Never block lesson completion on a journal save failure — just surface
+      // a non-blocking notice on the completion screen.
+      if (journalErr) setJournalSaveFailed(true);
     }
 
     const { data: completeData, error } = await apiFetch<{
       progress?: { deltas?: Record<string, { amount: number; reason: string }> };
+      pack_completed?: boolean;
+      pack_title?: string | null;
     }>(`/lessons/${currentLesson.id}/complete`, {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKeyRef.current },
@@ -893,12 +946,41 @@ export default function LessonPlayerScreen() {
         setPendingGainDeltas(completeData.progress.deltas as any);
         setDoneDeltas(completeData.progress.deltas);
       }
+      if (completeData?.pack_completed) {
+        setPackComplete({ title: completeData.pack_title ?? null });
+      }
       bustCache('/lessons/next', '/progress', '/streak');
-      trackLessonCompleted({ lesson_id: currentLesson.id });
+      trackLessonCompleted({
+        lesson_id: currentLesson.id,
+        program_id: currentLesson.program_id ?? null,
+        program_key: currentLesson.program_key ?? null,
+        coach_key: currentLesson.coach?.coach_key ?? null,
+      });
       incrementLessonsCompleted();
       setPhase('done');
     }
   }, []);
+
+  // -----------------------------------------------------------------------
+  // Block-based: progress bar reset between blocks. The bar represents only
+  // the current block's progress, so a completed block should visibly reach
+  // 100% before the next block starts it back at 0. Resetting uses setValue
+  // (not a timing animation) to avoid a janky 1 -> 0 slide. `resettingProgressBarRef`
+  // tells the general progress-sync effect (below) to stand down while this
+  // sequence is in flight, so it doesn't cancel the "reach 100%" animation.
+  // -----------------------------------------------------------------------
+  const resettingProgressBarRef = useRef(false);
+  const animateBlockCompletionAndReset = useCallback(() => {
+    resettingProgressBarRef.current = true;
+    Animated.timing(progressAnim, {
+      toValue: 1,
+      duration: 150,
+      useNativeDriver: false,
+    }).start(() => {
+      progressAnim.setValue(0);
+      resettingProgressBarRef.current = false;
+    });
+  }, [progressAnim]);
 
   // -----------------------------------------------------------------------
   // Block-based: advance to next block
@@ -912,10 +994,11 @@ export default function LessonPlayerScreen() {
       completeLesson();
       return;
     }
+    animateBlockCompletionAndReset();
     blockIndexRef.current = nextIdx;
     setBlockIndex(nextIdx);
     startBlock(nextIdx);
-  }, [completeLesson, stopAllTimers]);
+  }, [completeLesson, stopAllTimers, animateBlockCompletionAndReset]);
 
   // -----------------------------------------------------------------------
   // Block-based: start a specific block
@@ -1349,7 +1432,12 @@ export default function LessonPlayerScreen() {
   // -----------------------------------------------------------------------
   const startLesson = () => {
     if (!lesson) return;
-    trackLessonStarted({ lesson_id: lesson.id });
+    trackLessonStarted({
+      lesson_id: lesson.id,
+      program_id: lesson.program_id ?? null,
+      program_key: lesson.program_key ?? null,
+      coach_key: lesson.coach?.coach_key ?? null,
+    });
     sessionActive.current = true;
     setElapsed(0);
     setPhase('playing');
@@ -1918,60 +2006,60 @@ export default function LessonPlayerScreen() {
     return macAccentColorsRaw[blockIndex % macAccentColorsRaw.length] ?? catColor;
   }, [isMultiMac, macAccentColorsRaw, catColor, blockIndex]);
 
-  // Block-mode: weight every block by its real duration so the bar runs at
-  // a steady visual pace and reaches 100% exactly when the lesson ends.
-  // Tap-based blocks contribute proportionally per tap.
-  const lessonTotalWeight = useMemo(
-    () => (hasBlocks ? blocks.reduce((acc, b) => acc + blockWeightSeconds(b), 0) : 0),
-    [hasBlocks, blocks],
-  );
-
-  const overallLessonProgress = useMemo(() => {
-    if (!hasBlocks || lessonTotalWeight <= 0) return 0;
+  // Block-mode: the bar represents ONLY the current block's internal
+  // progress (0..1), not overall lesson completion. Each block type's
+  // within-block fraction reuses `blockWeightSeconds` purely as the
+  // per-block normalization denominator (matches its own duration/step
+  // estimate); there's no cross-block weighting/summing anymore. Block
+  // boundaries are handled separately by `animateBlockCompletionAndReset`.
+  const currentBlockProgress = useMemo(() => {
+    if (!hasBlocks) return 0;
     if (!showPlayingChrome && phase !== 'block_journal') return 0;
 
-    let elapsedWeight = 0;
-    for (let i = 0; i < blockIndex; i++) elapsedWeight += blockWeightSeconds(blocks[i]);
-
     const currentBlock = blocks[blockIndex];
-    if (currentBlock) {
-      const w = blockWeightSeconds(currentBlock);
-      let withinSec = 0;
-      if (currentBlock.type === 'voiceover') {
-        withinSec = audioFallbackActive.current
-          ? audioFallbackElapsed
-          : cumulativeOffsetRef.current + audioStatus.currentTime;
-      } else if (currentBlock.type === 'timed_exercise') {
-        withinSec = isTextStepExercise(currentBlock)
-          ? (exerciseStepIndex / Math.max(1, currentBlock.steps.length)) * w
-          : exerciseElapsed;
-      } else if (currentBlock.type === 'tap_through_text') {
-        withinSec = (tapThroughIndex / Math.max(1, currentBlock.paragraphs.length)) * w;
-      } else if (currentBlock.type === 'flash_cards') {
-        const base = (flashCardIndex / Math.max(1, currentBlock.cards.length)) * w;
-        const day3 =
-          lessonRef.current?.id === LESSON_DAY3_BASELINE_ID &&
-          baselineFlashScore !== null;
-        withinSec = base + (day3 ? (0.35 * w) / Math.max(1, currentBlock.cards.length) : 0);
-      } else if (currentBlock.type === 'prompt_cards') {
-        withinSec = (promptCardsIndex / Math.max(1, currentBlock.cards.length)) * w;
-      }
-      elapsedWeight += Math.min(w, withinSec);
-    }
+    if (!currentBlock) return 0;
 
-    return Math.min(1, elapsedWeight / lessonTotalWeight);
+    const w = blockWeightSeconds(currentBlock);
+    if (w <= 0) return 0;
+    let withinSec = 0;
+    if (currentBlock.type === 'voiceover') {
+      withinSec = audioFallbackActive.current
+        ? audioFallbackElapsed
+        : cumulativeOffsetRef.current + audioStatus.currentTime;
+    } else if (currentBlock.type === 'timed_exercise') {
+      withinSec = isTextStepExercise(currentBlock)
+        ? (exerciseStepIndex / Math.max(1, currentBlock.steps.length)) * w
+        : exerciseElapsed;
+    } else if (currentBlock.type === 'tap_through_text') {
+      withinSec = (tapThroughIndex / Math.max(1, currentBlock.paragraphs.length)) * w;
+    } else if (currentBlock.type === 'flash_cards') {
+      const base = (flashCardIndex / Math.max(1, currentBlock.cards.length)) * w;
+      const day3 =
+        lessonRef.current?.id === LESSON_DAY3_BASELINE_ID &&
+        baselineFlashScore !== null;
+      withinSec = base + (day3 ? (0.35 * w) / Math.max(1, currentBlock.cards.length) : 0);
+    } else if (currentBlock.type === 'prompt_cards') {
+      withinSec = (promptCardsIndex / Math.max(1, currentBlock.cards.length)) * w;
+    }
+    // Other block types (bubble_sort, two_column_sort, multi_select,
+    // examples_with_entry, anchor_entry, list_builder, multi_field_entry,
+    // countdown_timer, physiological_sigh, journal_prompt) have no
+    // meaningful internal progress signal here — the bar stays empty until
+    // the block completes, then animateBlockCompletionAndReset fills it.
+    return Math.min(1, withinSec / w);
   }, [
-    hasBlocks, blocks, lessonTotalWeight, phase, showPlayingChrome, blockIndex,
+    hasBlocks, blocks, phase, showPlayingChrome, blockIndex,
     audioFileIndex, audioStatus.currentTime, audioStatus.isLoaded, audioFallbackElapsed,
     exerciseElapsed, exerciseStepIndex, tapThroughIndex, flashCardIndex, promptCardsIndex,
     baselineFlashScore,
   ]);
 
   useEffect(() => {
+    if (resettingProgressBarRef.current) return;
     if (hasBlocks) {
       if (!showPlayingChrome && phase !== 'block_journal') return;
       Animated.timing(progressAnim, {
-        toValue: overallLessonProgress,
+        toValue: currentBlockProgress,
         duration: 90,
         useNativeDriver: false,
       }).start();
@@ -1983,7 +2071,7 @@ export default function LessonPlayerScreen() {
         useNativeDriver: false,
       }).start();
     }
-  }, [phase, showPlayingChrome, hasBlocks, overallLessonProgress, legacyProgress]);
+  }, [phase, showPlayingChrome, hasBlocks, currentBlockProgress, legacyProgress]);
 
   useEffect(() => {
     if (phase !== 'done') return;
@@ -2234,7 +2322,10 @@ export default function LessonPlayerScreen() {
               </TouchableOpacity>
             </View>
 
-            {lesson.coach ? (
+            {/* Coach card only for pack/program lessons — static library
+                lessons (program_id null) are evergreen content and shouldn't
+                carry a coach profile. */}
+            {lesson.coach && lesson.program_id ? (
               <View style={styles.coachCard}>
                 <View style={styles.coachHeaderRow}>
                   <View style={styles.coachAvatarRing}>
@@ -2259,6 +2350,26 @@ export default function LessonPlayerScreen() {
                   </View>
                 </View>
                 {lesson.coach.bio ? <Text style={styles.coachBio}>{lesson.coach.bio}</Text> : null}
+                {/* TODO: optional coach intro video slots in here, above/alongside the About me toggle. */}
+                {typeof lesson.coach.long_bio === 'string' && lesson.coach.long_bio.trim().length > 0 ? (
+                  <View style={styles.coachLongBioSection}>
+                    <TouchableOpacity
+                      style={styles.coachAboutMeRow}
+                      activeOpacity={0.7}
+                      onPress={() => setCoachBioExpanded((prev) => !prev)}
+                    >
+                      <Text style={styles.coachAboutMeLabel}>About me</Text>
+                      <Ionicons
+                        name={coachBioExpanded ? 'chevron-up' : 'chevron-down'}
+                        size={18}
+                        color={colors.textSecondary}
+                      />
+                    </TouchableOpacity>
+                    {coachBioExpanded ? (
+                      <Text style={styles.coachBio}>{lesson.coach.long_bio}</Text>
+                    ) : null}
+                  </View>
+                ) : null}
                 {lesson.coach.external_url ? (
                   <TouchableOpacity
                     style={styles.coachOfferBtn}
@@ -2271,6 +2382,10 @@ export default function LessonPlayerScreen() {
                         referral_partner_key: coach.coach_key ?? 'unknown',
                         cta_placement: 'lesson_ready_coach_card',
                         outbound_url: coach.external_url,
+                        program_id: lesson.program_id ?? null,
+                        program_key: lesson.program_key ?? null,
+                        program_title: lesson.program_title ?? null,
+                        coach_key: coach.coach_key ?? null,
                       });
                       void Linking.openURL(coach.external_url);
                     }}
@@ -2359,11 +2474,8 @@ export default function LessonPlayerScreen() {
               : null;
             // Overlay shows for `duration_seconds` starting at the moment
             // rep `after_rep` completes (i.e. the start of the next rep).
-            const overlay = exBlock.mid_overlay;
-            const overlayActive = overlay
-              ? exerciseElapsed >= overlay.after_rep * 16 &&
-                exerciseElapsed < overlay.after_rep * 16 + overlay.duration_seconds
-              : false;
+            const overlay = activeBreathingOverlay(exBlock, exerciseElapsed, 16);
+            const overlayActive = overlay != null;
             return (
               <View style={styles.centered}>
                 {currentRep != null && exBlock.rep_count ? (
@@ -2460,11 +2572,8 @@ export default function LessonPlayerScreen() {
             const currentRep = Math.min(repCount, info.repIndex + 1);
             const cycleSec = patternCycleSeconds(exBlock.pattern);
             const elapsedSec = exerciseWallMs / 1000;
-            const overlay = exBlock.mid_overlay;
-            const overlayActive = overlay
-              ? elapsedSec >= overlay.after_rep * cycleSec &&
-                elapsedSec < overlay.after_rep * cycleSec + overlay.duration_seconds
-              : false;
+            const overlay = activeBreathingOverlay(exBlock, elapsedSec, cycleSec);
+            const overlayActive = overlay != null;
             return (
               <View style={styles.centered}>
                 {exBlock.rep_count ? (
@@ -3121,6 +3230,8 @@ export default function LessonPlayerScreen() {
               return;
             }
 
+            animateBlockCompletionAndReset();
+
             // If transitioning to a journal_prompt, surface all accumulated exercise
             // answers as context (matches what completeLesson saves from journalPartsRef).
             const nextBlock = allBlocks[nextIdx];
@@ -3484,6 +3595,11 @@ export default function LessonPlayerScreen() {
             <Animated.View style={{ opacity: doneAnim2, alignItems: 'center' as const }}>
               <Text style={styles.doneTitle}>Workout Complete</Text>
               <Text style={styles.doneSub}>{lesson.title}</Text>
+              {journalSaveFailed && (
+                <Text style={styles.journalSaveNotice}>
+                  Your journal entry couldn't be saved, but your workout is recorded.
+                </Text>
+              )}
             </Animated.View>
 
             {doneDeltas && Object.keys(doneDeltas).length > 0 && (
@@ -3513,6 +3629,11 @@ export default function LessonPlayerScreen() {
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={async () => {
+                  // Finishing the whole pack outranks the daily streak screen.
+                  if (packComplete) {
+                    setPhase('pack_complete');
+                    return;
+                  }
                   const now = new Date();
                   const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                   if (preStreakDateRef.current === localToday) {
@@ -3558,6 +3679,136 @@ export default function LessonPlayerScreen() {
                 <Text style={styles.primaryBtnText}>Done</Text>
               </TouchableOpacity>
             </Animated.View>
+          </View>
+        )}
+
+        {phase === 'pack_complete' && (
+          <View style={styles.journalKeyboardRoot}>
+            <ScrollView
+              ref={lessonJournalScrollRef}
+              automaticallyAdjustKeyboardInsets
+              onScroll={(e) => {
+                lessonJournalScrollYRef.current = e.nativeEvent.contentOffset.y;
+              }}
+              scrollEventThrottle={16}
+              contentContainerStyle={[
+                styles.packCompleteContent,
+                { paddingBottom: spacing.lg + insets.bottom + 12 },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+            >
+              <View style={[styles.trophyGlow, { alignSelf: 'center' }]}>
+                <Ionicons name="ribbon" size={72} color={colors.accentLight} />
+              </View>
+              <Text style={styles.packCompleteTitle}>
+                {packComplete?.title
+                  ? `You finished\n${packComplete.title}`
+                  : 'You finished the program'}
+              </Text>
+              <Text style={styles.packCompleteBody}>
+                Every lesson, done. That consistency is exactly what builds mental
+                toughness — thank you for training with us.
+              </Text>
+
+              {packFeedbackSaved ? (
+                <View style={styles.packThanksRow}>
+                  <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                  <Text style={styles.packThanksText}>Thanks — we got your feedback.</Text>
+                </View>
+              ) : (
+                <View style={styles.packFeedbackBlock}>
+                  <Text style={styles.packFeedbackLabel}>WE'D LOVE YOUR FEEDBACK</Text>
+                  <TextInput
+                    style={styles.journalInput}
+                    placeholder={
+                      packComplete?.title
+                        ? `What did you think of ${packComplete.title}?`
+                        : 'What did you think of this program?'
+                    }
+                    placeholderTextColor={colors.textMuted}
+                    value={packFeedbackText}
+                    onChangeText={(t) => {
+                      setPackFeedbackText(t);
+                      if (packFeedbackError) setPackFeedbackError('');
+                    }}
+                    multiline
+                    scrollEnabled={false}
+                    editable={!packFeedbackSaving}
+                    maxLength={2000}
+                    onFocus={() =>
+                      scheduleScrollFooterAboveKeyboard(
+                        lessonJournalScrollRef,
+                        lessonJournalFooterRef,
+                        lessonJournalScrollYRef,
+                      )
+                    }
+                    onContentSizeChange={() =>
+                      scheduleScrollFooterAboveKeyboard(
+                        lessonJournalScrollRef,
+                        lessonJournalFooterRef,
+                        lessonJournalScrollYRef,
+                      )
+                    }
+                  />
+                  {packFeedbackError ? (
+                    <Text style={styles.packFeedbackErrorText}>{packFeedbackError}</Text>
+                  ) : null}
+                  <View ref={lessonJournalFooterRef} collapsable={false}>
+                  <TouchableOpacity
+                    style={[
+                      styles.packSendBtn,
+                      (!packFeedbackText.trim() || packFeedbackSaving) && { opacity: 0.5 },
+                    ]}
+                    disabled={!packFeedbackText.trim() || packFeedbackSaving}
+                    onPress={async () => {
+                      const message = packFeedbackText.trim();
+                      if (!message || packFeedbackSaving) return;
+                      setPackFeedbackError('');
+                      setPackFeedbackSaving(true);
+                      const { error: fbErr } = await apiFetch('/program-feedback', {
+                        method: 'POST',
+                        body: {
+                          message,
+                          ...(packComplete?.title ? { program: packComplete.title } : {}),
+                        },
+                      });
+                      setPackFeedbackSaving(false);
+                      if (fbErr) {
+                        setPackFeedbackError(fbErr);
+                        return;
+                      }
+                      setPackFeedbackSaved(true);
+                    }}
+                  >
+                    <Text style={styles.packSendBtnText}>
+                      {packFeedbackSaving ? 'Sending...' : 'Send feedback'}
+                    </Text>
+                  </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[styles.primaryBtn, { marginTop: spacing.lg }]}
+                onPress={() => {
+                  maybeRequestAppStoreReview();
+                  router.replace('/programs' as any);
+                }}
+              >
+                <Text style={styles.primaryBtnText}>Try another program</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.packDoneBtn}
+                onPress={() => {
+                  maybeRequestAppStoreReview();
+                  router.back();
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
+              >
+                <Text style={styles.packDoneText}>Done</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         )}
 
@@ -3727,6 +3978,19 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 21,
     marginTop: spacing.md,
+  },
+  coachLongBioSection: {
+    marginTop: spacing.md,
+  },
+  coachAboutMeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  coachAboutMeLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
   coachOfferBtn: {
     alignSelf: 'stretch',
@@ -3979,6 +4243,14 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     marginBottom: spacing.lg,
   },
+  journalSaveNotice: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center' as const,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
   trophyGlow: {
     width: 120,
     height: 120,
@@ -3988,6 +4260,77 @@ const styles = StyleSheet.create({
     justifyContent: 'center' as const,
     borderWidth: 1,
     borderColor: 'rgba(167, 139, 250, 0.15)',
+  },
+  packCompleteContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+  },
+  packCompleteTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+    lineHeight: 32,
+  },
+  packCompleteBody: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginTop: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  packFeedbackBlock: {
+    width: '100%',
+  },
+  packFeedbackLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
+  },
+  packFeedbackErrorText: {
+    color: colors.error,
+    fontSize: 13,
+    marginBottom: spacing.sm,
+  },
+  packSendBtn: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center' as const,
+  },
+  packSendBtnText: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  packThanksRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 8,
+  },
+  packThanksText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+  },
+  packDoneBtn: {
+    marginTop: spacing.md,
+    paddingVertical: 10,
+    alignSelf: 'center' as const,
+  },
+  packDoneText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textMuted,
+    textAlign: 'center' as const,
   },
   doneDeltaRow: {
     flexDirection: 'row' as const,

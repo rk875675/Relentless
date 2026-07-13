@@ -84,15 +84,21 @@ const wcs = StyleSheet.create({
   },
 });
 
-/** 2 centered program cards for the Programs screen. */
+/** Program cards for the Programs screen — mirrors Home WOD card layout. */
 export function ProgramListSkeleton() {
   return (
     <View style={pls.container}>
       {[0, 1].map((i) => (
-        <View key={i} style={pls.card}>
-          <Skeleton width={84} height={84} borderRadius={999} style={pls.avatar} />
-          <Skeleton width={150} height={16} borderRadius={8} style={pls.coach} />
-          <Skeleton width={190} height={14} borderRadius={6} />
+        <View key={i} style={pls.cardOuter}>
+          <View style={pls.cardInner}>
+            <View style={pls.heroBleed}>
+              <Skeleton width="100%" height={285} borderRadius={0} />
+            </View>
+            <View style={pls.metaSection}>
+              <Skeleton width="65%" height={22} borderRadius={8} />
+            </View>
+            <Skeleton width="100%" height={48} borderRadius={14} />
+          </View>
         </View>
       ))}
     </View>
@@ -101,16 +107,61 @@ export function ProgramListSkeleton() {
 
 const pls = StyleSheet.create({
   container: { gap: spacing.md },
-  card: {
+  cardOuter: {
     backgroundColor: colors.surface,
     borderRadius: 24,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
-    alignItems: 'center',
+    overflow: 'hidden',
   },
-  avatar: { marginBottom: spacing.md },
-  coach: { marginBottom: 8 },
+  cardInner: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: 24,
+    paddingBottom: 24,
+  },
+  heroBleed: {
+    marginHorizontal: -spacing.xl,
+    marginTop: -24,
+  },
+  metaSection: {
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+});
+
+/** Lesson-pack cards on the Library tab — leading image + title/progress lines. */
+export function LessonPackListSkeleton() {
+  return (
+    <View style={lps.container}>
+      {[0, 1].map((i) => (
+        <View key={i} style={lps.card}>
+          <Skeleton width={56} height={56} borderRadius={14} />
+          <View style={lps.body}>
+            <Skeleton width="40%" height={11} borderRadius={6} style={lps.coachLine} />
+            <Skeleton width="70%" height={16} borderRadius={6} style={lps.titleLine} />
+            <Skeleton width="100%" height={6} borderRadius={3} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const lps = StyleSheet.create({
+  container: { gap: spacing.sm },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  body: { flex: 1 },
+  coachLine: { marginBottom: 6 },
+  titleLine: { marginBottom: 10 },
 });
 
 /** Compact "More programs" rail skeleton for Home (header + two rows). */

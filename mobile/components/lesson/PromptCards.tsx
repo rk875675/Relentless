@@ -44,6 +44,11 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
   const [entries, setEntries] = useState<string[]>(() => Array(cards.length).fill(''));
   const [text, setText] = useState('');
   const textRef = useRef('');
+  // Mirrors `entries`, but updated synchronously (unlike state) so that any
+  // handler which saves the current draft and then immediately reads another
+  // card's answer in the same tick always sees the latest value — never a
+  // stale entry from a previous card carried over into the text input.
+  const entriesRef = useRef<string[]>(entries);
 
   const fade = useRef(new Animated.Value(0)).current;
   const entryScrollRef = useRef<ScrollView>(null);
@@ -51,6 +56,7 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
   const entryFooterRef = useRef<View>(null);
 
   useEffect(() => { textRef.current = text; }, [text]);
+  useEffect(() => { entriesRef.current = entries; }, [entries]);
 
   useEffect(() => {
     if (phase === 'entry') entryScrollYRef.current = 0;
@@ -65,18 +71,22 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
 
   useEffect(() => { animateIn(); }, [animateIn]);
 
-  // Persist the current card's draft into entries[cardIndex].
+  // Persist the current card's draft into entries[cardIndex]. Writes the ref
+  // synchronously so any code reading entriesRef right after this call (in
+  // the same handler) sees the up-to-date value, not a stale render closure.
   const saveCurrentDraft = useCallback(() => {
     const draft = textRef.current;
-    setEntries((prev) => {
-      if (prev[cardIndex] === draft) return prev;
-      const next = prev.slice();
-      next[cardIndex] = draft;
-      return next;
-    });
+    const next = entriesRef.current.slice();
+    next[cardIndex] = draft;
+    entriesRef.current = next;
+    setEntries((prev) => (prev[cardIndex] === draft ? prev : next));
   }, [cardIndex]);
 
+  // Always resync `text` from the source of truth (entriesRef) for whichever
+  // card is active before showing the input, so the entry view never shows a
+  // leftover draft from a different card.
   const flipToEntry = () => {
+    setText(entriesRef.current[cardIndex] ?? '');
     setPhase('entry');
     animateIn();
   };
@@ -85,15 +95,13 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
     saveCurrentDraft();
     setCardIndex(nextIdx);
     setPhase(nextPhase);
-    setText(entries[nextIdx] ?? '');
+    setText(entriesRef.current[nextIdx] ?? '');
     animateIn();
-  }, [animateIn, entries, saveCurrentDraft]);
+  }, [animateIn, saveCurrentDraft]);
 
   const nextCard = () => {
     saveCurrentDraft();
-    const answer = textRef.current;
-    const newEntries = entries.slice();
-    newEntries[cardIndex] = answer;
+    const newEntries = entriesRef.current;
 
     const nextIdx = cardIndex + 1;
     if (nextIdx >= cards.length) {
@@ -108,7 +116,6 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
       return;
     }
 
-    setEntries(newEntries);
     setText(newEntries[nextIdx] ?? '');
     setCardIndex(nextIdx);
     setPhase('intro');
@@ -224,6 +231,7 @@ export default function PromptCards({ cards, catColor, accentColors, onIndexChan
             <Text style={styles.entryPrompt}>{card.prompt}</Text>
             {journalLinkButton}
             <TextInput
+              key={cardIndex}
               style={styles.textInput}
               placeholder="Write your answer..."
               placeholderTextColor={colors.textMuted}

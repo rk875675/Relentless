@@ -4,6 +4,7 @@ import {
   Text,
   View,
   Image,
+  ImageSourcePropType,
   FlatList,
   TouchableOpacity,
   RefreshControl,
@@ -15,6 +16,8 @@ import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { LessonListSkeleton } from '@/components/Skeleton';
 import { colors, spacing } from '@/lib/theme';
 import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
+
+const GRANT_PHOTO = require('../../assets/images/grant_chiasson_hero.png') as ImageSourcePropType;
 
 type Lesson = {
   id: string;
@@ -35,15 +38,6 @@ type LessonsResponse = {
   limit: number;
   total: number;
 };
-
-type RecommendedProgram = {
-  id: string;
-  title: string;
-  coach_name: string;
-  coach_avatar_url?: string | null;
-};
-
-type ProgramsResponse = { items: RecommendedProgram[] };
 
 type ProgramBubble = {
   program_id: string;
@@ -77,13 +71,11 @@ export default function CategoryScreen() {
   const categoryColor = MAC_COLORS[id ?? ''] ?? colors.accentLight;
 
   const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [allPrograms, setAllPrograms] = useState<RecommendedProgram[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const lessonsCacheKey = '/lessons?limit=50';
-  const programsCacheKey = '/programs';
 
   const applyLessons = (items: Lesson[]) => {
     setLessons(
@@ -95,43 +87,27 @@ export default function CategoryScreen() {
     );
   };
 
-  const applyPrograms = (items: RecommendedProgram[]) => {
-    setAllPrograms(items ?? []);
-  };
-
   const fetchLessons = async (isPull = false) => {
     setError('');
     if (isPull) {
       setRefreshing(true);
       bustCache(lessonsCacheKey);
-      bustCache(programsCacheKey);
     } else {
       const cachedLessons = getCached<LessonsResponse>(lessonsCacheKey);
-      const cachedPrograms = getCached<ProgramsResponse>(programsCacheKey);
       if (cachedLessons) {
         applyLessons(cachedLessons.items);
         setLoading(false);
+        return;
       }
-      if (cachedPrograms) {
-        applyPrograms(cachedPrograms.items);
-      }
-      if (cachedLessons) return;
     }
 
-    const [lessonsRes, programsRes] = await Promise.all([
-      apiFetch<LessonsResponse>(lessonsCacheKey),
-      apiFetch<ProgramsResponse>(programsCacheKey),
-    ]);
+    const lessonsRes = await apiFetch<LessonsResponse>(lessonsCacheKey);
 
     if (lessonsRes.error) {
       setError(lessonsRes.error);
     } else if (lessonsRes.data) {
       applyLessons(lessonsRes.data.items);
       setCached(lessonsCacheKey, lessonsRes.data);
-    }
-    if (programsRes.data) {
-      applyPrograms(programsRes.data.items);
-      setCached(programsCacheKey, programsRes.data);
     }
 
     setLoading(false);
@@ -145,9 +121,9 @@ export default function CategoryScreen() {
   const regularLessons = lessons.filter((l) => !l.program_day);
   const wodLessons = lessons.filter((l) => !!l.program_day);
 
-  // Build one bubble per distinct program.
-  // 1) Programs with eligible past WOD lessons in this category (real count).
-  // 2) Programs from /programs that don't have WOD lessons yet (dev-preview packs).
+  // One bubble per distinct program that has at least one eligible/completed
+  // lesson in this category. A pack's cover only appears in the Library once the
+  // user has done a lesson from it (no "Coming soon" preview bubbles).
   const programBubbles: ProgramBubble[] = [];
   const seenProgramIds = new Set<string>();
 
@@ -161,20 +137,6 @@ export default function CategoryScreen() {
         coach_name: w.coach_name ?? '',
         coach_avatar_url: w.coach_avatar_url ?? null,
         wod_count: wodLessons.filter((x) => (x.program_id ?? 'unknown') === pid).length,
-      });
-    }
-  }
-
-  // Add any additional programs (dev-visible packs with no lessons yet).
-  for (const p of allPrograms) {
-    if (!seenProgramIds.has(p.id)) {
-      seenProgramIds.add(p.id);
-      programBubbles.push({
-        program_id: p.id,
-        program_title: p.title,
-        coach_name: p.coach_name,
-        coach_avatar_url: p.coach_avatar_url ?? null,
-        wod_count: 0,
       });
     }
   }
@@ -224,9 +186,9 @@ export default function CategoryScreen() {
         router.push(`/program-wods/${bubble.program_id}?category=${id}` as any)
       }
     >
-      {bubble.coach_avatar_url ? (
+      {bubble.coach_avatar_url || bubble.coach_name === 'Grant Chiasson' ? (
         <Image
-          source={{ uri: bubble.coach_avatar_url }}
+          source={bubble.coach_avatar_url ? { uri: bubble.coach_avatar_url } : GRANT_PHOTO}
           style={styles.programBubbleAvatar}
         />
       ) : (
