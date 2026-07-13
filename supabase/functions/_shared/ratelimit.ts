@@ -32,6 +32,12 @@ function getLimit(limitClass: RateLimitClass): number {
   return DEFAULT_LIMITS[limitClass];
 }
 
+// Fail-open is intentional (availability over strictness), but it must never
+// be SILENT — log once per function instance when Upstash is unconfigured so
+// a missing env var in prod is visible in function logs instead of quietly
+// disabling rate limiting.
+let warnedUnconfigured = false;
+
 export async function checkRateLimit(
   userId: string,
   requestId: string,
@@ -41,6 +47,13 @@ export async function checkRateLimit(
   const token = Deno.env.get("UPSTASH_REDIS_REST_TOKEN");
 
   if (!url || !token) {
+    if (!warnedUnconfigured) {
+      warnedUnconfigured = true;
+      console.error(
+        "[ratelimit] UPSTASH_REDIS_REST_URL/TOKEN not set — rate limiting is DISABLED (failing open)",
+        { requestId },
+      );
+    }
     return { ok: true };
   }
 

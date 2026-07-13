@@ -82,6 +82,10 @@ const TimedExerciseBlockSchema = z.object({
   phase_labels: BoxBreathingPhaseLabelsSchema.optional(),
   // box_breathing only: overlay shown after a specific rep boundary.
   mid_overlay: BoxBreathingMidOverlaySchema.optional(),
+  // Coach Portal packs (2026-07-01): MULTIPLE optional overlays per breathing
+  // block, each with its own after_rep / text / duration_seconds. Replaces the
+  // single mid_overlay for new packs; the loader drops the key when empty.
+  mid_overlays: z.array(BoxBreathingMidOverlaySchema).optional(),
   // Flexible breathing (interactive_model: "breathing"): an ordered list of
   // inhale/hold/exhale phases that repeats rep_count times. New coaches use this
   // instead of the legacy box_breathing steps[] path.

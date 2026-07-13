@@ -11,10 +11,52 @@ import {
 
 const RunBodySchema = z.object({
   dryRun: z.boolean().optional().default(false),
+  /**
+   * Max notifications actually SENT per run (safety cap against a runaway
+   * batch / function timeout). Candidate scanning is always exhaustive — every
+   * trial/active entitlement row is considered, in stable user_id order — so
+   * unlike the previous `limit * 3` row scan, growth can no longer silently
+   * push opted-in users out of the candidate set. When the cap is hit the run
+   * reports `capped: true` (response + cron_run_log).
+   */
   limit: z.number().int().min(1).max(500).optional().default(100),
   /** When true, is_dev accounts are included (useful for manual QA sends). */
   includeDevUsers: z.boolean().optional().default(false),
 }).strict();
+
+// Page size for the entitlements keyset scan and for chunked .in() lookups.
+const SCAN_PAGE_SIZE = 1000;
+const IN_CHUNK_SIZE = 500;
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/** Best-effort run log (cron_run_log). Never throws — observability must not break the run. */
+async function logRun(
+  supabase: ReturnType<typeof createServiceClient>,
+  requestId: string,
+  startedAt: string,
+  ok: boolean,
+  summary: Record<string, unknown>,
+  error?: string,
+): Promise<void> {
+  try {
+    const { error: insErr } = await supabase.from("cron_run_log").insert({
+      function_name: "push-reminders",
+      request_id: requestId,
+      started_at: startedAt,
+      ok,
+      summary,
+      error: error ?? null,
+    });
+    if (insErr) console.error("[push-reminders] cron_run_log insert failed", { requestId, message: insErr.message });
+  } catch (e) {
+    console.error("[push-reminders] cron_run_log insert threw", { requestId, message: e instanceof Error ? e.message : String(e) });
+  }
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -238,100 +280,125 @@ Deno.serve(async (req) => {
   }
 
   const supabase = createServiceClient();
+  const startedAt = new Date().toISOString();
 
   // ── Query candidates ───────────────────────────────────────────────────────
-  // Three flat queries instead of one complex multi-table join, since there
-  // is no direct FK from push_tokens to entitlements.
+  // Flat queries instead of one complex multi-table join, since there is no
+  // direct FK from push_tokens to entitlements.
 
-  // 1. Active/trial entitlements (rough filter — expiry checked client-side)
-  const { data: entRows, error: entError } = await supabase
-    .from("entitlements")
-    .select("user_id, status, expires_at")
-    .in("status", ["trial", "active"])
-    .limit(limit * 3);
-
-  if (entError) {
-    console.error("[push-reminders] Failed to query entitlements", {
-      requestId,
-      message: entError.message,
-    });
-    return errorResponse(500, "INTERNAL_ERROR", "Failed to load candidates", requestId);
-  }
-
+  // 1. Active/trial entitlements (rough filter — expiry checked client-side).
+  // Exhaustive keyset scan in user_id order: EVERY trial/active row is
+  // considered. The previous `.limit(limit * 3)` with no ORDER BY read an
+  // arbitrary 300-row subset, which would silently drop opted-in users once
+  // the subscriber count passed it.
   const validEntMap = new Map<string, { status: string; expires_at: string | null }>();
-  for (const e of (entRows ?? [])) {
-    if (isEntitlementValid(e.status, e.expires_at)) {
-      validEntMap.set(e.user_id, { status: e.status, expires_at: e.expires_at });
+  let lastUserId: string | null = null;
+  for (;;) {
+    let entQuery = supabase
+      .from("entitlements")
+      .select("user_id, status, expires_at")
+      .in("status", ["trial", "active"])
+      .order("user_id", { ascending: true })
+      .limit(SCAN_PAGE_SIZE);
+    if (lastUserId) entQuery = entQuery.gt("user_id", lastUserId);
+
+    const { data: entRows, error: entError } = await entQuery;
+    if (entError) {
+      console.error("[push-reminders] Failed to query entitlements", {
+        requestId,
+        message: entError.message,
+      });
+      await logRun(supabase, requestId, startedAt, false, {}, `entitlements query: ${entError.message}`);
+      return errorResponse(500, "INTERNAL_ERROR", "Failed to load candidates", requestId);
     }
+
+    for (const e of (entRows ?? [])) {
+      if (isEntitlementValid(e.status, e.expires_at)) {
+        validEntMap.set(e.user_id, { status: e.status, expires_at: e.expires_at });
+      }
+    }
+    if (!entRows || entRows.length < SCAN_PAGE_SIZE) break;
+    lastUserId = entRows[entRows.length - 1].user_id as string;
   }
 
   if (validEntMap.size === 0) {
-    return successResponse({ dry_run: dryRun, checked: 0, eligible: 0, sent: 0 }, requestId);
+    const empty = { dry_run: dryRun, checked: 0, eligible: 0, sent: 0 };
+    await logRun(supabase, requestId, startedAt, true, empty);
+    return successResponse(empty, requestId);
   }
 
   const eligibleUserIds = [...validEntMap.keys()];
 
-  // 2. Profiles: onboarded + reminders enabled
-  const { data: profileRows, error: profileError } = await supabase
-    .from("profiles")
-    .select("id, push_reminders_enabled, onboarding_completed, is_dev, last_wod_completion_local_date")
-    .in("id", eligibleUserIds)
-    .eq("push_reminders_enabled", true)
-    .eq("onboarding_completed", true);
-
-  if (profileError) {
-    console.error("[push-reminders] Failed to query profiles", {
-      requestId,
-      message: profileError.message,
-    });
-    return errorResponse(500, "INTERNAL_ERROR", "Failed to load candidates", requestId);
-  }
-
+  // 2. Profiles: onboarded + reminders enabled (chunked .in() so the query
+  // stays well-formed at any subscriber count).
   const profileMap = new Map<string, {
     is_dev: boolean;
     last_wod_completion_local_date: string | null;
   }>();
-  for (const p of (profileRows ?? [])) {
-    profileMap.set(p.id, {
-      is_dev: p.is_dev,
-      last_wod_completion_local_date: p.last_wod_completion_local_date,
-    });
+  for (const ids of chunk(eligibleUserIds, IN_CHUNK_SIZE)) {
+    const { data: profileRows, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, push_reminders_enabled, onboarding_completed, is_dev, last_wod_completion_local_date")
+      .in("id", ids)
+      .eq("push_reminders_enabled", true)
+      .eq("onboarding_completed", true);
+
+    if (profileError) {
+      console.error("[push-reminders] Failed to query profiles", {
+        requestId,
+        message: profileError.message,
+      });
+      await logRun(supabase, requestId, startedAt, false, {}, `profiles query: ${profileError.message}`);
+      return errorResponse(500, "INTERNAL_ERROR", "Failed to load candidates", requestId);
+    }
+
+    for (const p of (profileRows ?? [])) {
+      profileMap.set(p.id, {
+        is_dev: p.is_dev,
+        last_wod_completion_local_date: p.last_wod_completion_local_date,
+      });
+    }
   }
 
   if (profileMap.size === 0) {
-    return successResponse({ dry_run: dryRun, checked: 0, eligible: 0, sent: 0 }, requestId);
+    const empty = { dry_run: dryRun, checked: 0, eligible: 0, sent: 0 };
+    await logRun(supabase, requestId, startedAt, true, empty);
+    return successResponse(empty, requestId);
   }
 
   const onboardedUserIds = [...profileMap.keys()];
 
-  // 3. Push tokens (active only)
-  const { data: tokenRows, error: tokenError } = await supabase
-    .from("push_tokens")
-    .select("user_id, expo_push_token, timezone")
-    .in("user_id", onboardedUserIds)
-    .is("disabled_at", null);
-
-  if (tokenError) {
-    console.error("[push-reminders] Failed to query push_tokens", {
-      requestId,
-      message: tokenError.message,
-    });
-    return errorResponse(500, "INTERNAL_ERROR", "Failed to load candidates", requestId);
-  }
-
-  // 4. User streaks
-  const { data: streakRows } = await supabase
-    .from("user_streaks")
-    .select("user_id, last_activity_date")
-    .in("user_id", onboardedUserIds);
-
+  // 3. Push tokens (active only) + 4. user streaks — chunked like profiles.
+  const tokenRows: Array<{ user_id: string; expo_push_token: string; timezone: string }> = [];
   const streakMap = new Map<string, string | null>();
-  for (const s of (streakRows ?? [])) {
-    streakMap.set(s.user_id, s.last_activity_date);
+  for (const ids of chunk(onboardedUserIds, IN_CHUNK_SIZE)) {
+    const { data: tokenPage, error: tokenError } = await supabase
+      .from("push_tokens")
+      .select("user_id, expo_push_token, timezone")
+      .in("user_id", ids)
+      .is("disabled_at", null);
+
+    if (tokenError) {
+      console.error("[push-reminders] Failed to query push_tokens", {
+        requestId,
+        message: tokenError.message,
+      });
+      await logRun(supabase, requestId, startedAt, false, {}, `push_tokens query: ${tokenError.message}`);
+      return errorResponse(500, "INTERNAL_ERROR", "Failed to load candidates", requestId);
+    }
+    tokenRows.push(...(tokenPage ?? []));
+
+    const { data: streakRows } = await supabase
+      .from("user_streaks")
+      .select("user_id, last_activity_date")
+      .in("user_id", ids);
+    for (const s of (streakRows ?? [])) {
+      streakMap.set(s.user_id, s.last_activity_date);
+    }
   }
 
   // Build flat candidate list (one row per token)
-  const candidates: RawCandidate[] = (tokenRows ?? []).map((t) => {
+  const candidates: RawCandidate[] = tokenRows.map((t) => {
     const profile = profileMap.get(t.user_id)!;
     const ent = validEntMap.get(t.user_id)!;
     return {
@@ -359,6 +426,10 @@ Deno.serve(async (req) => {
     skipped_entitlement_expired: 0,
     skipped_dev: 0,
     failed: 0,
+    // True when the per-run send cap (`limit`) stopped the loop early. The
+    // remaining eligible users were NOT sent to this run — visible here and in
+    // cron_run_log instead of a silent mid-batch function timeout.
+    capped: false,
     dry_run_would_send: [] as Array<{
       user_id: string;
       reminder_type: string;
@@ -368,6 +439,10 @@ Deno.serve(async (req) => {
   };
 
   for (const candidate of candidates) {
+    if (!dryRun && result.sent >= limit) {
+      result.capped = true;
+      break;
+    }
     // Skip is_dev accounts unless explicitly requested
     if (candidate.is_dev && !includeDevUsers) {
       result.skipped_dev += 1;
@@ -489,6 +564,18 @@ Deno.serve(async (req) => {
 
     result.failed += 1;
   }
+
+  if (result.capped) {
+    console.error("[push-reminders] Send cap reached — remaining eligible users not sent this run", {
+      requestId,
+      limit,
+      eligible: result.eligible,
+      sent: result.sent,
+    });
+  }
+
+  const { dry_run_would_send: _wouldSend, ...logSummary } = result;
+  await logRun(supabase, requestId, startedAt, true, logSummary);
 
   return successResponse(result, requestId);
 });

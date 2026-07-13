@@ -10,12 +10,15 @@ import { getUser } from "../_shared/auth.ts";
 import { requireEntitlement } from "../_shared/entitlement.ts";
 import { checkRateLimit } from "../_shared/ratelimit.ts";
 
-// Feedback submitted from the "Relentless 30-Day Sprint complete" screen.
-// Strict schema: only the fields below are accepted.
+// Feedback submitted from a program-complete screen (30-Day Sprint or any
+// coach lesson pack). Strict schema: only the fields below are accepted.
+// `program` is an optional label (program title) stored in program_version;
+// omitted -> column default 'v1' (legacy sprint behavior).
 const FeedbackSchema = z
   .object({
     message: z.string().trim().min(1, "Feedback cannot be empty").max(2000),
     app_build: z.string().trim().max(32).optional(),
+    program: z.string().trim().min(1).max(200).optional(),
   })
   .strict();
 
@@ -58,11 +61,16 @@ Deno.serve(async (req) => {
     );
   }
 
-  const { error } = await supabase.from("program_completion_feedback").insert({
+  const row: Record<string, unknown> = {
     user_id: auth.userId,
     message: parsed.data.message,
     app_build: parsed.data.app_build ?? null,
-  });
+  };
+  // Only set when provided so the column default ('v1') keeps applying to
+  // legacy clients that don't send it.
+  if (parsed.data.program) row.program_version = parsed.data.program;
+
+  const { error } = await supabase.from("program_completion_feedback").insert(row);
 
   if (error) {
     return errorResponse(500, "INTERNAL_ERROR", "Failed to save feedback", requestId);

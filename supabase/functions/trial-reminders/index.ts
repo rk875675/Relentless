@@ -54,6 +54,30 @@ type EmailSendResult =
   | { ok: true; messageId: string | null }
   | { ok: false; message: string };
 
+/** Best-effort run log (cron_run_log). Never throws — observability must not break the run. */
+async function logRun(
+  supabase: ReturnType<typeof createServiceClient>,
+  requestId: string,
+  startedAt: string,
+  ok: boolean,
+  summary: Record<string, unknown>,
+  error?: string,
+): Promise<void> {
+  try {
+    const { error: insErr } = await supabase.from("cron_run_log").insert({
+      function_name: "trial-reminders",
+      request_id: requestId,
+      started_at: startedAt,
+      ok,
+      summary,
+      error: error ?? null,
+    });
+    if (insErr) console.error("[trial-reminders] cron_run_log insert failed", { requestId, message: insErr.message });
+  } catch (e) {
+    console.error("[trial-reminders] cron_run_log insert threw", { requestId, message: e instanceof Error ? e.message : String(e) });
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -100,6 +124,7 @@ Deno.serve(async (req) => {
   }
 
   const supabase = createServiceClient();
+  const startedAt = new Date().toISOString();
   const now = new Date();
   const maxExpiresAt = addHours(now, 72);
 
@@ -115,6 +140,7 @@ Deno.serve(async (req) => {
 
   if (error) {
     console.error("[trial-reminders] Failed to load candidates", { requestId, error });
+    await logRun(supabase, requestId, startedAt, false, {}, `candidates query: ${error.message}`);
     return errorResponse(500, "INTERNAL_ERROR", "Failed to load trial reminders", requestId);
   }
 
@@ -170,6 +196,8 @@ Deno.serve(async (req) => {
     await markReminderSent(supabase, claim.id, emailResult.messageId, requestId);
     result.sent += 1;
   }
+
+  await logRun(supabase, requestId, startedAt, true, result);
 
   return successResponse(result, requestId);
 });

@@ -39,8 +39,76 @@ const DETAIL_COLUMNS =
   "id, coach_id, title, duration_seconds, lesson_type, voiceover_url, on_screen_text, reflection_prompt, content_blocks, sort_order, production_ready, description, program_id, sequence";
 
 const PROGRAM_VERSION = "v1";
+// The original live program. When it is the user's active program we resolve the
+// daily WOD via program_schedule (v1) exactly as before; any other active pack
+// resolves via lessons.(program_id, sequence).
+const SPRINT_PROGRAM_ID = "b0000000-0000-0000-0000-000000000001";
 const AUDIO_BUCKET = "lesson-audio";
 const SIGNED_URL_TTL = 3600; // 1 hour
+
+// Returns signed URLs for the given storage paths, serving from audio_url_cache
+// when possible so the Smart CDN sees stable URLs and can cache at the edge.
+// Never throws — on any cache failure it falls back to plain createSignedUrl.
+async function getSignedUrls(
+  supabase: ReturnType<typeof createServiceClient>,
+  paths: string[],
+): Promise<Map<string, string>> {
+  const urlMap = new Map<string, string>();
+  const uniquePaths = [...new Set(paths)];
+  if (uniquePaths.length === 0) return urlMap;
+
+  // Cache read: only accept entries that stay valid for at least 5 more
+  // minutes so the client never receives a URL about to expire.
+  try {
+    const cutoff = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from("audio_url_cache")
+      .select("path, signed_url")
+      .in("path", uniquePaths)
+      .gt("expires_at", cutoff);
+    if (error) {
+      console.error("[audio_url_cache] read failed:", error);
+    } else {
+      for (const row of (data ?? []) as Array<{ path: string; signed_url: string }>) {
+        urlMap.set(row.path, row.signed_url);
+      }
+    }
+  } catch (e) {
+    console.error("[audio_url_cache] read threw:", e);
+  }
+
+  const misses = uniquePaths.filter((p) => !urlMap.has(p));
+  if (misses.length === 0) return urlMap;
+
+  const results = await Promise.all(
+    misses.map((p) =>
+      supabase.storage.from(AUDIO_BUCKET).createSignedUrl(p, SIGNED_URL_TTL),
+    ),
+  );
+
+  const rows: Array<{ path: string; signed_url: string; expires_at: string }> = [];
+  const expiresAt = new Date(Date.now() + SIGNED_URL_TTL * 1000).toISOString();
+  for (let i = 0; i < misses.length; i++) {
+    const signedUrl = results[i].data?.signedUrl;
+    if (signedUrl) {
+      urlMap.set(misses[i], signedUrl);
+      rows.push({ path: misses[i], signed_url: signedUrl, expires_at: expiresAt });
+    }
+  }
+
+  if (rows.length > 0) {
+    try {
+      const { error } = await supabase
+        .from("audio_url_cache")
+        .upsert(rows, { onConflict: "path" });
+      if (error) console.error("[audio_url_cache] upsert failed:", error);
+    } catch (e) {
+      console.error("[audio_url_cache] upsert threw:", e);
+    }
+  }
+
+  return urlMap;
+}
 
 // ---------------------------------------------------------------------------
 // Resolve storage paths inside content_blocks to signed URLs.
@@ -79,16 +147,7 @@ async function resolveContentBlockUrls(
 
   if (pathsToSign.length === 0) return lesson;
 
-  const urlMap = new Map<string, string>();
-  const results = await Promise.all(
-    pathsToSign.map((p) =>
-      supabase.storage.from(AUDIO_BUCKET).createSignedUrl(p, SIGNED_URL_TTL),
-    ),
-  );
-  for (let i = 0; i < pathsToSign.length; i++) {
-    const r = results[i];
-    if (r.data?.signedUrl) urlMap.set(pathsToSign[i], r.data.signedUrl);
-  }
+  const urlMap = await getSignedUrls(supabase, pathsToSign);
 
   const resolved = structuredClone(cb);
   for (const block of resolved.blocks) {
@@ -117,6 +176,7 @@ type CoachInfo = {
   name: string;
   credentials: string | null;
   bio: string | null;
+  long_bio: string | null;
   avatar_url: string | null;
   offer_label: string | null;
   external_url: string | null;
@@ -128,17 +188,21 @@ async function loadCoachAndProgram(
 ): Promise<{
   coach: CoachInfo | null;
   program_title: string | null;
+  program_key: string | null;
   program_total_days: number | null;
 }> {
   let coach: CoachInfo | null = null;
   let programTitle: string | null = null;
+  let programKey: string | null = null;
   let programTotalDays: number | null = null;
 
   const coachId = (lesson.coach_id as string | null) ?? null;
   if (coachId) {
     const { data: c } = await supabase
       .from("coaches")
-      .select("coach_key, name, credentials, bio, avatar_url, offer_label, external_url")
+      .select(
+        "coach_key, name, credentials, bio, long_bio, avatar_url, offer_label, external_url",
+      )
       .eq("id", coachId)
       .maybeSingle();
     if (c) {
@@ -146,16 +210,15 @@ async function loadCoachAndProgram(
       // as lesson audio); sign it. Absolute URLs pass through untouched.
       let avatarUrl = (c.avatar_url as string | null) ?? null;
       if (avatarUrl && !/^https?:\/\//i.test(avatarUrl)) {
-        const { data: signed } = await supabase.storage
-          .from(AUDIO_BUCKET)
-          .createSignedUrl(avatarUrl, SIGNED_URL_TTL);
-        avatarUrl = signed?.signedUrl ?? null;
+        const signedMap = await getSignedUrls(supabase, [avatarUrl]);
+        avatarUrl = signedMap.get(avatarUrl) ?? null;
       }
       coach = {
         coach_key: (c.coach_key as string | null) ?? null,
         name: c.name as string,
         credentials: (c.credentials as string | null) ?? null,
         bio: (c.bio as string | null) ?? null,
+        long_bio: (c.long_bio as string | null) ?? null,
         avatar_url: avatarUrl,
         offer_label: (c.offer_label as string | null) ?? null,
         external_url: (c.external_url as string | null) ?? null,
@@ -167,10 +230,11 @@ async function loadCoachAndProgram(
   if (programId) {
     const { data: p } = await supabase
       .from("programs")
-      .select("title")
+      .select("title, program_key")
       .eq("id", programId)
       .maybeSingle();
     if (p?.title) programTitle = p.title as string;
+    programKey = (p?.program_key as string | null) ?? null;
 
     const { count } = await supabase
       .from("lessons")
@@ -179,7 +243,12 @@ async function loadCoachAndProgram(
     if (typeof count === "number" && count > 0) programTotalDays = count;
   }
 
-  return { coach, program_title: programTitle, program_total_days: programTotalDays };
+  return {
+    coach,
+    program_title: programTitle,
+    program_key: programKey,
+    program_total_days: programTotalDays,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -256,13 +325,36 @@ async function handleList(
   // flagged production_ready = false are catalog-visible ONLY to is_dev accounts.
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("current_program_day, is_dev")
+    .select("current_program_day, is_dev, active_program_id")
     .eq("id", userId)
     .maybeSingle();
   const isDev = profileRow?.is_dev === true;
   const currentProgramDay = typeof profileRow?.current_program_day === "number"
     ? profileRow.current_program_day
     : 1;
+  const activeProgramId = (profileRow?.active_program_id as string | null) ?? SPRINT_PROGRAM_ID;
+
+  // Schedule-gated (Sprint) past-WOD eligibility must stay stable across pack
+  // switches: profiles.current_program_day is repointed to whichever pack is
+  // ACTIVE, so once the user switches away it no longer reflects the Sprint's
+  // day at all. Use the Sprint-specific day from user_program_state instead —
+  // it is kept in sync with the profile pointer whenever Sprint is active (see
+  // complete_lesson / POST /programs/select), so this changes nothing for
+  // users who never switch packs. Falls back to the profile pointer only while
+  // Sprint IS still the active pack (no state row yet == unchanged legacy
+  // behavior); otherwise defaults to day 1 (nothing was ever unlocked by day
+  // advancement for a pack the user made no progress on before switching).
+  const { data: sprintStateRow } = await supabase
+    .from("user_program_state")
+    .select("current_day")
+    .eq("user_id", userId)
+    .eq("program_id", SPRINT_PROGRAM_ID)
+    .maybeSingle();
+  const sprintProgramDay = typeof sprintStateRow?.current_day === "number"
+    ? sprintStateRow.current_day
+    : activeProgramId === SPRINT_PROGRAM_ID
+      ? currentProgramDay
+      : 1;
 
   let lessonsQuery = supabase
     .from("lessons")
@@ -335,6 +427,9 @@ async function handleList(
 
     return {
       ...l,
+      // Restate id explicitly: spreading Record<string, unknown> loses named
+      // keys in Deno's stricter TS, breaking `l.id` reads on the mapped items.
+      id: lid,
       categories: categoryMap.get(lid) ?? [],
       program_day: schedDay ?? seqDay,
     };
@@ -348,8 +443,8 @@ async function handleList(
     inSchedule: boolean,
   ): boolean => {
     if (inSchedule) {
-      if (programDay < currentProgramDay) return true;
-      if (programDay === 30 && currentProgramDay === 30) {
+      if (programDay < sprintProgramDay) return true;
+      if (programDay === 30 && sprintProgramDay === 30) {
         return completedSet.has(lessonId);
       }
       return false;
@@ -490,6 +585,7 @@ async function handleDetail(
       categories: (categories ?? []).map((c: { category: string }) => c.category),
       coach: extras.coach,
       program_title: extras.program_title,
+      program_key: extras.program_key,
       program_total_days: extras.program_total_days,
       // Program day for the start-screen header; sequence == day for programs.
       program_day: typeof sequence === "number" ? sequence : null,
@@ -519,28 +615,66 @@ async function getCurrentWodLessonId(
 }
 
 // ---------------------------------------------------------------------------
-// helpers: repeat-lesson lookup + custom /next response envelope
+// helpers: active-program day resolution + repeat-lesson lookup + /next envelope
 // ---------------------------------------------------------------------------
+
+// Resolve the lesson id for a given day of the user's active program, plus the
+// program's total day count. Sprint -> program_schedule (v1, live path). Any
+// other pack -> lessons.(program_id, sequence), published only.
+async function resolveProgramDayLessonId(
+  supabase: ReturnType<typeof createServiceClient>,
+  activeProgramId: string,
+  day: number,
+): Promise<{ lessonId: string | null; totalDays: number }> {
+  if (activeProgramId === SPRINT_PROGRAM_ID) {
+    const { data: row } = await supabase
+      .from("program_schedule")
+      .select("lesson_id")
+      .eq("program_version", PROGRAM_VERSION)
+      .eq("day_number", day)
+      .maybeSingle();
+    const { count } = await supabase
+      .from("program_schedule")
+      .select("day_number", { count: "exact", head: true })
+      .eq("program_version", PROGRAM_VERSION);
+    return { lessonId: (row?.lesson_id as string | null) ?? null, totalDays: count ?? 0 };
+  }
+
+  const { data: row } = await supabase
+    .from("lessons")
+    .select("id")
+    .eq("program_id", activeProgramId)
+    .eq("sequence", day)
+    .eq("published", true)
+    .maybeSingle();
+  const { data: maxRow } = await supabase
+    .from("lessons")
+    .select("sequence")
+    .eq("program_id", activeProgramId)
+    .eq("published", true)
+    .order("sequence", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return {
+    lessonId: (row?.id as string | null) ?? null,
+    totalDays: (maxRow?.sequence as number | null) ?? 0,
+  };
+}
 
 async function lookupRepeatLesson(
   supabase: ReturnType<typeof createServiceClient>,
   completedDay: number,
+  activeProgramId: string,
 ): Promise<Record<string, unknown> | null> {
   if (completedDay < 1) return null;
 
-  const { data: sched } = await supabase
-    .from("program_schedule")
-    .select("lesson_id")
-    .eq("program_version", PROGRAM_VERSION)
-    .eq("day_number", completedDay)
-    .maybeSingle();
-
-  if (!sched?.lesson_id) return null;
+  const { lessonId } = await resolveProgramDayLessonId(supabase, activeProgramId, completedDay);
+  if (!lessonId) return null;
 
   const { data: lesson, error } = await supabase
     .from("lessons")
     .select(METADATA_COLUMNS)
-    .eq("id", sched.lesson_id)
+    .eq("id", lessonId)
     .eq("published", true)
     .single();
 
@@ -554,7 +688,7 @@ async function lookupRepeatLesson(
   return {
     ...lesson,
     program_day: completedDay,
-    program_version: PROGRAM_VERSION,
+    program_version: activeProgramId === SPRINT_PROGRAM_ID ? PROGRAM_VERSION : null,
     categories: (cats ?? []).map((c: { category: string }) => c.category),
   };
 }
@@ -585,7 +719,7 @@ async function handleNext(
 ): Promise<Response> {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("current_program_day, program_start_date, last_wod_completion_local_date, is_dev")
+    .select("current_program_day, program_start_date, last_wod_completion_local_date, is_dev, active_program_id")
     .eq("id", userId)
     .single();
 
@@ -594,6 +728,8 @@ async function handleNext(
   }
 
   const day = profile.current_program_day as number;
+  const activeProgramId = (profile.active_program_id as string | null) ?? SPRINT_PROGRAM_ID;
+  const isSprint = activeProgramId === SPRINT_PROGRAM_ID;
   const completedToday =
     (profile.last_wod_completion_local_date as string | null) === localTodayYmd;
   const completedDay = day - 1;
@@ -607,27 +743,22 @@ async function handleNext(
     if (day > elapsed) {
       const repeatLesson =
         completedToday && completedDay >= 1
-          ? await lookupRepeatLesson(supabase, completedDay)
+          ? await lookupRepeatLesson(supabase, completedDay, activeProgramId)
           : null;
       return nextLessonResponse(null, repeatLesson, requestId);
     }
   }
 
-  const { data: scheduleRow, error: scheduleError } = await supabase
-    .from("program_schedule")
-    .select("lesson_id")
-    .eq("program_version", PROGRAM_VERSION)
-    .eq("day_number", day)
-    .maybeSingle();
+  const { lessonId: currentLessonId, totalDays } = await resolveProgramDayLessonId(
+    supabase,
+    activeProgramId,
+    day,
+  );
 
-  if (scheduleError) {
-    return errorResponse(500, "INTERNAL_ERROR", "Failed to load program schedule", requestId);
-  }
-
-  if (!scheduleRow?.lesson_id) {
+  if (!currentLessonId) {
     const repeatLesson =
       completedToday && completedDay >= 1
-        ? await lookupRepeatLesson(supabase, completedDay)
+        ? await lookupRepeatLesson(supabase, completedDay, activeProgramId)
         : null;
     return nextLessonResponse(null, repeatLesson, requestId);
   }
@@ -635,7 +766,7 @@ async function handleNext(
   const { data: lesson, error: lessonError } = await supabase
     .from("lessons")
     .select(DETAIL_COLUMNS)
-    .eq("id", scheduleRow.lesson_id)
+    .eq("id", currentLessonId)
     .eq("published", true)
     .single();
 
@@ -654,36 +785,37 @@ async function handleNext(
   const lessonData = {
     ...enriched,
     program_day: day,
-    program_version: PROGRAM_VERSION,
+    program_version: isSprint ? PROGRAM_VERSION : null,
     categories: (categories ?? []).map((c: { category: string }) => c.category),
     coach: extras.coach,
     program_title: extras.program_title,
-    program_total_days: extras.program_total_days,
+    program_key: extras.program_key,
+    program_total_days: extras.program_total_days ?? (totalDays > 0 ? totalDays : null),
   };
 
   const repeatLesson =
     completedToday && completedDay >= 1
-      ? await lookupRepeatLesson(supabase, completedDay)
+      ? await lookupRepeatLesson(supabase, completedDay, activeProgramId)
       : null;
 
-  // Sprint completion: current_program_day caps at 30 (see complete_lesson), so
-  // once the day-30 lesson is completed the user has finished the program. The
-  // "30-Day Sprint complete" screen is intentionally shown the DAY AFTER the
-  // day-30 lesson is finished (not the same day), so we compare the earliest
-  // day-30 completion date against the user's local today. Basing this on the
-  // day-30 completion row (rather than last_wod_completion_local_date) keeps it
-  // stable even if the user later does Library lessons.
+  // Program completion: current_program_day caps at the program length (see
+  // complete_lesson), so once the final day's lesson is completed the user has
+  // finished the pack. The "complete" screen is intentionally shown the DAY
+  // AFTER the final lesson is finished, so we compare the earliest final-day
+  // completion date against the user's local today. Basing this on that
+  // completion row (rather than last_wod_completion_local_date) keeps it stable
+  // even if the user later does Library lessons.
   let programComplete = false;
-  if (day >= 30) {
-    const { data: day30Completion } = await supabase
+  if (totalDays > 0 && day >= totalDays) {
+    const { data: finalCompletion } = await supabase
       .from("user_lesson_completions")
       .select("completion_local_date")
       .eq("user_id", userId)
-      .eq("lesson_id", scheduleRow.lesson_id)
+      .eq("lesson_id", currentLessonId)
       .order("completion_local_date", { ascending: true })
       .limit(1)
       .maybeSingle();
-    const completedOn = day30Completion?.completion_local_date as string | undefined;
+    const completedOn = finalCompletion?.completion_local_date as string | undefined;
     programComplete = typeof completedOn === "string" && completedOn < localTodayYmd;
   }
 
@@ -741,13 +873,27 @@ async function handleComplete(
 
   const { data: lessonRow, error: lessonErr } = await supabase
     .from("lessons")
-    .select("id")
+    .select("id, program_id, sequence, production_ready")
     .eq("id", parsed.data)
     .eq("published", true)
     .single();
 
   if (lessonErr || !lessonRow) {
     return errorResponse(404, "NOT_FOUND", "Lesson not found", requestId);
+  }
+
+  // Preview gate — mirrors handleDetail: non-production-ready lessons can only
+  // be completed by is_dev accounts. Everyone else gets the same 404 as a
+  // non-existent lesson, so preview content can't affect scores/streaks.
+  if ((lessonRow as { production_ready?: boolean }).production_ready === false) {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("is_dev")
+      .eq("id", userId)
+      .maybeSingle();
+    if (prof?.is_dev !== true) {
+      return errorResponse(404, "NOT_FOUND", "Lesson not found", requestId);
+    }
   }
 
   const localYmd = resolveLocalTodayYmd(req);
@@ -788,6 +934,52 @@ async function handleComplete(
       : { amount: gainAmount, reason };
   }
 
+  // Pack completion (additive; older clients ignore these fields): true only
+  // the FIRST time the user completes the final lesson of their ACTIVE program.
+  // Same-day repeats (is_duplicate) and later Library replays (completion_count
+  // > 1) never re-trigger it. Never throws — on any lookup failure it stays
+  // false and the completion response is unaffected.
+  let packCompleted = false;
+  let packTitle: string | null = null;
+  try {
+    const lessonProgramId = (lessonRow as { program_id?: string | null }).program_id ?? null;
+    const lessonSequence = (lessonRow as { sequence?: number | null }).sequence ?? null;
+    if (
+      !rpc.is_duplicate &&
+      rpc.lesson_completion_count === 1 &&
+      lessonProgramId &&
+      typeof lessonSequence === "number"
+    ) {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("active_program_id")
+        .eq("id", userId)
+        .maybeSingle();
+      const activeId = (prof?.active_program_id as string | null) ?? SPRINT_PROGRAM_ID;
+      if (activeId === lessonProgramId) {
+        const { data: maxRow } = await supabase
+          .from("lessons")
+          .select("sequence")
+          .eq("program_id", lessonProgramId)
+          .eq("published", true)
+          .order("sequence", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (typeof maxRow?.sequence === "number" && maxRow.sequence === lessonSequence) {
+          packCompleted = true;
+          const { data: prog } = await supabase
+            .from("programs")
+            .select("title")
+            .eq("id", lessonProgramId)
+            .maybeSingle();
+          packTitle = (prog?.title as string | null) ?? null;
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[complete] pack completion check failed:", e);
+  }
+
   const responseBody = {
     data: {
       lesson_id: parsed.data,
@@ -799,6 +991,8 @@ async function handleComplete(
         deltas,
       },
       streak: rpc.streak,
+      pack_completed: packCompleted,
+      pack_title: packTitle,
     },
     request_id: requestId,
   };

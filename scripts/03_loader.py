@@ -194,6 +194,22 @@ def strip_ambient(block):
     return {k: v for k, v in block.items() if k != "ambient_audio"}
 
 
+# Coach Portal 2026-07-01 breathing changes (manifest schema still "2.0"):
+#   - visual_cues was removed from breathing blocks (drop it if an older pack
+#     still carries it — the app no longer needs it for flexible breathing).
+#   - the single optional mid_overlay object became a mid_overlays ARRAY that is
+#     always present (empty [] when none). Drop the key when empty so
+#     content_blocks stays lean; keep the array when it has overlays.
+# Older packs with a legacy single mid_overlay object pass through unchanged.
+def normalize_breathing(block):
+    if not (block.get("type") == "timed_exercise" and block.get("interactive_model") == "breathing"):
+        return block
+    out = {k: v for k, v in block.items() if k != "visual_cues"}
+    if "mid_overlays" in out and not out["mid_overlays"]:
+        del out["mid_overlays"]
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Whisper captions (local, free). Reused from gen_sentence_cues_15_30.py logic:
 # group words into sentence/clause cues; start_s = first word; <= MAX_CHARS.
@@ -225,6 +241,25 @@ def _cap(t):
 _ATTACH_LEFT_PREFIXES = (",", ".", ";", ":", "!", "?", ")", "]", "}", "'", "\u2019", "-", "\u2014", "\u2013", "%")
 # Word-final punctuation that marks a natural clause boundary we may break after.
 _CLAUSE_END = (",", ";", ":", "\u2014", "\u2013")
+
+# Known Whisper homophone slips to correct in generated captions. The AUDIO is
+# correct; the transcript mishears it (e.g. "day two" -> "today too"). Exact,
+# case-sensitive substring replacements applied to every generated cue so a
+# re-load never re-introduces a fixed caption. Add pairs here as they surface.
+_CAPTION_TEXT_FIXES = (
+    ("welcome today too", "welcome to day two"),
+    ("Welcome today too", "Welcome to day two"),
+)
+
+
+def _apply_caption_fixes(cues):
+    for c in cues:
+        t = c.get("text", "")
+        for wrong, right in _CAPTION_TEXT_FIXES:
+            if wrong in t:
+                t = t.replace(wrong, right)
+        c["text"] = t
+    return cues
 
 
 def _detok(tokens):
@@ -296,7 +331,7 @@ def _words_to_cues(words, warnings=None):
             cues.append({"start_s": round(g[0]["start"], 2), "text": _cap(text)})
         else:
             cues.extend(_split_long(g, warnings))
-    return cues
+    return _apply_caption_fixes(cues)
 
 
 def transcribe(path, offset=0.0, warnings=None):
@@ -389,6 +424,14 @@ def validate_lesson(seq, blocks, warnings):
                     f"lesson {seq}: breathing duration_seconds={b.get('duration_seconds')} "
                     f"!= sum(pattern)*rep_count={expected}"
                 )
+            # mid_overlays: each overlay starts when rep after_rep completes, so
+            # after_rep must leave at least one rep to show over.
+            for ov in (b.get("mid_overlays") or []):
+                if ov.get("after_rep", 0) >= reps:
+                    warnings.append(
+                        f"lesson {seq}: breathing mid_overlay after_rep={ov.get('after_rep')} "
+                        f">= rep_count={reps} (overlay would start after the exercise ends)"
+                    )
 
 
 # ---------------------------------------------------------------------------
@@ -448,7 +491,8 @@ def main():
         storage_upload(IMAGE_BUCKET, photo_rel, portal_photo, content_type_for(photo_rel))
     else:
         upload_image(coach.get("photo"))
-    upload_image(program.get("cover_image"))
+    # Coach Portal 2026-07-01: program.cover_image was removed from the manifest
+    # (the coach photo represents the program). Nothing to upload here anymore.
 
     # --- Upsert coach (by coach_key) -> coach_id ---
     def _trimmed(v):
@@ -484,12 +528,14 @@ def main():
     print(f"coach_id = {coach_id}")
 
     # --- Upsert program (by coach_id + program_key) -> program_id ---
+    # cover_image is intentionally NOT written: the Coach Portal no longer emits
+    # it, and omitting the key leaves any existing DB value untouched on re-load.
+    # The app uses coach.avatar_url wherever a program image is shown.
     program_row = {
         "coach_id": coach_id,
         "program_key": pk,
         "title": program["title"],
         "description": program.get("description"),
-        "cover_image": program.get("cover_image"),
         "sport": program.get("sport"),
         "level": program.get("level"),
         "published": True,
@@ -511,8 +557,9 @@ def main():
             if b["type"] == "voiceover":
                 out_blocks.append(build_voiceover(b, pack_dir, args.dry_run, warnings))
             elif b["type"] in PASSTHROUGH_TYPES:
-                # Already schema-shaped; strip ambient_audio (no ambient in these lessons).
-                out_blocks.append(strip_ambient(b))
+                # Already schema-shaped; strip ambient_audio (no ambient in these
+                # lessons) and normalize breathing (visual_cues / mid_overlays).
+                out_blocks.append(normalize_breathing(strip_ambient(b)))
             else:
                 raise ValueError(f"lesson {seq}: unknown block type {b['type']!r}")
 
