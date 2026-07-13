@@ -13,11 +13,15 @@ import {
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { createRecoveryClient } from '@/lib/recovery-client';
 import { parseAuthParamsFromUrl } from '@/lib/auth-redirects';
 import { clearPendingRecoveryUrl, peekPendingRecoveryUrl } from '@/lib/recovery-link-store';
+import { isCredentialHandled, markCredentialHandled } from '@/lib/auth-link-dedupe';
 import { colors, spacing } from '@/lib/theme';
+import { InlineErrorCard } from '@/components/InlineErrorCard';
+import { friendlySignUpError, passwordMeetsComplexity } from '@/app/(auth)/signup';
 
 const AUTH_PARAM_KEYS = [
   'access_token',
@@ -57,30 +61,39 @@ export default function PasswordRecoveryScreen() {
   if (!recoveryRef.current) recoveryRef.current = createRecoveryClient();
   const recovery = recoveryRef.current;
 
-  // Clear any stale app session (e.g. a phantom one from an earlier attempt) so
-  // landing on login after reset doesn't bounce the user into the app.
-  useEffect(() => {
-    void supabase.auth.signOut();
-  }, []);
-
   const tryResolve = useCallback(async (params: Record<string, string>) => {
     if (resolvedRef.current) return;
     const { access_token, refresh_token, code, token_hash, type } = params;
     const linkError = params.error_description || params.error_code || params.error;
     const hasCredential = Boolean(token_hash || code || (access_token && refresh_token));
     // Nothing usable yet — wait for the link/params to arrive (effect re-runs).
+    // Important: do NOT sign the user out here. A bare mount/reload with no link
+    // must leave any existing app session intact.
     if (!hasCredential && !linkError) return;
+
+    const cred = token_hash || code || access_token || null;
+    // Already resolved this exact link before (e.g. the app's stale launch URL
+    // re-opens this screen on reload). Don't re-process or show an error — just
+    // leave. RouteGuard sends a still-signed-in user into the app; otherwise
+    // they land on login.
+    if (cred && (await isCredentialHandled(cred))) {
+      resolvedRef.current = true;
+      router.replace('/(auth)/login' as any);
+      return;
+    }
 
     resolvedRef.current = true;
 
     if (linkError) {
       setLoadError(`${decodeURIComponent(linkError).replace(/\+/g, ' ')}`);
       setBooting(false);
+      void markCredentialHandled(cred);
       return;
     }
     if (type && type !== 'recovery') {
       setLoadError('This link is invalid or expired. Request a new one from sign in.');
       setBooting(false);
+      void markCredentialHandled(cred);
       return;
     }
 
@@ -95,12 +108,24 @@ export default function PasswordRecoveryScreen() {
     if (sessionErr) {
       setLoadError(sessionErr.message);
       setBooting(false);
+      // Only mark the credential handled if Supabase definitively rejected the
+      // token (expired/invalid/already used) — a transient network/fetch
+      // failure must leave it unmarked so a relaunch from the same email link
+      // retries instead of being silently skipped (mirrors the confirm.tsx fix).
+      if (!isAuthRetryableFetchError(sessionErr)) {
+        void markCredentialHandled(cred);
+      }
       return;
     }
+    // Valid recovery link confirmed. Now clear any stale app session so that,
+    // after the reset, the user lands on login instead of being bounced into
+    // the app. (Recovery itself runs on an isolated in-memory client.)
+    void supabase.auth.signOut();
+    void markCredentialHandled(cred);
     clearPendingRecoveryUrl();
     setSessionReady(true);
     setBooting(false);
-  }, [recovery]);
+  }, [recovery, router]);
 
   // The token_hash deep link delivers creds in the query string, which
   // expo-router parses into route params. This re-runs when they populate.
@@ -138,8 +163,14 @@ export default function PasswordRecoveryScreen() {
 
   const savePassword = async () => {
     if (!password || !confirm) return;
-    if (password.length < 6) {
-      setSaveError('Password must be at least 6 characters.');
+    // Mirrors signup.tsx's requirement so recovery doesn't accept a password
+    // signup would reject.
+    if (password.length < 8) {
+      setSaveError('Password must be at least 8 characters.');
+      return;
+    }
+    if (!passwordMeetsComplexity(password)) {
+      setSaveError('Password must include uppercase, lowercase, and a number.');
       return;
     }
     if (password !== confirm) {
@@ -151,7 +182,9 @@ export default function PasswordRecoveryScreen() {
     try {
       const { error: upErr } = await recovery.auth.updateUser({ password });
       if (upErr) {
-        setSaveError(upErr.message);
+        // Same sanitisation as signup — never show Supabase's raw
+        // character-class list here either.
+        setSaveError(friendlySignUpError(upErr.message));
         return;
       }
       // Discard the in-memory recovery session, then show a success screen with
@@ -214,7 +247,7 @@ export default function PasswordRecoveryScreen() {
         <View style={styles.inner}>
           <Text style={styles.logo}>RELENTLESS</Text>
           <Text style={styles.title}>Choose a new password</Text>
-          <Text style={styles.subLabel}>At least 6 characters.</Text>
+          <Text style={styles.subLabel}>At least 8 characters, with uppercase, lowercase, and a number.</Text>
 
           <TextInput
             style={styles.input}
@@ -236,7 +269,7 @@ export default function PasswordRecoveryScreen() {
             textContentType="newPassword"
             autoComplete="password-new"
           />
-          {saveError ? <Text style={styles.saveError}>{saveError}</Text> : null}
+          {saveError ? <InlineErrorCard message={saveError} /> : null}
           <TouchableOpacity style={styles.button} onPress={savePassword} disabled={saving}>
             {saving ? (
               <ActivityIndicator color={colors.background} />
@@ -279,7 +312,6 @@ const styles = StyleSheet.create({
   },
   subLabel: { color: colors.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 20 },
   errTitle: { fontSize: 18, fontWeight: '600', color: colors.textPrimary, textAlign: 'center', marginTop: 8 },
-  saveError: { color: '#ff6b6b', fontSize: 13, textAlign: 'center', marginBottom: 8, lineHeight: 18 },
   input: {
     backgroundColor: colors.surface,
     color: colors.white,

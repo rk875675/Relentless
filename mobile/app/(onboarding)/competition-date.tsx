@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -31,12 +31,17 @@ export default function CompetitionDateScreen() {
   const sportFromPrev = Array.isArray(sportParam) ? sportParam[0] : sportParam;
   const [date, setDate] = useState<Date | null>(null);
   const [showPicker, setShowPicker] = useState(Platform.OS === 'ios');
+  const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     loadOnboardingAnswers().then((saved) => {
       if (saved.competitionDate) setDate(new Date(saved.competitionDate));
     });
   }, []);
+
+  useEffect(() => {
+    Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+  }, [fade]);
 
   const today = new Date();
 
@@ -89,7 +94,7 @@ export default function CompetitionDateScreen() {
         onBack={onPop}
       />
       <View style={styles.flex} {...panHandlers}>
-        <Animated.View style={[styles.inner, { transform: [{ translateX: shellTranslateX }] }]}>
+        <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: shellTranslateX }] }]}>
         <View style={styles.topSection}>
           <Text style={styles.title}>{"When's your next competition?"}</Text>
           <Text style={styles.body}>

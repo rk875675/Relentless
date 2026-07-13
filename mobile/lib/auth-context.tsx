@@ -5,12 +5,13 @@ import * as WebBrowser from 'expo-web-browser';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 import { supabase } from './supabase';
-import { getOAuthRedirectUrl, parseOAuthCallbackUrl } from './auth-redirects';
+import { getEmailConfirmRedirectUrl, getOAuthRedirectUrl, parseOAuthCallbackUrl } from './auth-redirects';
 import { openAuthSessionWithTimeout } from './oauth-open-auth-session';
 import { bustCache } from './api-cache';
 import { clearPendingGainDeltas } from './pending-deltas';
 import { setApiToken } from './api';
 import { clearOnboardingProgress } from './onboarding-local-state';
+import { flushPendingGrantJournal } from './pending-grant-journal';
 
 /** Google / Apple OAuth pitfalls: see `mobile/docs/AUTH_SOCIAL_SIGNIN.md`. */
 
@@ -56,8 +57,12 @@ function postSignInPath(
   snap: FetchedUserSnapshot,
   flags: { devReplayOnboarding: boolean; suppressDevPremium: boolean; devPremiumBypass: boolean },
 ): '/(tabs)' | '/(onboarding)/paywall' | '/(onboarding)/welcome' {
+  // is_dev accounts bypass onboarding (and the subscription, below) entirely —
+  // they route straight into the app without completing onboarding. The only
+  // exception is the QA "replay onboarding" overlay (devReplayOnboarding).
   const onboardingComplete =
-    snap.profileOnboardingCompleted && !(snap.isDevAccount && flags.devReplayOnboarding);
+    (snap.profileOnboardingCompleted || snap.isDevAccount) &&
+    !(snap.isDevAccount && flags.devReplayOnboarding);
   const statusValid =
     snap.entitlementStatus === 'trial' || snap.entitlementStatus === 'active';
   const expired = snap.entitlementExpiresAt
@@ -81,6 +86,8 @@ type AuthState = {
   /** Server-side QA flag (profiles.is_dev); never self-writable by clients. */
   isDevAccount: boolean;
   onboardingComplete: boolean;
+  /** True once profiles/entitlements loaded at least once for this session (see state). */
+  profileLoaded: boolean;
   competitionDate: string | null;
   sport: string | null;
   /** User-chosen label on Profile; empty in DB ⇒ client falls back to email local-part. */
@@ -121,6 +128,7 @@ const AuthContext = createContext<AuthState>({
   loading: true,
   isDevAccount: false,
   onboardingComplete: false,
+  profileLoaded: false,
   competitionDate: null,
   sport: null,
   displayName: null,
@@ -151,6 +159,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isDevAccount, setIsDevAccount] = useState(false);
   /** From profiles.onboarding_completed only (never written false client-side for is_dev replay). */
   const [profileOnboardingCompleted, setProfileOnboardingCompleted] = useState(false);
+  /**
+   * True once profiles/entitlements have been fetched successfully at least once
+   * for the current session. RouteGuard uses this so a signed-in user whose
+   * profile fetch is still pending or transiently failing is NOT bounced back to
+   * the onboarding welcome ("get started") screen.
+   */
+  const [profileLoaded, setProfileLoaded] = useState(false);
   /** is_dev only: after Reset to Onboarding, treat routing as incomplete while DB stays completed. */
   const [devReplayOnboarding, setDevReplayOnboarding] = useState(false);
   const [competitionDate, setCompetitionDate] = useState<string | null>(null);
@@ -264,6 +279,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
         : entExpires;
 
+    setProfileLoaded(true);
+
     return {
       isDevAccount: isDev,
       profileOnboardingCompleted: profileCompleted,
@@ -306,6 +323,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch {
           try { await fetchUserState(s.user.id); } catch { /* give up */ }
         }
+        // Recover a Grant onboarding journal answer left in AsyncStorage from a
+        // previous launch where all retry attempts failed (e.g. app killed mid-retry).
+        void flushPendingGrantJournal();
       }
     }).catch(() => {
       // Auth/network failure — proceed unauthenticated rather than hang forever.
@@ -334,6 +354,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           setIsDevAccount(false);
           setProfileOnboardingCompleted(false);
+          setProfileLoaded(false);
           setDevReplayOnboarding(false);
           setCompetitionDate(null);
           setSport(null);
@@ -351,8 +372,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [fetchUserState]);
 
+  // is_dev accounts are treated as onboarded so they skip onboarding entirely
+  // (subscription is likewise bypassed via hasPremiumAccess below). The QA
+  // "replay onboarding" overlay still forces them back through the flow.
   const onboardingComplete = useMemo(
-    () => profileOnboardingCompleted && !(isDevAccount && devReplayOnboarding),
+    () => (profileOnboardingCompleted || isDevAccount) && !(isDevAccount && devReplayOnboarding),
     [profileOnboardingCompleted, isDevAccount, devReplayOnboarding],
   );
 
@@ -601,7 +625,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [finishSignInFlow]);
 
   const signUp = async (email: string, password: string): Promise<string | null> => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    // emailRedirectTo routes the confirmation link back into the app (via the
+    // auth-redirect HTTPS bridge + the (auth)/confirm screen). When email
+    // confirmation is disabled (auto-confirm), Supabase ignores it and returns
+    // a session immediately; when enabled, the link opens the app instead of
+    // the website. The value must be on Supabase Auth → Redirect URLs.
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: getEmailConfirmRedirectUrl() },
+    });
     if (error) return error.message;
     // With auto-confirm, the session is available immediately. Set it so
     // post-signup code (e.g. purchase sync) doesn't have to wait for
@@ -619,6 +652,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsOptimisticGrant(false);
     setIsDevAccount(false);
     setProfileOnboardingCompleted(false);
+    setProfileLoaded(false);
     setDevReplayOnboarding(false);
     setDevPremiumBypass(false);
     setSuppressDevPremium(false);
@@ -783,6 +817,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       isDevAccount,
       onboardingComplete,
+      profileLoaded,
       competitionDate,
       sport,
       displayName,

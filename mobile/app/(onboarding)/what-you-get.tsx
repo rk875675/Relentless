@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -35,12 +36,17 @@ const DELIVERABLES = [
 export default function WhatYouGetScreen() {
   const router = useRouter();
   const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
+  const fade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+  }, [fade]);
 
   return (
     <SafeAreaView style={styles.container}>
       <ProgressBar step={11} total={TOTAL_STEPS} onBack={onPop} />
       <View style={styles.flex} {...panHandlers}>
-        <Animated.View style={[styles.inner, { transform: [{ translateX: shellTranslateX }] }]}>
+        <Animated.View style={[styles.inner, { opacity: fade, transform: [{ translateX: shellTranslateX }] }]}>
         <View style={styles.topSection}>
           <Text style={styles.title}>Your daily training</Text>
           <Text style={styles.subtitle}>

@@ -247,6 +247,17 @@ export default function GrantIntroScreen() {
     });
   }, [navigation, phase]);
 
+  // ── Stop audio when navigating forward (screen blur) ─────────────────────
+  // The phase-driven pause can't fire because phase is still 'playing' at the
+  // moment router.push() is called. Listening for 'blur' is the only reliable
+  // hook that fires after the new screen covers this one.
+  useEffect(() => {
+    return navigation.addListener('blur', () => {
+      try { introPlayer.pause(); } catch {}
+      try { outroPlayer.pause(); } catch {}
+    });
+  }, [navigation, introPlayer, outroPlayer]);
+
   // ── Reset to ready when re-focused after navigating forward to trophy ─────
   useFocusEffect(
     useCallback(() => {

@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { getPasswordRecoveryRedirectUrl } from '@/lib/auth-redirects';
 import { colors, spacing } from '@/lib/theme';
+import { InlineErrorCard } from '@/components/InlineErrorCard';
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
@@ -76,7 +77,7 @@ export default function ForgotPasswordScreen() {
             />
           )}
 
-          {error && !success ? <Text style={styles.error}>{error}</Text> : null}
+          {error && !success ? <InlineErrorCard message={error} /> : null}
 
           {success ? (
             <TouchableOpacity style={styles.button} onPress={() => router.replace('/(auth)/login' as any)}>
@@ -148,13 +149,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   buttonText: { color: colors.background, fontSize: 16, fontWeight: '700' },
-  error: {
-    color: '#ff6b6b',
-    fontSize: 13,
-    textAlign: 'center',
-    marginBottom: 12,
-    lineHeight: 18,
-  },
   back: { marginTop: 24, alignItems: 'center' },
   backText: { color: colors.textSecondary, fontSize: 14 },
 });

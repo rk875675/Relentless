@@ -67,7 +67,6 @@ const STEPS: TutorialStep[] = [
     },
     progressStep: ONBOARDING_PROGRESS.tutorialStart,
     caretPosition: 'center',
-    tooltipNudgeY: -166,
   },
   {
     tab: 'home',
@@ -75,8 +74,8 @@ const STEPS: TutorialStep[] = [
     rings: { m: 20, a: 20, c: 20 },
     streak: 0,
     tooltip: {
-      title: "GRANT'S DAILY WOD",
-      body: "A new session from Grant every day. 3–5 minutes — show up, do the work.",
+      title: 'YOUR DAILY WORKOUT',
+      body: 'A short session from your active pack each day. Explore packs from other coaches anytime in the Library.',
     },
     progressStep: ONBOARDING_PROGRESS.tutorialStart + 1,
     caretPosition: 'center',
@@ -88,11 +87,11 @@ const STEPS: TutorialStep[] = [
     streak: 0,
     tooltip: {
       title: 'THE RELENTLESS LIBRARY',
-      body: 'For days you want to go deeper — extra sessions organized by pillar, available anytime.',
+      body: 'Lesson packs sit up top. Sessions by pillar are below, for days you want to go deeper.',
     },
     progressStep: ONBOARDING_PROGRESS.tutorialStart + 2,
     caretPosition: 'center',
-    tooltipNudgeY: -10,
+    pinToBottom: true,
   },
 ];
 
@@ -164,6 +163,12 @@ const MAC_CATS = [
   { label: 'Commitment', color: colors.ringCommitment },
 ] as const;
 
+// Illustrative lesson packs for the tutorial mock — not real catalog data.
+const MOCK_LESSON_PACKS = [
+  { coach: 'Your Coach', title: '30-Day Sprint', active: true, progress: 0.13, dayLabel: 'Day 4 of 30' },
+  { coach: 'Amy Smith', title: 'Elite Runner Program', active: false, progress: 0.5, dayLabel: 'Day 12 of 24' },
+] as const;
+
 function LibraryMockScreen({ rings, streak }: { rings: RingValues; streak: number }) {
   const anims = useRef(
     MAC_CATS.map(() => ({
@@ -190,10 +195,9 @@ function LibraryMockScreen({ rings, streak }: { rings: RingValues; streak: numbe
 
   return (
     <ScrollView
-      style={styles.screenScroll}
+      style={styles.screenScrollFill}
       contentContainerStyle={styles.screenContent}
       showsVerticalScrollIndicator={false}
-      scrollEnabled={false}
     >
       <View style={styles.screenHeader}>
         <Text style={styles.screenBrand}>RELENTLESS</Text>
@@ -204,6 +208,35 @@ function LibraryMockScreen({ rings, streak }: { rings: RingValues; streak: numbe
       </View>
 
       <RingsRow rings={rings} />
+
+      <Text style={styles.libSectionHeader}>Lesson Packs</Text>
+      {MOCK_LESSON_PACKS.map((pack) => (
+        <View
+          key={pack.title}
+          style={[styles.libPackCard, !pack.active && styles.libPackCardInactive]}
+        >
+          <View style={styles.libPackImageWrap}>
+            <Ionicons name="person" size={18} color={colors.textSecondary} />
+          </View>
+          <View style={styles.libPackBody}>
+            <View style={styles.libPackCoachRow}>
+              <Text style={styles.libPackCoachLine} numberOfLines={1}>{pack.coach}</Text>
+              {pack.active && (
+                <View style={styles.libActiveBadge}>
+                  <Text style={styles.libActiveBadgeText}>ACTIVE</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.libPackTitle} numberOfLines={1}>{pack.title}</Text>
+            <View style={styles.libProgressTrack}>
+              <View style={[styles.libProgressFill, { width: `${pack.progress * 100}%` }]} />
+            </View>
+            <Text style={styles.libPackProgressLabel}>{pack.dayLabel}</Text>
+          </View>
+        </View>
+      ))}
+
+      <Text style={styles.libSectionHeader}>Library</Text>
 
       {MAC_CATS.map((cat, i) => (
         <Animated.View
@@ -400,7 +433,7 @@ function HomeScreen({
         </>
       )}
 
-      {!isDecay && <AnimatedWodCard active={variant === 'wod'} />}
+      {!isDecay && variant !== 'rings' && <AnimatedWodCard active={variant === 'wod'} />}
     </ScrollView>
   );
 }
@@ -629,7 +662,7 @@ export default function TutorialScreen() {
           style={[styles.screenArea, { transform: [{ translateX: slideX }] }]}
           {...panResponder.panHandlers}
         >
-          <View style={styles.screenMockHostLoose}>
+          <View style={step.tab === 'library' ? styles.screenMockHostClamp : styles.screenMockHostLoose}>
             {step.tab === 'library' ? (
               <LibraryMockScreen rings={step.rings} streak={step.streak} />
             ) : (
@@ -678,7 +711,7 @@ const styles = StyleSheet.create({
 
   screenArea: { flex: 1, flexDirection: 'column' },
   /** Viewport-bound host (library + profile) so sibling tooltip stays on-screen. */
-  screenMockHostClamp: { flex: 1, minHeight: 0 },
+  screenMockHostClamp: { flex: 1, minHeight: 0, position: 'relative' },
   /** Original loose host for home mocks — restores prior tooltip placement. */
   screenMockHostLoose: { position: 'relative' },
   screenScroll: {},
@@ -710,7 +743,7 @@ const styles = StyleSheet.create({
 
   // Rings
   ringsRow: {
-    flexDirection: 'row', justifyContent: 'space-around', marginBottom: 16,
+    flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12,
   },
 
   // WOD card
@@ -839,6 +872,87 @@ const styles = StyleSheet.create({
   },
   reflectionPlaceholder: { fontSize: 14, color: 'rgba(239,68,68,0.55)' },
 
+  // Library mock — Lesson Packs section (mirrors library.tsx's pack cards, scaled down)
+  libSectionHeader: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    color: colors.textMuted,
+    marginBottom: 8,
+  },
+  libPackCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(167, 139, 250, 0.5)',
+    padding: 12,
+    marginBottom: 10,
+  },
+  libPackCardInactive: {
+    borderColor: colors.border,
+  },
+  libPackImageWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  libPackBody: { flex: 1 },
+  libPackCoachRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  libPackCoachLine: {
+    flex: 1,
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.accentLight,
+    letterSpacing: 0.2,
+  },
+  libActiveBadge: {
+    backgroundColor: colors.accentSubtle,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginLeft: 6,
+  },
+  libActiveBadgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: colors.accentLight,
+    letterSpacing: 0.5,
+  },
+  libPackTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 6,
+  },
+  libProgressTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.surfaceLight,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  libProgressFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: colors.accent,
+  },
+  libPackProgressLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+
   // Library mock — compact row (real library uses paddingVertical:32 which is too tall in tutorial)
   libCategoryRow: {
     flexDirection: 'row',
@@ -847,9 +961,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 18,
+    paddingVertical: 13,
     paddingHorizontal: spacing.lg,
-    marginBottom: 10,
+    marginBottom: 8,
   },
 
   // Library overview

@@ -2,6 +2,31 @@ import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
+import { InlineErrorCard } from '@/components/InlineErrorCard';
+
+/** Client-side check mirroring prod's lower_upper_letters_digits requirement.
+ *  Prevents the raw Supabase character-list error from ever reaching the UI.
+ *  Exported so password-recovery.tsx can apply the same rule. */
+export function passwordMeetsComplexity(pw: string): boolean {
+  return /[a-z]/.test(pw) && /[A-Z]/.test(pw) && /[0-9]/.test(pw);
+}
+
+/** Sanitise any Supabase error that slips through (e.g. if the requirement changes). */
+export function friendlySignUpError(raw: string): string {
+  // Catch-all on the literal character-class dump too, so a future wording
+  // change in Supabase's message can never leak the raw list to the UI again.
+  if (
+    /contain at least one character of each/i.test(raw) ||
+    /password.*weak/i.test(raw) ||
+    /abcdefghijklmnopqrstuvwxyz/i.test(raw)
+  ) {
+    return 'Password must include uppercase, lowercase, and a number.';
+  }
+  if (/already registered/i.test(raw) || /already been registered/i.test(raw) || /user already exists/i.test(raw)) {
+    return 'An account with this email already exists. Try signing in instead.';
+  }
+  return raw;
+}
 
 export default function SignupScreen() {
   const { signUp } = useAuth();
@@ -10,15 +35,34 @@ export default function SignupScreen() {
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSignup = async () => {
-    if (!email || !password) return;
-    if (password.length < 6) return;
-    if (password !== confirm) return;
+    setError(null);
+    if (!email || !password) {
+      setError('Please enter your email and password.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (!passwordMeetsComplexity(password)) {
+      setError('Password must include uppercase, lowercase, and a number.');
+      return;
+    }
+    if (password !== confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
     setLoading(true);
     const err = await signUp(email.trim(), password);
     setLoading(false);
-    if (!err) setSuccess(true);
+    if (err) {
+      setError(friendlySignUpError(err));
+    } else {
+      setSuccess(true);
+    }
   };
 
   if (success) {
@@ -77,6 +121,8 @@ export default function SignupScreen() {
             textContentType="oneTimeCode"
             autoComplete="off"
           />
+
+          {error ? <InlineErrorCard message={error} /> : null}
 
           <TouchableOpacity style={styles.button} onPress={handleSignup} disabled={loading}>
             {loading ? (

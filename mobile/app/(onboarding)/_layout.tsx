@@ -7,6 +7,12 @@ export const unstable_settings = {
   initialRouteName: 'welcome',
 };
 
+/** Shared slide+fade transition for the early static onboarding screens. */
+const EARLY_SCREEN_TRANSITION = {
+  animation: 'slide_from_right' as const,
+  animationDuration: 250,
+};
+
 export default function OnboardingLayout() {
   const segments = useSegments();
 
@@ -22,6 +28,13 @@ export default function OnboardingLayout() {
     <Stack screenOptions={{ headerShown: false, gestureEnabled: true }}>
       <Stack.Screen name="paywall" options={{ gestureEnabled: false, animation: 'fade' }} />
       <Stack.Screen name="signup" options={{ gestureEnabled: false, animation: 'fade' }} />
+      {/* Early static screens share one polished slide+fade feel. */}
+      <Stack.Screen name="welcome" options={EARLY_SCREEN_TRANSITION} />
+      <Stack.Screen name="relentless-intro" options={EARLY_SCREEN_TRANSITION} />
+      <Stack.Screen name="unlocked-potential" options={EARLY_SCREEN_TRANSITION} />
+      <Stack.Screen name="mac-teaser" options={EARLY_SCREEN_TRANSITION} />
+      <Stack.Screen name="mac-question" options={EARLY_SCREEN_TRANSITION} />
+      <Stack.Screen name="we-can-train" options={EARLY_SCREEN_TRANSITION} />
       {/* Wizard screens use beforeRemove for internal steps, which conflicts
           with native-stack gestures. Keep gestures off; their custom
           PanResponder handles swipe-back (including popping on first step). */}

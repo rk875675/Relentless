@@ -4,11 +4,11 @@ import type { ImageSourcePropType } from 'react-native';
 export const ONBOARDING_TRUST_HEADLINE = 'Trusted by Elite Athletes';
 
 /**
- * Onboarding social proof. Avatars are bundled JPEGs under
- * `assets/images/testimonials/`: Instagram profile photos for everyone except
- * Svenya Stoyanoff, who uses the official LSU roster image (jersey). Re-export
- * from IG when profile pics change; refresh Svenya from lsusports if they issue
- * a new headshot. Keep `require()` paths in sync.
+ * Onboarding social proof. Avatars are bundled under `assets/images/testimonials/`:
+ * Instagram profile JPEGs for most athletes, except Svenya Stoyanoff (official LSU
+ * roster jersey image) and Carlos Lanzagorta (PNG supplied directly by the athlete).
+ * Re-export from IG when profile pics change; refresh Svenya from lsusports if they
+ * issue a new headshot. Keep `require()` paths in sync.
  */
 export type OnboardingTestimonial = {
   quote: string;
@@ -27,10 +27,10 @@ export const ONBOARDING_TESTIMONIALS: OnboardingTestimonial[] = [
   },
   {
     quote:
-      'In a sport where the mind can prevent the body from its potential, Relentless reframes training as something that is not only physical, but highly psychological.',
-    name: 'Mats Swanson',
-    detail: 'D1 Runner at LSU',
-    avatar: require('@/assets/images/testimonials/mats-swanson.jpg'),
+      "Building brick by brick. I feel like I'm actually getting mentally stronger and excited to see how this plays out.",
+    name: 'Carlos Lanzagorta',
+    detail: 'D1 Runner at South Carolina',
+    avatar: require('@/assets/images/testimonials/carlos-lanzagorta.png'),
   },
   {
     quote:

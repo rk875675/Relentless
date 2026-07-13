@@ -5,12 +5,15 @@ import * as Linking from 'expo-linking';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, LogBox, View } from 'react-native';
 import { AnalyticsScreenTracker } from '@/components/AnalyticsScreenTracker';
+import { HeaderBackButton } from '@/components/HeaderBackButton';
 import { PostHogIdentitySync } from '@/components/PostHogIdentitySync';
 import { PostHogRoot } from '@/components/PostHogRoot';
 import { SuperwallRoot } from '@/components/SuperwallRoot';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { parseAuthParamsFromUrl } from '@/lib/auth-redirects';
 import { setPendingRecoveryUrl } from '@/lib/recovery-link-store';
+import { setPendingConfirmUrl } from '@/lib/confirm-link-store';
+import { isAuthLinkAlreadyHandled } from '@/lib/auth-link-dedupe';
 import { clearInAppAuthHubEntry, takeInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { loadOnboardingProgress } from '@/lib/onboarding-local-state';
 import { prefetchHomeData } from '@/lib/api-cache';
@@ -34,7 +37,7 @@ function firstParam(v: string | string[] | undefined): string | undefined {
 }
 
 function RouteGuard() {
-  const { session, loading, onboardingComplete, hasPremiumAccess, isOptimisticGrant, completeOnboarding } = useAuth();
+  const { session, loading, onboardingComplete, hasPremiumAccess, isOptimisticGrant, profileLoaded, completeOnboarding } = useAuth();
   const segments = useSegments();
   const router = useRouter();
   const globalParams = useGlobalSearchParams();
@@ -47,8 +50,9 @@ function RouteGuard() {
   const initialLoadDone = useRef(false);
   const progressChecked = useRef(false);
   const recoveryNavRef = useRef(false);
+  const confirmNavRef = useRef(false);
 
-  /** Reset-password links must open (auth)/password-recovery; expo-router may not default there on cold start. */
+  /** Reset-password / email-confirmation links must open the right (auth) screen; expo-router may not default there on cold start. */
   useEffect(() => {
     const maybeOpenRecovery = (url: string) => {
       if (recoveryNavRef.current) return;
@@ -62,14 +66,43 @@ function RouteGuard() {
         // recovery screen mounts, and Linking.getInitialURL() returns null there.
         setPendingRecoveryUrl(url);
         recoveryNavRef.current = true;
+        // Note: the recovery screen marks this credential handled once it has
+        // resolved it, so a stale relaunch of the same link is ignored.
         router.replace('/(auth)/password-recovery' as any);
       }
     };
-    void Linking.getInitialURL().then((u) => {
-      if (u) maybeOpenRecovery(u);
-    });
+    const maybeOpenConfirm = (url: string) => {
+      if (confirmNavRef.current) return;
+      // Signup confirmation links land on auth-confirm (or carry a confirmation OTP type).
+      const isConfirm =
+        url.includes('auth-confirm') ||
+        /type=(signup|email|email_change|magiclink|invite)/.test(url);
+      if (!isConfirm) return;
+      const p = parseAuthParamsFromUrl(url);
+      const hasCredential = (p.access_token && p.refresh_token) || p.code || p.token_hash;
+      if (hasCredential) {
+        setPendingConfirmUrl(url);
+        // In-memory guard only: prevents this URL from being processed twice
+        // within THIS app session (e.g. duplicate `url` events). Persisting the
+        // dedupe to AsyncStorage happens in confirm.tsx, and only once
+        // verification actually succeeds — see confirm.tsx for why.
+        confirmNavRef.current = true;
+        router.replace('/(auth)/confirm' as any);
+      }
+    };
+    // getInitialURL() returns the launch URL, which on a reload/relaunch can be
+    // a STALE recovery/confirm link. Skip it if we've already handled that exact
+    // credential, so signed-in users aren't yanked back to the recovery screen.
+    void (async () => {
+      const u = await Linking.getInitialURL();
+      if (!u) return;
+      if (await isAuthLinkAlreadyHandled(u)) return;
+      maybeOpenRecovery(u);
+      maybeOpenConfirm(u);
+    })();
     const sub = Linking.addEventListener('url', (e) => {
       maybeOpenRecovery(e.url);
+      maybeOpenConfirm(e.url);
     });
     return () => sub.remove();
   }, [router]);
@@ -113,6 +146,7 @@ function RouteGuard() {
 
     const inAuth = rootSegment === '(auth)';
     const inPasswordRecovery = inAuth && (segments as string[])[1] === 'password-recovery';
+    const inConfirm = inAuth && (segments as string[])[1] === 'confirm';
     const inOnboarding = rootSegment === '(onboarding)';
     const onPaywall =
       inOnboarding &&
@@ -151,12 +185,23 @@ function RouteGuard() {
         router.replace('/(tabs)');
       } else if (onboardingComplete && !hasPremiumAccess) {
         router.replace('/(onboarding)/paywall');
+      } else if (inConfirm && profileLoaded) {
+        // The confirm screen is a one-shot processing step, unlike login/hub —
+        // never leave a just-verified user stranded there even if onboarding
+        // isn't complete yet (e.g. email confirmation was required before the
+        // paywall/purchase step could run).
+        redirectToPaywallOrWelcome(true);
       }
       // Do not redirect inAuth + !onboardingComplete → welcome: signed-in users may open
       // login from welcome (e.g. dev replay). After sign-in, login.tsx replaces welcome.
     } else if (
       session &&
       !onboardingComplete &&
+      // Only route to onboarding once the profile has actually loaded. Without
+      // this, a signed-in returning user whose fetchUserState is still pending or
+      // transiently failing (onboardingComplete defaults to false) gets bounced
+      // back to the welcome/get-started screen — making sign-in look broken.
+      profileLoaded &&
       !inOnboarding &&
       !inAuth &&
       // After OAuth/email sign-in, `router.replace('/(tabs)')` can run before React
@@ -180,7 +225,7 @@ function RouteGuard() {
     }
 
     setTimeout(hideSplash, 50);
-  }, [session, loading, onboardingComplete, hasPremiumAccess, isOptimisticGrant, segments, allowAuthHub, completeOnboarding]);
+  }, [session, loading, onboardingComplete, hasPremiumAccess, isOptimisticGrant, profileLoaded, segments, allowAuthHub, completeOnboarding]);
 
   // When the user completes signup with a premium subscription, force the
   // navigation tree to remount. router.replace('/(tabs)') is silently
@@ -277,6 +322,9 @@ function RouteGuard() {
             fontWeight: '600',
             color: '#F2F2F7',
           },
+          // Custom back button lives at the navigator level so it renders from
+          // frame 1 for every entry point (no native-chevron flash/regression).
+          headerLeft: () => <HeaderBackButton label="Home" fallbackHref="/(tabs)" />,
         }}
       />
       <Stack.Screen
@@ -308,6 +356,24 @@ function RouteGuard() {
             color: '#F2F2F7',
           },
           title: '',
+        }}
+      />
+      <Stack.Screen
+        name="pack/[id]"
+        options={{
+          headerShown: true,
+          animation: 'slide_from_right',
+          headerBackTitle: 'Library',
+          headerStyle: { backgroundColor: '#1A1A1B' },
+          headerTintColor: '#9B82D4',
+          headerTitleStyle: {
+            fontSize: 17,
+            fontWeight: '600',
+            color: '#F2F2F7',
+          },
+          title: '',
+          // Custom back button at navigator level — see programs above.
+          headerLeft: () => <HeaderBackButton label="Library" fallbackHref="/(tabs)/library" />,
         }}
       />
     </Stack>

@@ -16,6 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthSocialSignInButtons } from '@/components/auth/AuthSocialSignInButtons';
+import { friendlySignUpError, passwordMeetsComplexity } from '@/app/(auth)/signup';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth, type SocialSignInResult } from '@/lib/auth-context';
 import { trackSignupStarted, trackSignupCompleted } from '@/lib/lifecycle-analytics';
@@ -23,12 +24,13 @@ import { trackOnboardingCompleted } from '@/lib/onboarding-analytics';
 import { bustCache } from '@/lib/api-cache';
 import { fetchJwsForTransaction, restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { clearOnboardingProgress, loadOnboardingAnswers } from '@/lib/onboarding-local-state';
-import { apiFetch } from '@/lib/api';
+import { postGrantJournalWithRetry } from '@/lib/pending-grant-journal';
 import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
 import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
 import { supabase } from '@/lib/supabase';
 import { colors, spacing } from '@/lib/theme';
 import { getLastTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
+import { InlineErrorCard } from '@/components/InlineErrorCard';
 
 /**
  * Per-attempt timeout for a single call to the backend (syncSubscriptionWithBackend
@@ -382,14 +384,11 @@ export default function OnboardingSignupScreen() {
             p_commitment: 20,
           });
         } catch {}
-        if (answers.grantJournalAnswer?.trim()) {
-          await apiFetch('/journal', {
-            method: 'POST',
-            body: {
-              body: answers.grantJournalAnswer.trim(),
-              entry_type: 'onboarding_future_self',
-            },
-          }).catch(() => {});
+        const journalAnswer = answers.grantJournalAnswer?.trim();
+        if (journalAnswer) {
+          // Fire-and-forget with its own retry/backoff — never await here, so a
+          // slow or failing POST can't delay the signup → app navigation below.
+          void postGrantJournalWithRetry(journalAnswer);
         }
       }).catch(() => {});
 
@@ -466,8 +465,12 @@ export default function OnboardingSignupScreen() {
       setError('Enter your email and password.');
       return;
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (!passwordMeetsComplexity(password)) {
+      setError('Password must include uppercase, lowercase, and a number.');
       return;
     }
     if (password !== confirm) {
@@ -487,7 +490,7 @@ export default function OnboardingSignupScreen() {
         });
         if (signInErr) {
           setLoading(false);
-          setError(signInErr.message);
+          setError(friendlySignUpError(signInErr.message));
           return;
         }
         justSignedUp.current = true;
@@ -497,7 +500,7 @@ export default function OnboardingSignupScreen() {
         return;
       }
       setLoading(false);
-      setError(err);
+      setError(friendlySignUpError(err));
       return;
     }
 
@@ -599,7 +602,7 @@ export default function OnboardingSignupScreen() {
           </Text>
           {setupError ? (
             <>
-              <Text style={[styles.error, { marginTop: 8 }]}>{setupError}</Text>
+              <InlineErrorCard message={setupError} style={{ marginTop: 8 }} />
               <TouchableOpacity
                 style={[styles.button, { marginTop: 24 }]}
                 onPress={() => {
@@ -727,7 +730,7 @@ export default function OnboardingSignupScreen() {
             autoComplete="off"
           />
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <InlineErrorCard message={error} /> : null}
 
           <TouchableOpacity style={styles.button} onPress={handleSignup} disabled={loading}>
             {loading ? (
@@ -799,12 +802,6 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     borderWidth: 1,
     borderColor: colors.border,
-  },
-  error: {
-    color: colors.error,
-    fontSize: 13,
-    textAlign: 'center',
-    marginBottom: 12,
   },
   button: {
     backgroundColor: colors.white,

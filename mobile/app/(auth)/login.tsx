@@ -3,6 +3,7 @@ import { StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator,
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { trackSigninStarted, trackSigninCompleted, trackSigninFailed } from '@/lib/lifecycle-analytics';
+import { InlineErrorCard } from '@/components/InlineErrorCard';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -77,7 +78,7 @@ export default function LoginScreen() {
             <Text style={styles.forgotText}>Forgot password?</Text>
           </TouchableOpacity>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <InlineErrorCard message={error} /> : null}
 
           <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
             {loading ? (
@@ -148,12 +149,6 @@ const styles = StyleSheet.create({
   forgotText: {
     color: '#888',
     fontSize: 14,
-  },
-  error: {
-    color: '#ef4444',
-    fontSize: 13,
-    textAlign: 'center',
-    marginBottom: 8,
   },
   button: {
     backgroundColor: '#fff',

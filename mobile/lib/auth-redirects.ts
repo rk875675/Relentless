@@ -25,6 +25,16 @@ export function getPasswordRecoveryRedirectUrl(): string {
   return AuthSession.makeRedirectUri({ scheme, path: 'password-recovery' });
 }
 
+/**
+ * Deep link for the signup email-confirmation flow. Passed as `emailRedirectTo`
+ * on signUp and forwarded by the `auth-redirect` edge function bridge. Must be
+ * added to Supabase Auth → URL configuration → Redirect URLs.
+ */
+export function getEmailConfirmRedirectUrl(): string {
+  if (explicitRedirect) return `${explicitRedirect}/auth-confirm`;
+  return AuthSession.makeRedirectUri({ scheme, path: 'auth-confirm' });
+}
+
 /** Auth params from Supabase email / deep link (hash and/or query). */
 export function parseAuthParamsFromUrl(url: string): Record<string, string> {
   const out: Record<string, string> = {};
