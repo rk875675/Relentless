@@ -1380,6 +1380,11 @@ export default function LessonPlayerScreen() {
     if (phase !== 'playing' || !hasBlocks) return;
     const isFallback = audioFallbackActive.current;
     if (!isFallback && !audioStatus.isLoaded) return;
+    // Guard: skip while a new voiceover block is still loading. Without this,
+    // the stale currentTime from the previous block fires with cumulativeOffset
+    // already reset to 0, landing mid-way into the new block's cue list and
+    // locking highestCueIndexRef too high — freezing captions for ~90s.
+    if (!isFallback && voiceoverStartPending.current) return;
     const currentBlocks = lessonRef.current?.content_blocks?.blocks ?? [];
     const block = currentBlocks[blockIndexRef.current];
     if (!block || block.type !== 'voiceover') return;
@@ -2386,6 +2391,7 @@ export default function LessonPlayerScreen() {
                         program_key: lesson.program_key ?? null,
                         program_title: lesson.program_title ?? null,
                         coach_key: coach.coach_key ?? null,
+                        coach_name: coach.name ?? null,
                       });
                       void Linking.openURL(coach.external_url);
                     }}
