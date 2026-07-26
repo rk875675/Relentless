@@ -11,6 +11,9 @@ and loads it into the app:
     generating timed_text captions (local Whisper) and total_audio_seconds (mp3),
     computing the lesson duration, and upserting the lesson + its MAC tags
   - writes new lessons as production_ready = false (preview gate)
+  - ensures a Relentless V1 PostHog tile:
+      "Unique users — {Full Coach Name} referral CTA"
+    (idempotent; skipped if POSTHOG_PERSONAL_API_KEY is unset)
 
 Deterministic + idempotent: re-running the same pack updates the same rows.
 
@@ -25,6 +28,13 @@ pack manifest's coach snapshot:
   COACHFORM_SUPABASE_URL       e.g. https://<portal-ref>.supabase.co
   COACHFORM_SERVICE_ROLE_KEY   that project's service-role key
   COACHFORM_ASSETS_BUCKET      portal photo bucket (default: coach-assets)
+
+Optional — PostHog (Relentless App LLC project) personal API key so each loaded
+coach automatically gets a named CTA tile on the Relentless V1 dashboard:
+  POSTHOG_PERSONAL_API_KEY     personal API key with insight:write (never commit)
+  POSTHOG_HOST                 default https://us.posthog.com
+  POSTHOG_PROJECT_ID           default 400227
+  POSTHOG_DASHBOARD_ID         default 1517002 (Relentless V1)
 
 Point these at STAGING first. Review on a dev account. Then run against prod.
 
@@ -43,6 +53,7 @@ import sys
 import tempfile
 import uuid
 import zipfile
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
@@ -62,6 +73,13 @@ IMAGE_BUCKET = os.environ.get("RELENTLESS_IMAGE_BUCKET", "lesson-audio")
 COACHFORM_URL = os.environ.get("COACHFORM_SUPABASE_URL", "").strip().rstrip("/")
 COACHFORM_KEY = os.environ.get("COACHFORM_SERVICE_ROLE_KEY", "").strip()
 COACHFORM_ASSETS_BUCKET = os.environ.get("COACHFORM_ASSETS_BUCKET", "coach-assets")
+
+# PostHog (Relentless) — optional; creates per-coach CTA tiles on Relentless V1.
+POSTHOG_PERSONAL_API_KEY = os.environ.get("POSTHOG_PERSONAL_API_KEY", "").strip()
+POSTHOG_HOST = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip().rstrip("/")
+POSTHOG_PROJECT_ID = os.environ.get("POSTHOG_PROJECT_ID", "400227").strip()
+POSTHOG_DASHBOARD_ID = int(os.environ.get("POSTHOG_DASHBOARD_ID", "1517002"))
+POSTHOG_CTA_DATE_FROM = "2026-05-16T00:00:00"
 
 GAP_THRESHOLD = 1.2   # seconds of silence -> force a new caption cue
 MAX_CHARS = 75        # caption display limit
@@ -137,6 +155,12 @@ def content_type_for(path):
         return "image/png"
     if p.endswith(".jpg") or p.endswith(".jpeg"):
         return "image/jpeg"
+    if p.endswith(".heic"):
+        return "image/heic"
+    if p.endswith(".heif"):
+        return "image/heif"
+    if p.endswith(".webp"):
+        return "image/webp"
     return "application/octet-stream"
 
 
@@ -435,6 +459,147 @@ def validate_lesson(seq, blocks, warnings):
 
 
 # ---------------------------------------------------------------------------
+# PostHog — per-coach CTA tile on Relentless V1 (idempotent)
+# ---------------------------------------------------------------------------
+def _posthog_headers():
+    return {
+        "Authorization": f"Bearer {POSTHOG_PERSONAL_API_KEY}",
+        "Content-Type": "application/json",
+        "User-Agent": "relentless-loader/1.0",
+    }
+
+
+def _posthog_open(req, timeout=60):
+    try:
+        return urlopen(req, timeout=timeout)
+    except HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"HTTP {e.code} {e.reason} :: {req.get_method()} {req.full_url}\n{detail[:800]}"
+        ) from None
+
+
+def coach_cta_tile_name(full_name):
+    """Dashboard-visible title — always the coach's full display name."""
+    return f"Unique users — {full_name} referral CTA"
+
+
+def _coach_cta_insight_query(coach_key):
+    # Grant historically used both underscore and hyphen keys.
+    keys = [coach_key]
+    if coach_key == "grant-chiasson":
+        keys = ["grant_chiasson", "grant-chiasson"]
+    return {
+        "kind": "InsightVizNode",
+        "source": {
+            "kind": "TrendsQuery",
+            "version": 3,
+            "interval": "day",
+            "dateRange": {
+                "date_from": POSTHOG_CTA_DATE_FROM,
+                "date_to": None,
+                "explicitDate": False,
+            },
+            "filterTestAccounts": True,
+            "properties": [],
+            "series": [{
+                "kind": "EventsNode",
+                "event": "partner_referral_cta_clicked",
+                "name": "partner_referral_cta_clicked",
+                "math": "dau",
+                "properties": [{
+                    "key": "referral_partner_key",
+                    "type": "event",
+                    "operator": "exact",
+                    "value": keys,
+                }],
+            }],
+            "trendsFilter": {
+                "display": "ActionsLineGraphCumulative",
+                "aggregationAxisFormat": "numeric",
+                "legendPosition": "bottom",
+                "showLegend": False,
+                "showValuesOnSeries": False,
+                "smoothingIntervals": 1,
+                "yAxisScaleType": "linear",
+                "metricShowChange": True,
+                "metricSummary": "total",
+                "excludeBoxPlotOutliers": True,
+                "showAnnotations": True,
+                "showAlertThresholdLines": False,
+                "showMultipleYAxes": False,
+                "showPercentStackView": False,
+                "stackBreakdownValues": False,
+                "hideWeekends": False,
+            },
+        },
+    }
+
+
+def ensure_posthog_coach_cta_tile(coach_key, full_name, warnings):
+    """Create (or no-op if present) the Relentless V1 unique-users CTA tile for
+    this coach. Uses the coach's FULL display name in the tile title so the
+    dashboard is obvious without decoding slugs. Requires POSTHOG_PERSONAL_API_KEY
+    with insight:write — never hardcode it."""
+    if not POSTHOG_PERSONAL_API_KEY:
+        warnings.append(
+            "PostHog CTA tile skipped: set POSTHOG_PERSONAL_API_KEY "
+            "(personal key with insight:write) to auto-create "
+            f"{coach_cta_tile_name(full_name)!r} on Relentless V1"
+        )
+        return None
+
+    tile_name = coach_cta_tile_name(full_name)
+    description = (
+        f"Cumulative unique users clicking {full_name} partner referral CTA "
+        f"(coach_key {coach_key})."
+    )
+    base = f"{POSTHOG_HOST}/api/projects/{POSTHOG_PROJECT_ID}/insights/"
+
+    # Idempotent lookup by exact title (search is fuzzy; we exact-match locally).
+    search_url = f"{base}?limit=50&search={quote(full_name)}"
+    req = Request(search_url, headers=_posthog_headers())
+    payload = json.loads(_posthog_open(req).read().decode("utf-8"))
+    results = payload.get("results") if isinstance(payload, dict) else payload
+    existing = next((r for r in (results or []) if r.get("name") == tile_name), None)
+
+    if existing:
+        dashboards = list(existing.get("dashboards") or [])
+        insight_id = existing["id"]
+        if POSTHOG_DASHBOARD_ID not in dashboards:
+            dashboards.append(POSTHOG_DASHBOARD_ID)
+            patch = Request(
+                f"{base}{insight_id}/",
+                data=json.dumps({"dashboards": dashboards}).encode("utf-8"),
+                method="PATCH",
+                headers=_posthog_headers(),
+            )
+            _posthog_open(patch).read()
+            print(f"posthog: attached existing tile to Relentless V1 — {tile_name}")
+        else:
+            print(f"posthog: CTA tile already present — {tile_name}")
+        return insight_id
+
+    body = {
+        "name": tile_name,
+        "description": description,
+        "saved": True,
+        "favorited": False,
+        "dashboards": [POSTHOG_DASHBOARD_ID],
+        "query": _coach_cta_insight_query(coach_key),
+    }
+    create = Request(
+        base,
+        data=json.dumps(body).encode("utf-8"),
+        method="POST",
+        headers=_posthog_headers(),
+    )
+    created = json.loads(_posthog_open(create).read().decode("utf-8"))
+    print(f"posthog: created CTA tile — {tile_name} (id={created.get('id')})")
+    return created.get("id")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
@@ -526,6 +691,16 @@ def main():
         else:
             coach_id = rest_upsert("coaches", [coach_row], on_conflict="coach_key")[0]["id"]
     print(f"coach_id = {coach_id}")
+
+    # --- PostHog: ensure per-coach CTA tile on Relentless V1 (full name) ---
+    coach_full_name = (coach_row.get("name") or "").strip() or ck
+    if args.dry_run:
+        print(f"posthog: would ensure CTA tile — {coach_cta_tile_name(coach_full_name)}")
+    else:
+        try:
+            ensure_posthog_coach_cta_tile(ck, coach_full_name, warnings)
+        except Exception as e:
+            warnings.append(f"PostHog CTA tile failed for {coach_full_name!r}: {e}")
 
     # --- Upsert program (by coach_id + program_key) -> program_id ---
     # cover_image is intentionally NOT written: the Coach Portal no longer emits

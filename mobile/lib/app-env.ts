@@ -26,12 +26,3 @@ function resolveAppEnv(): AppEnv {
 export const APP_ENV: AppEnv = resolveAppEnv();
 
 export const isProductionBuild = APP_ENV === 'production';
-
-/**
- * In-app workout-time scheduling (local reminder) is a non-production feature.
- * It must NEVER be active in a production build — for ANY user, dev or not.
- * Returns true only in development and preview builds.
- */
-export function isWorkoutSchedulingEnabled(): boolean {
-  return APP_ENV === 'development' || APP_ENV === 'preview';
-}

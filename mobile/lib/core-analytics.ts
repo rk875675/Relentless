@@ -85,6 +85,8 @@ export function trackPartnerReferralCtaClicked(
     program_key?: string | null;
     program_title?: string | null;
     coach_key?: string | null;
+    /** Human-readable coach display name for PostHog breakdowns/tiles. */
+    coach_name?: string | null;
   },
 ): void {
   captureCoreEvent('partner_referral_cta_clicked', properties);
@@ -107,7 +109,9 @@ export function trackPushRemindersEnabled(
 }
 
 export function trackPushRemindersDisabled(
-  properties: CoreProps & { source: 'profile_toggle' | 'home_prompt' },
+  properties: CoreProps & {
+    source: 'profile_toggle' | 'home_prompt' | 'home_schedule_cleared';
+  },
 ): void {
   captureCoreEvent('push_reminders_disabled', properties);
 }

@@ -16,6 +16,9 @@ tmp_audio_deployed/
 # Dev lesson-pack ingestion working dir (extracted pack assets, generated JSON)
 scripts/_dev_pack/
 
+# Local audio working files for content fixes (originals live in Storage)
+scripts/_iaia_l1_audio/
+
 # Loader handoff bundle (generated deliverable for the partner)
 loader_handoff/
 

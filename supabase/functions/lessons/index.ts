@@ -735,12 +735,31 @@ async function handleNext(
   const completedDay = day - 1;
   const isDevAccount = profile.is_dev === true;
 
+  // Resolve using the raw day first to get totalDays, then clamp so a dev
+  // account (or any edge case where current_program_day > pack length) still
+  // serves the final day's lesson instead of returning null.
+  const { lessonId: rawLessonId, totalDays } = await resolveProgramDayLessonId(
+    supabase,
+    activeProgramId,
+    day,
+  );
+  const effectiveDay = totalDays > 0 && day > totalDays ? totalDays : day;
+  const currentLessonId =
+    rawLessonId ??
+    (effectiveDay !== day
+      ? (await resolveProgramDayLessonId(supabase, activeProgramId, effectiveDay)).lessonId
+      : null);
+
+  // Mid-pack pace gate: don't reveal tomorrow's lesson early. Once the pointer
+  // is on the final day (current_program_day caps at pack length), keep serving
+  // that WOD so finished packs stay on Day N/N instead of an empty/complete screen.
   if (!isDevAccount && profile.program_start_date) {
     const elapsed = calendarDaysInclusiveYmd(
       profile.program_start_date as string,
       localTodayYmd,
     );
-    if (day > elapsed) {
+    const onFinalDay = totalDays > 0 && effectiveDay >= totalDays;
+    if (effectiveDay > elapsed && !onFinalDay) {
       const repeatLesson =
         completedToday && completedDay >= 1
           ? await lookupRepeatLesson(supabase, completedDay, activeProgramId)
@@ -748,12 +767,6 @@ async function handleNext(
       return nextLessonResponse(null, repeatLesson, requestId);
     }
   }
-
-  const { lessonId: currentLessonId, totalDays } = await resolveProgramDayLessonId(
-    supabase,
-    activeProgramId,
-    day,
-  );
 
   if (!currentLessonId) {
     const repeatLesson =
@@ -784,7 +797,7 @@ async function handleNext(
 
   const lessonData = {
     ...enriched,
-    program_day: day,
+    program_day: effectiveDay,
     program_version: isSprint ? PROGRAM_VERSION : null,
     categories: (categories ?? []).map((c: { category: string }) => c.category),
     coach: extras.coach,
@@ -798,28 +811,7 @@ async function handleNext(
       ? await lookupRepeatLesson(supabase, completedDay, activeProgramId)
       : null;
 
-  // Program completion: current_program_day caps at the program length (see
-  // complete_lesson), so once the final day's lesson is completed the user has
-  // finished the pack. The "complete" screen is intentionally shown the DAY
-  // AFTER the final lesson is finished, so we compare the earliest final-day
-  // completion date against the user's local today. Basing this on that
-  // completion row (rather than last_wod_completion_local_date) keeps it stable
-  // even if the user later does Library lessons.
-  let programComplete = false;
-  if (totalDays > 0 && day >= totalDays) {
-    const { data: finalCompletion } = await supabase
-      .from("user_lesson_completions")
-      .select("completion_local_date")
-      .eq("user_id", userId)
-      .eq("lesson_id", currentLessonId)
-      .order("completion_local_date", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    const completedOn = finalCompletion?.completion_local_date as string | undefined;
-    programComplete = typeof completedOn === "string" && completedOn < localTodayYmd;
-  }
-
-  return nextLessonResponse(lessonData, repeatLesson, requestId, programComplete);
+  return nextLessonResponse(lessonData, repeatLesson, requestId);
 }
 
 // ---------------------------------------------------------------------------

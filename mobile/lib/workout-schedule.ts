@@ -12,8 +12,8 @@
  * (the expo-notifications plugin is configured with iosDisplayInForeground:false),
  * the reminder only surfaces when the user is NOT in the app at that time.
  *
- * Gated to non-production builds — callers should guard with
- * `isWorkoutSchedulingEnabled()` from `./app-env`.
+ * Enabled for all users in every build (the Home Schedule button opens the
+ * time wheel and calls into here). These functions have no environment guard.
  *
  * Double-fire reconciliation: the server's evening reminder (`push-reminders`
  * Edge Function) only fires at 19:00–19:59 user local time, and only if the
