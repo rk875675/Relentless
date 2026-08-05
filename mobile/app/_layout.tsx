@@ -5,6 +5,7 @@ import * as Linking from 'expo-linking';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, LogBox, View } from 'react-native';
 import { AnalyticsScreenTracker } from '@/components/AnalyticsScreenTracker';
+import { EntitlementAutoRestore } from '@/components/EntitlementAutoRestore';
 import { HeaderBackButton } from '@/components/HeaderBackButton';
 import { PostHogIdentitySync } from '@/components/PostHogIdentitySync';
 import { PostHogRoot } from '@/components/PostHogRoot';
@@ -387,6 +388,7 @@ export default function RootLayout() {
       <PostHogRoot>
         <AuthProvider>
           <PostHogIdentitySync />
+          <EntitlementAutoRestore />
           <SuperwallRoot>
             <AnalyticsScreenTracker />
             <RouteGuard />

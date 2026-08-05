@@ -12,10 +12,13 @@ import { clearPendingGainDeltas } from './pending-deltas';
 import { setApiToken } from './api';
 import { clearOnboardingProgress } from './onboarding-local-state';
 import { flushPendingGrantJournal } from './pending-grant-journal';
+import { restorePurchasesViaStoreKit } from './iap-restore';
 
 /** Google / Apple OAuth pitfalls: see `mobile/docs/AUTH_SOCIAL_SIGNIN.md`. */
 
 const FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000;
+/** Max time a trial/active row with a just-lapsed expires_at keeps access while one silent Apple re-verification runs. */
+const STALE_ENTITLEMENT_GRACE_MS = 15_000;
 /** If profile/entitlement queries stall (common on first OAuth after code exchange), still resolve the sign-in promise. Session is already persisted; background fetch + RouteGuard corrects routing. */
 const POST_SIGNIN_PROFILE_BUDGET_MS = 12_000;
 const MAX_PROFILE_DISPLAY_NAME_LEN = 80;
@@ -382,11 +385,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const statusValid = entitlementStatus === 'trial' || entitlementStatus === 'active';
   const expired = entitlementExpiresAt ? new Date(entitlementExpiresAt) < new Date() : false;
+
+  // ---------------------------------------------------------------------------
+  // Stale-row grace: a trial/active row whose expires_at just passed is far more
+  // likely an Apple renewal we haven't synced yet than a real lapse (Apple bills
+  // at the expiry moment). Instead of bouncing the user to the paywall and
+  // healing after, hold access for ONE bounded silent re-verification with
+  // Apple. Apple's verdict decides: renewed → fresh expires_at arrives and the
+  // user never notices; genuinely lapsed → grace ends and the paywall shows.
+  //
+  // The grace window must be computed synchronously during render (not in an
+  // effect): RouteGuard's redirect effect runs BEFORE any effect here could
+  // react, so an effect-based hold would be one frame too late.
+  // Never applies to 'expired'/'none' rows, dev QA overrides, or non-iOS.
+  // ---------------------------------------------------------------------------
+  const [, forceGraceReeval] = useState(0);
+  const staleGraceRef = useRef<{ key: string; until: number } | null>(null);
+  const staleReverifyKeyRef = useRef<string | null>(null);
+  const staleRow =
+    Platform.OS === 'ios' && !!session && statusValid && expired && !isOptimisticGrant;
+  const graceKey = entitlementExpiresAt ?? '';
+  if (staleRow && staleGraceRef.current?.key !== graceKey) {
+    // Idempotent render-time init so the first render that sees the lapsed date
+    // already holds access.
+    staleGraceRef.current = { key: graceKey, until: Date.now() + STALE_ENTITLEMENT_GRACE_MS };
+  }
+  const staleGraceActive =
+    staleRow && staleGraceRef.current?.key === graceKey && Date.now() < staleGraceRef.current.until;
+
+  useEffect(() => {
+    if (!staleGraceActive) return;
+    // Hard deadline: force a re-render when the window lapses so access can
+    // never outlive the grace period if verification hangs (e.g. offline).
+    const remaining = Math.max(0, (staleGraceRef.current?.until ?? 0) - Date.now());
+    const deadline = setTimeout(() => forceGraceReeval((n) => n + 1), remaining + 50);
+
+    if (staleReverifyKeyRef.current !== graceKey) {
+      staleReverifyKeyRef.current = graceKey;
+      void (async () => {
+        let renewed = false;
+        try {
+          const result = await restorePurchasesViaStoreKit();
+          if (result.ok) {
+            // Pulls the fresh future expires_at; grace ends naturally with no flash.
+            await refreshUserState();
+            renewed = true;
+          }
+        } catch {
+          // Fall through: end the grace below.
+        }
+        if (!renewed && staleGraceRef.current?.key === graceKey) {
+          staleGraceRef.current = { key: graceKey, until: 0 };
+          forceGraceReeval((n) => n + 1); // Apple says not active — show the paywall now.
+        }
+      })();
+    }
+    return () => clearTimeout(deadline);
+  }, [staleGraceActive, graceKey, refreshUserState]);
+
   /** QA: Jump to Paywall sets suppressDevPremium — must override DB entitlement for routing. */
   const hasPremiumAccess =
     isDevAccount && suppressDevPremium
       ? false
-      : (statusValid && !expired) ||
+      : (statusValid && (!expired || staleGraceActive)) ||
         devPremiumBypass ||
         (isDevAccount && !suppressDevPremium);
 

@@ -107,6 +107,7 @@ type RenewalInfo = {
   productId?: string;
   autoRenewProductId?: string;
   autoRenewStatus?: number; // 0 = off (user cancelled), 1 = on
+  gracePeriodExpiresDate?: number;
 };
 
 type TransactionInfo = {
@@ -117,7 +118,71 @@ type TransactionInfo = {
   is_trial_period?: boolean;
   offerDiscountType?: string;
   expiresDate?: number;
+  revocationDate?: number;
 };
+
+// ---------------------------------------------------------------------------
+// Entitlement status mapping (mirrors purchases/index.ts semantics:
+// Apple BILLING_RETRY/BILLING_GRACE are treated as active)
+// ---------------------------------------------------------------------------
+
+type SyncedEntitlement = {
+  status: "trial" | "active" | "expired";
+  expiresAt: string | null;
+};
+
+function isFreeTrialTx(txInfo: TransactionInfo): boolean {
+  return (
+    txInfo.isTrialPeriod === true ||
+    txInfo.is_trial_period === true ||
+    txInfo.offerDiscountType?.toUpperCase() === "FREE_TRIAL"
+  );
+}
+
+function computeSyncedEntitlement(
+  notificationType: string,
+  txInfo: TransactionInfo,
+  renewalInfo: RenewalInfo | null,
+): SyncedEntitlement {
+  if (notificationType === "REFUND" || notificationType === "REVOKE") {
+    return {
+      status: "expired",
+      expiresAt: new Date(txInfo.revocationDate ?? Date.now()).toISOString(),
+    };
+  }
+
+  if (notificationType === "EXPIRED" || notificationType === "GRACE_PERIOD_EXPIRED") {
+    return {
+      status: "expired",
+      expiresAt: txInfo.expiresDate
+        ? new Date(txInfo.expiresDate).toISOString()
+        : new Date().toISOString(),
+    };
+  }
+
+  if (notificationType === "DID_FAIL_TO_RENEW") {
+    // Billing retry / billing grace. purchases/restore treats both as active,
+    // so keep access here too. requireEntitlement denies any row whose
+    // expires_at is in the past, so we must NOT leave the lapsed expiry in
+    // place: use the grace-period end when Apple provides one, otherwise null
+    // (Apple always follows up with DID_RENEW or EXPIRED, which resolves it).
+    return {
+      status: "active",
+      expiresAt: renewalInfo?.gracePeriodExpiresDate
+        ? new Date(renewalInfo.gracePeriodExpiresDate).toISOString()
+        : null,
+    };
+  }
+
+  // Everything else (SUBSCRIBED, DID_RENEW, OFFER_REDEEMED, RENEWAL_EXTENDED,
+  // REFUND_REVERSED, DID_CHANGE_RENEWAL_PREF, DID_CHANGE_RENEWAL_STATUS, ...):
+  // recompute from the latest transaction's expiry, same as purchases/index.ts.
+  const isActive = txInfo.expiresDate ? txInfo.expiresDate > Date.now() : false;
+  return {
+    status: isActive ? (isFreeTrialTx(txInfo) ? "trial" : "active") : "expired",
+    expiresAt: txInfo.expiresDate ? new Date(txInfo.expiresDate).toISOString() : null,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -179,91 +244,150 @@ Deno.serve(async (req) => {
     return new Response("OK", { status: 200 });
   }
 
-  console.log("[apple-notifications]", notificationType ?? "(unknown)", notification.subtype ?? "");
+  const subtype = notification.subtype ?? "";
+  console.log("[apple-notifications]", notificationType ?? "(unknown)", subtype);
 
-  // Forward to Superwall for ALL notification types — run in parallel with our logic.
-  // Promise.allSettled ensures both complete before we return 200 to Apple, so
-  // neither gets cut off by the edge function runtime.
-  if (notificationType !== "DID_CHANGE_RENEWAL_STATUS" || !data?.signedRenewalInfo) {
-    await forwardToSuperwall(rawBody);
+  // Superwall must receive EVERY notification regardless of what we do with it.
+  // Collected async work (forward + analytics) is awaited together before
+  // returning 200, so nothing is orphaned by runtime termination.
+  const pendingWork: Promise<unknown>[] = [forwardToSuperwall(rawBody)];
+
+  // Both inner JWS blobs live inside the Apple-verified outer payload, so
+  // decode-only (no second signature check) is sound here.
+  const txInfo = data?.signedTransactionInfo
+    ? decodeJwtPayload<TransactionInfo>(data.signedTransactionInfo)
+    : null;
+  const renewalInfo = data?.signedRenewalInfo
+    ? decodeJwtPayload<RenewalInfo>(data.signedRenewalInfo)
+    : null;
+
+  const originalTransactionId =
+    txInfo?.originalTransactionId ?? renewalInfo?.originalTransactionId ?? null;
+
+  if (!originalTransactionId || (txInfo?.bundleId && txInfo.bundleId !== BUNDLE_ID)) {
+    // Nothing we can act on (e.g. TEST notification) — forward only.
+    await Promise.allSettled(pendingWork);
     return new Response("OK", { status: 200 });
-  }
-
-  const renewalInfo = decodeJwtPayload<RenewalInfo>(data.signedRenewalInfo);
-  if (!renewalInfo) {
-    await forwardToSuperwall(rawBody);
-    console.warn("[apple-notifications] Failed to decode signedRenewalInfo");
-    return new Response("OK", { status: 200 });
-  }
-
-  // autoRenewStatus=1 means user re-enabled auto-renew — not a cancellation.
-  if (renewalInfo.autoRenewStatus !== 0) {
-    await forwardToSuperwall(rawBody);
-    return new Response("OK", { status: 200 });
-  }
-
-  const originalTransactionId = renewalInfo.originalTransactionId;
-  if (!originalTransactionId) {
-    await forwardToSuperwall(rawBody);
-    console.warn("[apple-notifications] No originalTransactionId in renewalInfo");
-    return new Response("OK", { status: 200 });
-  }
-
-  // Determine whether the user is currently in a free trial from the transaction info.
-  let isTrialPeriod = false;
-  if (data.signedTransactionInfo) {
-    const txInfo = decodeJwtPayload<TransactionInfo>(data.signedTransactionInfo);
-    if (txInfo) {
-      isTrialPeriod =
-        txInfo.isTrialPeriod === true ||
-        txInfo.is_trial_period === true ||
-        txInfo.offerDiscountType?.toUpperCase() === "FREE_TRIAL";
-    }
   }
 
   // Look up the owning user via the indexed original_transaction_id column.
   const supabase = createServiceClient();
   const { data: entRow } = await supabase
     .from("entitlements")
-    .select("user_id, status")
+    .select("user_id, status, expires_at")
     .eq("original_transaction_id", originalTransactionId)
     .maybeSingle();
 
   if (!entRow?.user_id) {
-    // Still forward — Superwall may have its own user lookup.
-    await forwardToSuperwall(rawBody);
     console.warn(
       "[apple-notifications] No entitlement row for originalTransactionId",
       originalTransactionId,
     );
+    await Promise.allSettled(pendingWork);
     return new Response("OK", { status: 200 });
   }
 
-  // Fire trial_cancelled only when the user is actually in a trial period.
-  const inTrial = entRow.status === "trial" || isTrialPeriod;
+  // -------------------------------------------------------------------------
+  // Entitlement sync: write Apple's latest state to the database. This is what
+  // keeps trial→paid conversions, renewals, expirations, refunds, revokes and
+  // billing grace in sync so paying users are never locked out by a stale
+  // expires_at (and lapsed users lose access without waiting for a restore).
+  // -------------------------------------------------------------------------
 
-  const productId = renewalInfo.productId ?? renewalInfo.autoRenewProductId ?? null;
+  if (txInfo && notificationType) {
+    const synced = computeSyncedEntitlement(notificationType, txInfo, renewalInfo);
+    const productId =
+      txInfo.productId ?? renewalInfo?.productId ?? renewalInfo?.autoRenewProductId ?? null;
 
-  // Run PostHog capture and Superwall forward in parallel — both must complete
-  // before we return 200 so neither is orphaned by runtime termination.
-  if (inTrial) {
-    console.log("[apple-notifications] Firing trial_cancelled for user", entRow.user_id);
-    await Promise.allSettled([
-      capturePostHogEvent(entRow.user_id, "trial_cancelled", {
-        product_id: productId,
-        original_transaction_id: originalTransactionId,
-        is_trial: true,
-        environment: data.environment ?? null,
-      }),
-      forwardToSuperwall(rawBody),
-    ]);
-  } else {
-    console.log("[apple-notifications] Auto-renew disabled but not in trial — forwarding only", {
-      dbStatus: entRow.status,
-      isTrialPeriod,
-    });
-    await forwardToSuperwall(rawBody);
+    const { error: updateErr } = await supabase
+      .from("entitlements")
+      .update({
+        status: synced.status,
+        expires_at: synced.expiresAt,
+        // Never blank out a known product_id with a payload that omits it.
+        ...(productId ? { product_id: productId } : {}),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", entRow.user_id);
+
+    if (updateErr) {
+      console.error("[apple-notifications] Failed to update entitlement", {
+        userId: entRow.user_id,
+        notificationType,
+        error: updateErr,
+      });
+    } else {
+      console.log("[apple-notifications] Entitlement synced", {
+        userId: entRow.user_id,
+        notificationType,
+        subtype,
+        previousStatus: entRow.status,
+        newStatus: synced.status,
+        expiresAt: synced.expiresAt,
+      });
+
+      pendingWork.push(
+        supabase.from("entitlement_events").insert({
+          user_id: entRow.user_id,
+          event_type: "apple_notification",
+          product_id: productId,
+          metadata: {
+            notification_type: notificationType,
+            subtype: subtype || null,
+            previous_status: entRow.status,
+            new_status: synced.status,
+            expires_at: synced.expiresAt,
+            original_transaction_id: originalTransactionId,
+            environment: data?.environment ?? null,
+          },
+        }),
+      );
+
+      // Keep the PostHog person record accurate on every real state change so
+      // dashboards segment on live subscription state, not launch-time state.
+      if (synced.status !== entRow.status) {
+        pendingWork.push(
+          capturePostHogEvent(entRow.user_id, "subscription_state_synced", {
+            notification_type: notificationType,
+            subtype: subtype || null,
+            previous_status: entRow.status,
+            new_status: synced.status,
+            product_id: productId,
+            original_transaction_id: originalTransactionId,
+            environment: data?.environment ?? null,
+            $set: {
+              entitlement_status: synced.status,
+              premium: synced.status === "trial" || synced.status === "active",
+            },
+          }),
+        );
+      }
+    }
   }
 
+  // -------------------------------------------------------------------------
+  // trial_cancelled analytics (pre-existing behavior, unchanged semantics):
+  // user turned auto-renew OFF while in a free trial.
+  // -------------------------------------------------------------------------
+
+  if (
+    notificationType === "DID_CHANGE_RENEWAL_STATUS" &&
+    renewalInfo?.autoRenewStatus === 0
+  ) {
+    const inTrial = entRow.status === "trial" || (txInfo ? isFreeTrialTx(txInfo) : false);
+    if (inTrial) {
+      console.log("[apple-notifications] Firing trial_cancelled for user", entRow.user_id);
+      pendingWork.push(
+        capturePostHogEvent(entRow.user_id, "trial_cancelled", {
+          product_id: renewalInfo.productId ?? renewalInfo.autoRenewProductId ?? null,
+          original_transaction_id: originalTransactionId,
+          is_trial: true,
+          environment: data?.environment ?? null,
+        }),
+      );
+    }
+  }
+
+  await Promise.allSettled(pendingWork);
   return new Response("OK", { status: 200 });
 });
