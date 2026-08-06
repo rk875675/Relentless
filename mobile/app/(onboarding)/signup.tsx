@@ -25,6 +25,8 @@ import { bustCache } from '@/lib/api-cache';
 import { fetchJwsForTransaction, restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { clearOnboardingProgress, loadOnboardingAnswers } from '@/lib/onboarding-local-state';
 import { postGrantJournalWithRetry } from '@/lib/pending-grant-journal';
+import { redeemPromoCode } from '@/lib/promo-codes';
+import { clearPendingPromoCode, loadPendingPromoCode } from '@/lib/promo-code-state';
 import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
 import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
 import { supabase } from '@/lib/supabase';
@@ -90,12 +92,14 @@ function isSocialCancelled(r: SocialSignInResult): boolean {
 export default function OnboardingSignupScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { competitionDate, sport: sportParam, postPaywall } = useLocalSearchParams<{
+  const { competitionDate, sport: sportParam, postPaywall, promoCode } = useLocalSearchParams<{
     competitionDate?: string | string[];
     sport?: string | string[];
     postPaywall?: string;
+    promoCode?: string | string[];
   }>();
   const sportArg = Array.isArray(sportParam) ? sportParam[0] : sportParam;
+  const promoCodeParam = (Array.isArray(promoCode) ? promoCode[0] : promoCode)?.trim() || null;
   const isPostPaywall = postPaywall === 'true' || Boolean(getLastTrustedPaywallPurchase());
   const {
     session,
@@ -254,10 +258,41 @@ export default function OnboardingSignupScreen() {
       let oid = trustedPurchase?.originalTransactionId;
       let signedTx = trustedPurchase?.signedTransactionInfo;
 
+      // Promo signup: a code validated on the paywall was stashed pre-auth.
+      // Redeeming it takes the place of the Apple purchase sync entirely (no
+      // purchase happened). A trusted Apple purchase, if present, wins.
+      let promoRedeemed = false;
+      if (!oid) {
+        // The nav param is the fallback carrier: if the AsyncStorage stash was
+        // lost, the code validated on the paywall must still be redeemed here
+        // instead of silently falling through to the purchase-restore path.
+        const pendingPromo = await loadPendingPromoCode();
+        const promoCodeToRedeem = pendingPromo?.code ?? promoCodeParam;
+        if (__DEV__ && !pendingPromo && promoCodeParam) {
+          console.log('[signup][promoStashMissing]', 'redeeming from nav param instead');
+        }
+        if (promoCodeToRedeem) {
+          const redeemed = await redeemPromoCode(promoCodeToRedeem);
+          // ALREADY_ENTITLED — this account already has access; nothing to grant.
+          if (redeemed.ok || redeemed.errorCode === 'ALREADY_ENTITLED') {
+            promoRedeemed = true;
+            entitlementVerifiedRef.current = true;
+            optimisticGrantAccess();
+            void clearPendingPromoCode();
+          } else {
+            throw new Error(
+              redeemed.error
+                ? `We could not apply your code: ${redeemed.error}`
+                : 'We could not apply your code. Please try again.',
+            );
+          }
+        }
+      }
+
       // If Superwall didn't provide the JWS (common in sandbox), fetch it from
       // StoreKit before the first sync so we don't burn 15 s on a doomed
       // Apple-API-only attempt that will 404.
-      if (!signedTx) {
+      if (!signedTx && !promoRedeemed) {
         try {
           const jwsResult = await fetchJwsForTransaction(oid);
           if (jwsResult) {
@@ -268,7 +303,7 @@ export default function OnboardingSignupScreen() {
         } catch { /* degrade gracefully */ }
       }
 
-      let purchaseSynced = false;
+      let purchaseSynced = promoRedeemed;
       let purchaseSyncError: string | null = null;
       /** True when StoreKit found a purchase but the backend sync still failed — a retry is warranted. */
       let storeKitFoundPurchase = false;
@@ -424,6 +459,7 @@ export default function OnboardingSignupScreen() {
   }, [
     competitionDate,
     sportArg,
+    promoCodeParam,
     refreshUserState,
     updateCompetitionDate,
     updateSport,

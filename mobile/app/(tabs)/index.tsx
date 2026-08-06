@@ -44,6 +44,9 @@ import {
   trackPushRemindersEnabled,
   trackPushRemindersDisabled,
   trackPushPermissionDenied,
+  trackStreakBroken,
+  trackJournalPromptCompleted,
+  getTimeOfDayHour,
 } from '@/lib/core-analytics';
 import {
   disablePushReminders,
@@ -333,6 +336,8 @@ export default function HomeScreen() {
   const journalFocusedRef = useRef(false);
   const lastSavedJournalRef = useRef('');
   const initialLoadDone = useRef(false);
+  /** Previous streak value to detect broken/extended transitions. */
+  const prevStreakCountRef = useRef<number | null>(null);
   /** Quiet retries for the post-purchase entitlement race (see fetchData). */
   const entitlementRetryRef = useRef(0);
 
@@ -431,21 +436,27 @@ export default function HomeScreen() {
         : Promise.resolve(null),
     ]);
 
-    // Post-purchase race: a brand-new account can land on Home moments before
-    // the purchase sync has written its entitlement row (Apple sandbox is
-    // slow), so the server briefly 403s ENTITLEMENT_REQUIRED for a user who
-    // just paid. Retry quietly (up to 3x, backing off) behind the skeleton
-    // instead of flashing "Active subscription required" in red.
+    // Transient ENTITLEMENT_REQUIRED must never flash the red "Active
+    // subscription required" banner. Two known races produce it:
+    // 1. Post-purchase: a brand-new account lands on Home before the purchase
+    //    sync has written its entitlement row (Apple sandbox is slow).
+    // 2. Renewal sync: a paying user's renewal hasn't reached the DB yet; the
+    //    stale-grace hold in auth-context keeps them here while a silent Apple
+    //    re-verification runs (up to ~20s including the restore round-trip).
+    // Retry quietly behind the skeleton/stale content long enough to outlast
+    // both. If access is genuinely gone, RouteGuard replaces this screen with
+    // the paywall before the retries exhaust — the banner is a last resort for
+    // pathological states only.
     const entitlementBlocked =
       lessonRes.errorCode === 'ENTITLEMENT_REQUIRED' ||
       progressRes.errorCode === 'ENTITLEMENT_REQUIRED' ||
       streakRes.errorCode === 'ENTITLEMENT_REQUIRED';
-    if (entitlementBlocked && entitlementRetryRef.current < 3) {
+    if (entitlementBlocked && entitlementRetryRef.current < 8) {
       entitlementRetryRef.current += 1;
       setRefreshing(false);
       setTimeout(() => {
         void fetchData(false);
-      }, 1500 * entitlementRetryRef.current);
+      }, Math.min(1500 * entitlementRetryRef.current, 4000));
       return;
     }
     if (!entitlementBlocked) entitlementRetryRef.current = 0;
@@ -479,6 +490,14 @@ export default function HomeScreen() {
     }
     if (!streakRes.error) trackStreakViewed({ current_streak: streakData.current_streak });
     if (!progressRes.error) trackProgressRingViewed();
+
+    // Detect streak transitions (broken or extended) compared to last known value
+    if (!streakRes.error && prevStreakCountRef.current !== null) {
+      if (streakData.current_streak === 0 && prevStreakCountRef.current > 0) {
+        trackStreakBroken({ previous_streak_count: prevStreakCountRef.current });
+      }
+    }
+    if (!streakRes.error) prevStreakCountRef.current = streakData.current_streak;
 
     applyMissReflectionFromStreakAndJournal(streakData, missJournalRes, freebieAckYmd);
 
@@ -693,6 +712,8 @@ export default function HomeScreen() {
       program_id: attributionLesson?.program_id ?? null,
       program_key: attributionLesson?.program_key ?? null,
       coach_key: attributionLesson?.coach?.coach_key ?? null,
+      program_day: (attributionLesson as any)?.program_day ?? null,
+      time_of_day_hour: getTimeOfDayHour(),
     });
     await flushPreWorkoutJournal();
     bustCache('/lessons/next', '/progress', '/streak');
@@ -956,6 +977,12 @@ export default function HomeScreen() {
                   }
                   bustCache('/journal?limit=50', MISS_REFLECTION_JOURNAL_PATH);
                   trackReflectionSaved({ type: 'miss_reflection' });
+                  trackJournalPromptCompleted({
+                    lesson_id: undefined,
+                    prompt_type: 'miss_reflection',
+                    answered: true,
+                    entry_length: missJournalText.trim().length,
+                  });
                   setMissJournalText('');
                   setMissJournalDismissed(true);
                   setShowMissReflection(false);

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Relentless",
     "slug": "relentless",
-    "version": "2.0.1",
+    "version": "2.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "relentless",
@@ -13,7 +13,7 @@
       "backgroundColor": "#2d2c2c"
     },
     "ios": {
-      "buildNumber": "27",
+      "buildNumber": "28",
       "supportsTablet": false,
       "usesAppleSignIn": true,
       "bundleIdentifier": "com.relentlessmentaltoughness.relentless",
@@ -53,7 +53,7 @@
       "enableAppStoreReviewPrompt": true
     },
     "android": {
-      "versionCode": 27,
+      "versionCode": 28,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"

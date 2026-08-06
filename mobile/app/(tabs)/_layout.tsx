@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/lib/theme';
+import { trackTabSwitched } from '@/lib/core-analytics';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -44,6 +45,12 @@ function HapticTabButton(props: any) {
 
 const TAB_ROW_HEIGHT = 56;
 
+const TAB_NAME_MAP: Record<string, 'home' | 'library' | 'profile'> = {
+  index: 'home',
+  library: 'library',
+  profile: 'profile',
+};
+
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = TAB_ROW_HEIGHT + insets.bottom;
@@ -51,6 +58,13 @@ export default function TabLayout() {
   return (
     <Tabs
       initialRouteName="index"
+      screenListeners={{
+        focus: (e) => {
+          const routeName = e.target?.split('-')[0] ?? '';
+          const tab = TAB_NAME_MAP[routeName];
+          if (tab) trackTabSwitched({ tab_name: tab });
+        },
+      }}
       screenOptions={{
         headerShown: false,
         animation: 'shift',

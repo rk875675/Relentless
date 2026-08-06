@@ -28,7 +28,7 @@ import { bustCache } from '@/lib/api-cache';
 import { setPendingGainDeltas } from '@/lib/pending-deltas';
 import { colors, spacing } from '@/lib/theme';
 import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
-import { trackLessonViewed, trackLessonStarted, trackLessonCompleted, trackReflectionSaved, trackPartnerReferralCtaClicked } from '@/lib/core-analytics';
+import { trackLessonViewed, trackLessonStarted, trackLessonCompleted, trackReflectionSaved, trackPartnerReferralCtaClicked, trackLessonAbandoned, trackExerciseBlockStarted, trackExerciseBlockCompleted, trackLessonBackgrounded, trackJournalPromptCompleted, trackStreakExtended, getTimeOfDayHour } from '@/lib/core-analytics';
 import { incrementLessonsCompleted, maybeRequestAppStoreReview } from '@/lib/app-store-review-prompt';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import FormattedJournalBody from '@/components/FormattedJournalBody';
@@ -581,6 +581,10 @@ export default function LessonPlayerScreen() {
   const [journalSaveFailed, setJournalSaveFailed] = useState(false);
   const [streakCount, setStreakCount] = useState(0);
   const preStreakDateRef = useRef<string | null>(null);
+  /** Pre-completion streak count; stays null when the snapshot read failed. */
+  const preStreakCountRef = useRef<number | null>(null);
+  /** streak_extended is reported at most once per lesson session (double-tap safe). */
+  const streakExtendedFiredRef = useRef(false);
   // Set when THIS completion finished the user's active lesson pack (server-
   // authoritative pack_completed flag). Drives the celebratory pack_complete
   // phase after the Workout Complete screen.
@@ -682,6 +686,10 @@ export default function LessonPlayerScreen() {
   ).current;
 
   const sessionActive = useRef(false);
+  /** Wall-clock ms when lesson_started fired (for session_duration_seconds on complete/abandon). */
+  const lessonStartedAtMsRef = useRef<number | null>(null);
+  /** Wall-clock ms when the current block started (for actual_elapsed_seconds on block complete). */
+  const blockStartedAtMsRef = useRef<number | null>(null);
   const loadedLessonIdRef = useRef<string | null>(null);
   /** When set, lesson was interrupted by OS background; skew wall clocks by this duration on resume. */
   const backgroundPauseBeganMsRef = useRef<number | null>(null);
@@ -759,9 +767,13 @@ export default function LessonPlayerScreen() {
   // Snapshot pre-completion streak date so we can skip the celebration
   // for second+ lessons on the same day.
   useEffect(() => {
-    apiFetch<{ last_activity_date: string | null }>('/streak').then(({ data }) => {
-      preStreakDateRef.current = data?.last_activity_date ?? null;
-    });
+    apiFetch<{ last_activity_date: string | null; current_streak: number }>('/streak')
+      .then(({ data }) => {
+        preStreakDateRef.current = data?.last_activity_date ?? null;
+        preStreakCountRef.current =
+          typeof data?.current_streak === 'number' ? data.current_streak : null;
+      })
+      .catch(() => { /* snapshot is best-effort; both refs stay null */ });
   }, []);
 
   // -----------------------------------------------------------------------
@@ -835,6 +847,17 @@ export default function LessonPlayerScreen() {
     const handleAppState = (next: AppStateStatus) => {
       if (next !== 'active' && sessionActive.current && phaseRef.current === 'playing') {
         backgroundPauseBeganMsRef.current = Date.now();
+        const l = lessonRef.current;
+        if (l) {
+          trackLessonBackgrounded({
+            lesson_id: l.id,
+            program_id: l.program_id ?? null,
+            phase: phaseRef.current,
+            elapsed_seconds: lessonStartedAtMsRef.current
+              ? Math.round((Date.now() - lessonStartedAtMsRef.current) / 1000)
+              : 0,
+          });
+        }
         try { player.pause(); } catch { /* noop */ }
         try { ambientPlayer.pause(); } catch { /* noop */ }
         stopAllTimers({ preserveAudioFallbackForOsPause: true });
@@ -893,10 +916,26 @@ export default function LessonPlayerScreen() {
   const completeLesson = useCallback(async () => {
     const currentLesson = lessonRef.current;
     if (!currentLesson || completingRef.current) return;
+    const priorPhase = phaseRef.current;
     completingRef.current = true;
     setSubmitting(true);
     setPhase('completing');
     progressAnim.setValue(1);
+
+    // Track reflection journal outcome if lesson has a reflection prompt
+    // (only for the reflection phase; block_journal is tracked in handleBlockJournalContinue)
+    if (currentLesson.reflection_prompt && priorPhase === 'reflection') {
+      const reflText = journalTextRef.current.trim();
+      trackJournalPromptCompleted({
+        lesson_id: currentLesson.id,
+        prompt_type: 'lesson_reflection',
+        answered: reflText.length > 0,
+        entry_length: reflText.length,
+      });
+      if (reflText) {
+        trackReflectionSaved({ type: 'lesson_reflection', lesson_id: currentLesson.id });
+      }
+    }
 
     if (!idempotencyKeyRef.current) {
       idempotencyKeyRef.current = `${currentLesson.id}-${Date.now()}-${Math.random()
@@ -955,6 +994,12 @@ export default function LessonPlayerScreen() {
         program_id: currentLesson.program_id ?? null,
         program_key: currentLesson.program_key ?? null,
         coach_key: currentLesson.coach?.coach_key ?? null,
+        lesson_type: currentLesson.lesson_type ?? null,
+        program_day: currentLesson.program_day ?? null,
+        block_count: currentLesson.content_blocks?.blocks?.length ?? 0,
+        session_duration_seconds: lessonStartedAtMsRef.current
+          ? Math.round((Date.now() - lessonStartedAtMsRef.current) / 1000)
+          : null,
       });
       incrementLessonsCompleted();
       setPhase('done');
@@ -988,6 +1033,23 @@ export default function LessonPlayerScreen() {
   const advanceBlock = useCallback(() => {
     const nextIdx = blockIndexRef.current + 1;
     const currentBlocks = lessonRef.current?.content_blocks?.blocks ?? [];
+
+    // Track the block that just completed
+    const completedBlock = currentBlocks[blockIndexRef.current];
+    if (completedBlock) {
+      trackExerciseBlockCompleted({
+        lesson_id: lessonRef.current?.id,
+        program_id: lessonRef.current?.program_id ?? null,
+        block_index: blockIndexRef.current,
+        block_type: completedBlock.type,
+        interactive_model: 'interactive_model' in completedBlock ? (completedBlock as any).interactive_model ?? null : null,
+        duration_seconds: 'duration_seconds' in completedBlock ? (completedBlock as any).duration_seconds : undefined,
+        actual_elapsed_seconds: blockStartedAtMsRef.current
+          ? Math.round((Date.now() - blockStartedAtMsRef.current) / 1000)
+          : undefined,
+      });
+    }
+
     if (nextIdx >= currentBlocks.length) {
       sessionActive.current = false;
       stopAllTimers();
@@ -1007,6 +1069,16 @@ export default function LessonPlayerScreen() {
     const currentBlocks = lessonRef.current?.content_blocks?.blocks ?? [];
     const block = currentBlocks[idx];
     if (!block) return;
+
+    blockStartedAtMsRef.current = Date.now();
+    trackExerciseBlockStarted({
+      lesson_id: lessonRef.current?.id,
+      program_id: lessonRef.current?.program_id ?? null,
+      block_index: idx,
+      block_type: block.type,
+      interactive_model: 'interactive_model' in block ? (block as any).interactive_model ?? null : null,
+      duration_seconds: 'duration_seconds' in block ? (block as any).duration_seconds : undefined,
+    });
 
     if (block.type === 'voiceover') {
       audioFileIndexRef.current = 0;
@@ -1442,7 +1514,11 @@ export default function LessonPlayerScreen() {
       program_id: lesson.program_id ?? null,
       program_key: lesson.program_key ?? null,
       coach_key: lesson.coach?.coach_key ?? null,
+      lesson_type: lesson.lesson_type ?? null,
+      program_day: lesson.program_day ?? null,
+      time_of_day_hour: getTimeOfDayHour(),
     });
+    lessonStartedAtMsRef.current = Date.now();
     sessionActive.current = true;
     setElapsed(0);
     setPhase('playing');
@@ -1506,9 +1582,16 @@ export default function LessonPlayerScreen() {
   const handleBlockJournalContinue = useCallback(() => {
     sessionActive.current = false;
     stopAllTimers();
-    if (journalTextRef.current.trim()) {
+    const text = journalTextRef.current.trim();
+    if (text) {
       trackReflectionSaved({ type: 'lesson_reflection', lesson_id: lessonRef.current?.id });
     }
+    trackJournalPromptCompleted({
+      lesson_id: lessonRef.current?.id,
+      prompt_type: 'block_journal',
+      answered: text.length > 0,
+      entry_length: text.length,
+    });
     completeLesson();
   }, [completeLesson, stopAllTimers]);
 
@@ -1743,12 +1826,44 @@ export default function LessonPlayerScreen() {
 
   const exitFromPausedOsOverlay = useCallback(() => {
     if (phaseRef.current !== 'paused_background') return;
+    const l = lessonRef.current;
+    if (l) {
+      trackLessonAbandoned({
+        lesson_id: l.id,
+        program_id: l.program_id ?? null,
+        program_key: l.program_key ?? null,
+        coach_key: l.coach?.coach_key ?? null,
+        lesson_type: l.lesson_type ?? null,
+        block_index: blockIndexRef.current,
+        block_type: l.content_blocks?.blocks?.[blockIndexRef.current]?.type ?? null,
+        elapsed_seconds: lessonStartedAtMsRef.current
+          ? Math.round((Date.now() - lessonStartedAtMsRef.current) / 1000)
+          : 0,
+        exit_reason: 'os_background_exit',
+      });
+    }
     endPlaybackSession();
     router.back();
   }, [endPlaybackSession, router]);
 
   /** Library-only: leave during active playback without posting /complete (no progress, no Past WOD side effects). */
   const exitLibraryInPlayer = useCallback(() => {
+    const l = lessonRef.current;
+    if (l) {
+      trackLessonAbandoned({
+        lesson_id: l.id,
+        program_id: l.program_id ?? null,
+        program_key: l.program_key ?? null,
+        coach_key: l.coach?.coach_key ?? null,
+        lesson_type: l.lesson_type ?? null,
+        block_index: blockIndexRef.current,
+        block_type: l.content_blocks?.blocks?.[blockIndexRef.current]?.type ?? null,
+        elapsed_seconds: lessonStartedAtMsRef.current
+          ? Math.round((Date.now() - lessonStartedAtMsRef.current) / 1000)
+          : 0,
+        exit_reason: 'back_button',
+      });
+    }
     endPlaybackSession();
     router.back();
   }, [endPlaybackSession, router]);
@@ -3648,7 +3763,26 @@ export default function LessonPlayerScreen() {
                     return;
                   }
                   const { data } = await apiFetch<{ current_streak: number }>('/streak');
-                  setStreakCount(data?.current_streak ?? 1);
+                  const newCount = data?.current_streak ?? 1;
+                  setStreakCount(newCount);
+                  // Only report a genuine advance, at most once per session.
+                  // The read must have succeeded (the `?? 1` above is a display
+                  // fallback, not a real count), and where the pre-completion
+                  // snapshot is known the count must actually have gone up —
+                  // which also stops a same-day repeat from re-reporting if the
+                  // snapshot date was missing.
+                  const priorCount = preStreakCountRef.current;
+                  if (
+                    !streakExtendedFiredRef.current &&
+                    typeof data?.current_streak === 'number' &&
+                    (priorCount === null || newCount > priorCount)
+                  ) {
+                    streakExtendedFiredRef.current = true;
+                    trackStreakExtended({
+                      new_streak_count: newCount,
+                      program_day: lessonRef.current?.program_day ?? null,
+                    });
+                  }
                   setPhase('streak');
                 }}
               >

@@ -304,6 +304,10 @@ Deno.serve(async (req) => {
       .update({
         status: synced.status,
         expires_at: synced.expiresAt,
+        // This row was matched by original_transaction_id, so it is Apple-owned.
+        // Setting source explicitly flips ex-promo users to 'apple' once they
+        // subscribe — the signal Phase 2 conversion analytics keys off.
+        source: "apple",
         // Never blank out a known product_id with a payload that omits it.
         ...(productId ? { product_id: productId } : {}),
         updated_at: new Date().toISOString(),

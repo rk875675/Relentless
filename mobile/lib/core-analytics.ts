@@ -7,6 +7,11 @@ function captureCoreEvent(event: string, properties?: CoreProps): void {
   if (__DEV__) analytics.flush();
 }
 
+/** Device-local hour (0-23) for time-of-day analysis. */
+export function getTimeOfDayHour(): number {
+  return new Date().getHours();
+}
+
 /** Home / workout funnel */
 export function trackWodViewed(properties?: CoreProps): void {
   captureCoreEvent('wod_viewed', properties);
@@ -92,7 +97,89 @@ export function trackPartnerReferralCtaClicked(
   captureCoreEvent('partner_referral_cta_clicked', properties);
 }
 
-/** Reflections — never include journal body text */
+/** Lesson abandoned (quit mid-lesson) — never include journal body text */
+export function trackLessonAbandoned(
+  properties: CoreProps & {
+    lesson_id?: string;
+    program_id?: string | null;
+    program_key?: string | null;
+    coach_key?: string | null;
+    lesson_type?: string;
+    block_index?: number;
+    block_type?: string | null;
+    elapsed_seconds?: number;
+    exit_reason: 'back_button' | 'os_background_exit';
+  },
+): void {
+  captureCoreEvent('lesson_abandoned', properties);
+}
+
+/** Exercise block lifecycle (per-block within a lesson) */
+export function trackExerciseBlockStarted(
+  properties: CoreProps & {
+    lesson_id?: string;
+    program_id?: string | null;
+    block_index: number;
+    block_type: string;
+    interactive_model?: string | null;
+    duration_seconds?: number;
+  },
+): void {
+  captureCoreEvent('exercise_block_started', properties);
+}
+
+export function trackExerciseBlockCompleted(
+  properties: CoreProps & {
+    lesson_id?: string;
+    program_id?: string | null;
+    block_index: number;
+    block_type: string;
+    interactive_model?: string | null;
+    duration_seconds?: number;
+    actual_elapsed_seconds?: number;
+  },
+): void {
+  captureCoreEvent('exercise_block_completed', properties);
+}
+
+/** App backgrounded during active lesson */
+export function trackLessonBackgrounded(
+  properties: CoreProps & {
+    lesson_id?: string;
+    program_id?: string | null;
+    phase: string;
+    elapsed_seconds?: number;
+  },
+): void {
+  captureCoreEvent('lesson_backgrounded', properties);
+}
+
+/** Journal prompt outcome — never include journal body text, only char count */
+export function trackJournalPromptCompleted(
+  properties: CoreProps & {
+    lesson_id?: string;
+    prompt_type: 'lesson_reflection' | 'block_journal' | 'miss_reflection';
+    answered: boolean;
+    entry_length: number;
+  },
+): void {
+  captureCoreEvent('journal_prompt_completed', properties);
+}
+
+/** Streak mutations */
+export function trackStreakExtended(
+  properties: CoreProps & { new_streak_count: number; program_day?: number | null },
+): void {
+  captureCoreEvent('streak_extended', properties);
+}
+
+export function trackStreakBroken(
+  properties: CoreProps & { previous_streak_count: number },
+): void {
+  captureCoreEvent('streak_broken', properties);
+}
+
+/** Reflections — never include journal body text (legacy, kept for continuity) */
 export function trackReflectionPromptViewed(properties?: CoreProps): void {
   captureCoreEvent('reflection_prompt_viewed', properties);
 }
@@ -120,6 +207,13 @@ export function trackPushPermissionDenied(
   properties: CoreProps & { source: 'profile_toggle' | 'home_prompt' },
 ): void {
   captureCoreEvent('push_permission_denied', properties);
+}
+
+/** Tab navigation */
+export function trackTabSwitched(
+  properties: CoreProps & { tab_name: 'home' | 'library' | 'profile' },
+): void {
+  captureCoreEvent('tab_switched', properties);
 }
 
 /** App Store review prompt */

@@ -18,8 +18,13 @@ import { analytics } from '@/lib/analytics';
 import { trackOnboardingPaywallViewed, trackOnboardingPaywallDismissed } from '@/lib/onboarding-analytics';
 import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
-import { SUPERWALL_ENABLED, SUPERWALL_ONBOARDING_PLACEMENT } from '@/lib/superwall-config';
+import {
+  PROMO_CODE_CUSTOM_ACTION,
+  SUPERWALL_ENABLED,
+  SUPERWALL_ONBOARDING_PLACEMENT,
+} from '@/lib/superwall-config';
 import { SubscriptionLegalDisclosure } from '@/components/onboarding/SubscriptionLegalDisclosure';
+import { PromoCodeSheet } from '@/components/PromoCodeSheet';
 import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { clearOnboardingProgress, saveOnboardingProgress } from '@/lib/onboarding-local-state';
 import { subscribeTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
@@ -29,8 +34,12 @@ let useSuperwall: any = () => ({
   preloadPaywalls: async () => {},
   isConfigured: false,
 });
+let useSuperwallEvents: any = () => {};
 if (SUPERWALL_ENABLED) {
-  try { useSuperwall = require('expo-superwall').useSuperwall; } catch {}
+  try {
+    useSuperwall = require('expo-superwall').useSuperwall;
+    useSuperwallEvents = require('expo-superwall').useSuperwallEvents;
+  } catch {}
 }
 
 // Lock window to defeat Continue/Restore button-spam (StoreKit + Superwall both
@@ -38,6 +47,10 @@ if (SUPERWALL_ENABLED) {
 // the entitlement state update). Long enough to cover the time between tap and
 // Superwall sheet visible, short enough to not feel broken.
 const PRESENTATION_LOCK_MS = 1500;
+
+// How long after tapping Continue we wait for a paywallOpen event before
+// declaring the presentation silently failed (stale SDK config).
+const PRESENT_WATCHDOG_MS = 5000;
 
 type PaywallSuperwallProps = {
   sport?: string;
@@ -67,11 +80,12 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
     });
   }, [sport, competitionDate]);
 
-  const { registerPlacement, preloadPaywalls, isConfigured, getPresentationResult } = useSuperwall((s: any) => ({
+  const { registerPlacement, preloadPaywalls, isConfigured, getPresentationResult, dismiss } = useSuperwall((s: any) => ({
     registerPlacement: s.registerPlacement,
     preloadPaywalls: s.preloadPaywalls,
     isConfigured: s.isConfigured,
     getPresentationResult: s.getPresentationResult,
+    dismiss: s.dismiss,
   }));
 
   // Preload the onboarding paywall whenever this screen mounts and Superwall
@@ -92,7 +106,7 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
 
   const navigatedToSignup = useRef(false);
 
-  const navigateToSignup = () => {
+  const navigateToSignup = (extraParams?: Record<string, string>) => {
     if (navigatedToSignup.current) return;
     navigatedToSignup.current = true;
     router.replace({
@@ -101,8 +115,53 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
         postPaywall: 'true',
         ...(sport ? { sport } : {}),
         ...(competitionDate ? { competitionDate } : {}),
+        ...extraParams,
       },
     });
+  };
+
+  // -------------------------------------------------------------------------
+  // Promo codes: the Superwall paywall's "Have a code?" element fires the
+  // PROMO_CODE_CUSTOM_ACTION custom action. Dismiss the Superwall sheet (a RN
+  // Modal would render behind its native view controller) and open the native
+  // code-entry sheet. Signed-in users redeem inside the sheet immediately;
+  // pre-auth users get the validated code stashed and continue to signup,
+  // where the redemption runs right after the account exists.
+  // -------------------------------------------------------------------------
+  const [promoSheetVisible, setPromoSheetVisible] = useState(false);
+
+  // Timestamp of the last paywallOpen event. Used by the presentation watchdog
+  // below to detect the documented stale-config failure where registerPlacement
+  // fires triggerFire but the paywall never actually presents.
+  const lastPaywallOpenAt = useRef(0);
+  const registerFailedAt = useRef(0);
+
+  useSuperwallEvents({
+    onSuperwallEvent: (eventInfo: { event?: unknown }) => {
+      const ev = eventInfo.event as Record<string, unknown> | undefined;
+      const name = typeof ev?.event === 'string' ? ev.event : '';
+      if (name === 'paywallOpen') lastPaywallOpenAt.current = Date.now();
+    },
+    onCustomPaywallAction: (name: string) => {
+      if (name !== PROMO_CODE_CUSTOM_ACTION) return;
+      dismiss?.().catch(() => {});
+      setPromoSheetVisible(true);
+    },
+  });
+
+  const handlePromoRedeemed = () => {
+    setPromoSheetVisible(false);
+    // hasPremiumAccess flips on refresh → the effect below completes
+    // onboarding for signed-in users and RouteGuard routes into the app.
+    refreshUserState().catch(() => {});
+  };
+
+  // Carry the code in the nav params as well as the AsyncStorage stash —
+  // if the stash write is ever lost, signup.tsx falls back to the param so a
+  // promo signup can never silently degrade into a purchase-restore signup.
+  const handlePromoValidatedPreAuth = (validated: { code: string }) => {
+    setPromoSheetVisible(false);
+    navigateToSignup({ promo: 'true', promoCode: validated.code });
   };
 
   // Only a trusted purchase event (emitted from SuperwallInner after the Apple
@@ -166,9 +225,11 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
       } catch {}
     }
 
+    const tapAt = Date.now();
     analytics.capture('paywall_presented');
     registerPlacement(SUPERWALL_ONBOARDING_PLACEMENT)
       .catch((err: unknown) => {
+        registerFailedAt.current = Date.now();
         const msg =
           err instanceof Error && err.message
             ? err.message
@@ -178,6 +239,26 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
       .finally(() => {
         setTimeout(() => setIsOpening(false), PRESENTATION_LOCK_MS);
       });
+
+    // Watchdog for the stale-config failure documented above: registerPlacement
+    // resolves, triggerFire/preload events fire, but the paywall never presents
+    // (no paywallOpen) — leaving a silently dead Continue button. Purely
+    // additive: no-ops when the paywall opened, the pre-check routed to signup,
+    // or registerPlacement already surfaced its own error alert. Otherwise
+    // re-prime the SDK config (what an app restart effectively does) so the
+    // next tap works, and reuse the existing failure alert.
+    setTimeout(() => {
+      if (lastPaywallOpenAt.current >= tapAt) return;
+      if (registerFailedAt.current >= tapAt) return;
+      if (navigatedToSignup.current) return;
+      preloadPaywalls?.([SUPERWALL_ONBOARDING_PLACEMENT])?.catch?.(() => {});
+      analytics.capture('paywall_present_failed');
+      Alert.alert(
+        'Subscription unavailable',
+        'Could not open the subscription options. Please try again.',
+        [{ text: 'OK' }],
+      );
+    }, PRESENT_WATCHDOG_MS);
   };
 
   const handleRestore = () => {
@@ -321,6 +402,13 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
           </View>
         </View>
       </ScrollView>
+
+      <PromoCodeSheet
+        visible={promoSheetVisible}
+        onClose={() => setPromoSheetVisible(false)}
+        onRedeemed={handlePromoRedeemed}
+        onValidatedPreAuth={handlePromoValidatedPreAuth}
+      />
     </SafeAreaView>
   );
 }

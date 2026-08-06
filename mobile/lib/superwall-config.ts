@@ -21,6 +21,15 @@ export const SUPERWALL_ONBOARDING_PLACEMENT =
   process.env.EXPO_PUBLIC_SUPERWALL_ONBOARDING_PLACEMENT ?? 'onboarding_paywall';
 
 /**
+ * Custom paywall action name for the promo-code entry point.
+ * The "Have a code?" element in the Superwall paywall editor must trigger a
+ * Custom Action with EXACTLY this name. Do not add that element to the live
+ * paywall until the app update containing the handler has shipped — older
+ * builds would show a dead button.
+ */
+export const PROMO_CODE_CUSTOM_ACTION = 'redeem_promo_code';
+
+/**
  * App Store product ids (configure the same ids in Superwall / App Store Connect).
  * Reference only — not passed to the SDK unless you add placement params later.
  *

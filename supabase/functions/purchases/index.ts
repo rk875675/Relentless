@@ -254,19 +254,56 @@ Deno.serve(async (req) => {
   // Update entitlements table
   // ---------------------------------------------------------------------------
 
-  // Read current status before overwriting — used below to detect first-ever subscription.
+  // Read the current row before overwriting: `status` detects a first-ever
+  // subscription (below), and source/expires_at guard a live promo grant.
   const { data: existingEnt } = await supabase
     .from("entitlements")
-    .select("status")
+    .select("status, source, expires_at")
     .eq("user_id", auth.userId)
     .maybeSingle();
   const previousStatus: string | null = existingEnt?.status ?? null;
+
+  // A promo grant is server-authoritative and has no Apple transaction behind
+  // it, so an Apple result that carries no access must never overwrite one that
+  // is still live (null expires_at = lifetime). Otherwise a promo user with an
+  // old lapsed Apple subscription loses the access they legitimately hold the
+  // moment they tap Restore. A trial/active Apple result is an upgrade, not a
+  // downgrade, and still writes through — that promo → apple flip is the
+  // conversion signal.
+  const promoStillLive = existingEnt?.source === "promo" &&
+    (existingEnt.status === "trial" || existingEnt.status === "active") &&
+    (existingEnt.expires_at === null ||
+      new Date(existingEnt.expires_at).getTime() > Date.now());
+  const appleGrantsAccess = entitlementStatus === "trial" ||
+    entitlementStatus === "active";
+
+  if (promoStillLive && !appleGrantsAccess) {
+    console.warn(
+      "[purchases/restore] Kept live promo entitlement; Apple reported no active subscription",
+      { requestId, appleStatus: entitlementStatus },
+    );
+    const promoResponseBody = {
+      entitlement_status: existingEnt!.status,
+      product_id: null,
+    };
+    await storeIdempotencyKey(
+      supabase,
+      idempotencyKey,
+      auth.userId,
+      200,
+      promoResponseBody,
+    );
+    return successResponse(promoResponseBody, requestId);
+  }
 
   const { error: upsertErr } = await supabase
     .from("entitlements")
     .upsert({
       user_id: auth.userId,
       status: entitlementStatus,
+      // Apple-verified write: flips ex-promo rows back to 'apple' so the
+      // promo → paying transition is visible to analytics.
+      source: "apple",
       product_id: productId ?? null,
       original_transaction_id: originalTransactionId,
       starts_at: new Date().toISOString(),

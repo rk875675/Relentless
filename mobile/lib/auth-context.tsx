@@ -19,6 +19,8 @@ import { restorePurchasesViaStoreKit } from './iap-restore';
 const FOREGROUND_REFRESH_DEBOUNCE_MS = 30_000;
 /** Max time a trial/active row with a just-lapsed expires_at keeps access while one silent Apple re-verification runs. */
 const STALE_ENTITLEMENT_GRACE_MS = 15_000;
+/** An 'expired' row whose date passed within this window may be an unsynced renewal the server auto-flipped — still re-verify before paywalling. Older lapses paywall immediately. */
+const RECENT_LAPSE_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** If profile/entitlement queries stall (common on first OAuth after code exchange), still resolve the sign-in promise. Session is already persisted; background fetch + RouteGuard corrects routing. */
 const POST_SIGNIN_PROFILE_BUDGET_MS = 12_000;
 const MAX_PROFILE_DISPLAY_NAME_LEN = 80;
@@ -402,8 +404,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [, forceGraceReeval] = useState(0);
   const staleGraceRef = useRef<{ key: string; until: number } | null>(null);
   const staleReverifyKeyRef = useRef<string | null>(null);
+  // Two qualifying shapes:
+  // 1. trial/active row with a lapsed date (webhook hasn't synced the renewal yet).
+  // 2. row already auto-flipped to 'expired' by the server — on foreground, API
+  //    calls race the entitlements read, so requireEntitlement often flips the
+  //    row before the client ever sees the stale trial/active state. Only
+  //    recently-lapsed dates qualify; long-lapsed users paywall immediately.
+  const recentlyLapsed =
+    expired &&
+    !!entitlementExpiresAt &&
+    Date.now() - new Date(entitlementExpiresAt).getTime() < RECENT_LAPSE_WINDOW_MS;
   const staleRow =
-    Platform.OS === 'ios' && !!session && statusValid && expired && !isOptimisticGrant;
+    Platform.OS === 'ios' &&
+    !!session &&
+    !isOptimisticGrant &&
+    ((statusValid && expired) || (entitlementStatus === 'expired' && recentlyLapsed));
   const graceKey = entitlementExpiresAt ?? '';
   if (staleRow && staleGraceRef.current?.key !== graceKey) {
     // Idempotent render-time init so the first render that sees the lapsed date
@@ -422,16 +437,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (staleReverifyKeyRef.current !== graceKey) {
       staleReverifyKeyRef.current = graceKey;
+      if (__DEV__) console.log('[stale-grace] holding access, re-verifying with Apple', { graceKey });
       void (async () => {
         let renewed = false;
         try {
           const result = await restorePurchasesViaStoreKit();
+          if (__DEV__) console.log('[stale-grace] re-verify result', result);
           if (result.ok) {
             // Pulls the fresh future expires_at; grace ends naturally with no flash.
             await refreshUserState();
             renewed = true;
           }
-        } catch {
+        } catch (e) {
+          if (__DEV__) console.log('[stale-grace] re-verify threw', e);
           // Fall through: end the grace below.
         }
         if (!renewed && staleGraceRef.current?.key === graceKey) {
@@ -447,7 +465,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const hasPremiumAccess =
     isDevAccount && suppressDevPremium
       ? false
-      : (statusValid && (!expired || staleGraceActive)) ||
+      : (statusValid && !expired) ||
+        staleGraceActive ||
         devPremiumBypass ||
         (isDevAccount && !suppressDevPremium);
 
