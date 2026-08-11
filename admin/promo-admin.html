@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Relentless — Promo Codes Admin</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #181b22; --border: #2a2f3a; --text: #e8eaf0;
+    --muted: #9aa3b2; --accent: #6c8cff; --accent-press: #5677f0;
+    --danger: #ff6b6b; --ok: #4cd08a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 20px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input[type="text"], input[type="password"], input[type="number"],
+  input[type="date"], select {
+    width: 100%; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: #10131a; color: var(--text);
+    font-size: 15px;
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1 1 180px; }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .check input { width: 18px; height: 18px; }
+  .check span { font-size: 14px; }
+  button {
+    margin-top: 16px; padding: 10px 18px; border: none; border-radius: 8px;
+    background: var(--accent); color: #fff; font-size: 15px; font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-press); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.small {
+    margin: 0; padding: 5px 10px; font-size: 13px; font-weight: 500;
+    background: #262b36; color: var(--text); border: 1px solid var(--border);
+  }
+  button.small:hover { background: #303645; }
+  a.linkbtn {
+    display: inline-block; margin-top: 8px; padding: 10px 18px; border-radius: 8px;
+    background: #262b36; border: 1px solid var(--border); color: var(--text);
+    text-decoration: none; font-weight: 600; font-size: 14px;
+  }
+  a.linkbtn:hover { background: #303645; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.code { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 600; }
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px;
+    border: 1px solid var(--border); color: var(--muted);
+  }
+  .pill.on { color: var(--ok); border-color: var(--ok); }
+  .pill.off { color: var(--danger); border-color: var(--danger); }
+  .msg { margin-top: 12px; font-size: 14px; min-height: 20px; }
+  .msg.err { color: var(--danger); }
+  .msg.ok { color: var(--ok); }
+  .muted { color: var(--muted); }
+  .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  #app { display: none; }
+  .empty { color: var(--muted); padding: 12px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="login" class="card" style="max-width:420px;margin:80px auto;">
+    <h1>Relentless Admin</h1>
+    <p class="sub">Promo codes &amp; creators</p>
+    <label for="pw">Password</label>
+    <input type="password" id="pw" autocomplete="current-password" />
+    <button id="loginBtn">Sign in</button>
+    <div id="loginMsg" class="msg err"></div>
+  </div>
+
+  <div id="app">
+    <div class="topbar">
+      <div>
+        <h1>Promo Codes Admin</h1>
+        <p class="sub">Create creators, mint codes, and track redemptions.</p>
+      </div>
+      <button class="small" id="logoutBtn">Sign out</button>
+    </div>
+
+    <div class="card">
+      <h2>Analytics</h2>
+      <p class="muted" style="margin:0;">Redemptions, funnels, retention and creator comparisons live in PostHog. Filter any tile by the person property <b>promo_creator</b> to drill into one creator.</p>
+      <a class="linkbtn" id="dashLink" href="#" target="_blank" rel="noopener">Open Creator Codes dashboard →</a>
+    </div>
+
+    <div class="card">
+      <h2>Add a creator</h2>
+      <div class="row">
+        <div>
+          <label for="creatorName">Creator name</label>
+          <input type="text" id="creatorName" placeholder="e.g. Jane Doe" />
+        </div>
+      </div>
+      <button id="addCreatorBtn">Add creator</button>
+      <div id="creatorMsg" class="msg"></div>
+      <table id="creatorsTable">
+        <thead><tr><th>Name</th><th>Slug</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="creatorsEmpty" class="empty" style="display:none;">No creators yet.</div>
+    </div>
+
+    <div class="card">
+      <h2>Mint a code</h2>
+      <div class="row">
+        <div>
+          <label for="codeText">Code (what people will type)</label>
+          <input type="text" id="codeText" placeholder="Type the exact code" autocapitalize="characters" />
+        </div>
+        <div>
+          <label for="codeCreator">Creator</label>
+          <select id="codeCreator"></select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="codeType">Type</label>
+          <select id="codeType">
+            <option value="months_free">Months free (for the creator's audience)</option>
+            <option value="lifetime">Lifetime / free forever (for the creator)</option>
+          </select>
+        </div>
+        <div id="monthsWrap">
+          <label for="codeMonths">Free months</label>
+          <input type="number" id="codeMonths" min="1" step="1" placeholder="e.g. 3" />
+        </div>
+        <div>
+          <label for="codeMax">Max redemptions (blank = unlimited)</label>
+          <input type="number" id="codeMax" min="1" step="1" placeholder="" />
+        </div>
+        <div>
+          <label for="codeExpiry">Code stops working after (optional)</label>
+          <input type="date" id="codeExpiry" />
+        </div>
+      </div>
+      <div class="check">
+        <input type="checkbox" id="codePersonal" />
+        <span>Personal code (belongs to the creator themselves)</span>
+      </div>
+      <button id="addCodeBtn">Mint code</button>
+      <div id="codeMsg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>All codes</h2>
+      <table id="codesTable">
+        <thead><tr>
+          <th>Code</th><th>Creator</th><th>Type</th><th>Redemptions</th>
+          <th>Expires</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="codesEmpty" class="empty" style="display:none;">No codes yet.</div>
+    </div>
+  </div>
+
+</div>
+<script>
+(function () {
+  var API = "https://tnetahaviblrrjixzvbd.supabase.co/functions/v1/promo-admin";
+  var PW_KEY = "promo-admin-password";
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  function api(path, body) {
+    return fetch(API + "/" + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-password": sessionStorage.getItem(PW_KEY) || ""
+      },
+      body: JSON.stringify(body || {})
+    }).then(function (res) {
+      return res.json().then(function (json) {
+        if (res.status === 401) { signOut(); throw new Error("Wrong password"); }
+        if (!res.ok) {
+          var msg = (json && json.error && json.error.message) || "Request failed";
+          throw new Error(msg);
+        }
+        return json.data;
+      });
+    });
+  }
+
+  function signOut() {
+    sessionStorage.removeItem(PW_KEY);
+    el("app").style.display = "none";
+    el("login").style.display = "block";
+    el("pw").value = "";
+  }
+
+  function showApp() {
+    el("login").style.display = "none";
+    el("app").style.display = "block";
+    refresh();
+  }
+
+  function setMsg(id, text, ok) {
+    var node = el(id);
+    node.textContent = text || "";
+    node.className = "msg " + (ok ? "ok" : "err");
+  }
+
+  // ---- login ----
+  function tryLogin() {
+    var pw = el("pw").value;
+    if (!pw) { setMsg("loginMsg", "Enter the password"); return; }
+    el("loginBtn").disabled = true;
+    sessionStorage.setItem(PW_KEY, pw);
+    api("login").then(function () {
+      setMsg("loginMsg", "");
+      showApp();
+    }).catch(function (e) {
+      sessionStorage.removeItem(PW_KEY);
+      setMsg("loginMsg", e.message);
+    }).finally(function () {
+      el("loginBtn").disabled = false;
+    });
+  }
+  el("loginBtn").addEventListener("click", tryLogin);
+  el("pw").addEventListener("keydown", function (e) { if (e.key === "Enter") tryLogin(); });
+  el("logoutBtn").addEventListener("click", signOut);
+
+  // ---- overview ----
+  function refresh() {
+    api("overview").then(function (data) {
+      el("dashLink").href = data.dashboard_url;
+      renderCreators(data.creators);
+      renderCodes(data.codes);
+    }).catch(function (e) {
+      setMsg("codeMsg", e.message);
+    });
+  }
+
+  function renderCreators(creators) {
+    var tbody = el("creatorsTable").querySelector("tbody");
+    var rows = "";
+    var options = "";
+    for (var i = 0; i < creators.length; i++) {
+      var c = creators[i];
+      rows += "<tr><td>" + esc(c.name) + "</td><td class='code'>" + esc(c.slug) + "</td><td><span class='pill " +
+        (c.active ? "on'>Active" : "off'>Inactive") + "</span></td></tr>";
+      if (c.active) {
+        options += "<option value='" + esc(c.id) + "'>" + esc(c.name) + "</option>";
+      }
+    }
+    tbody.innerHTML = rows;
+    el("creatorsEmpty").style.display = creators.length ? "none" : "block";
+    el("codeCreator").innerHTML = options ||
+      "<option value=''>Add a creator first</option>";
+  }
+
+  function renderCodes(codes) {
+    var tbody = el("codesTable").querySelector("tbody");
+    var rows = "";
+    for (var i = 0; i < codes.length; i++) {
+      var k = codes[i];
+      var typeLabel = k.type === "lifetime"
+        ? "Lifetime" + (k.is_personal ? " (personal)" : "")
+        : k.months + " mo free" + (k.is_personal ? " (personal)" : "");
+      var redemptions = k.redemption_count + " / " +
+        (k.max_redemptions == null ? "∞" : k.max_redemptions);
+      rows += "<tr>" +
+        "<td class='code'>" + esc(k.code) + "</td>" +
+        "<td>" + esc(k.creator_name) + "</td>" +
+        "<td>" + esc(typeLabel) + "</td>" +
+        "<td>" + esc(redemptions) + "</td>" +
+        "<td>" + esc(fmtDate(k.expires_at)) + "</td>" +
+        "<td><span class='pill " + (k.active ? "on'>Active" : "off'>Off") + "</span></td>" +
+        "<td><button class='small' data-id='" + esc(k.id) + "' data-active='" +
+          (k.active ? "1" : "0") + "'>" + (k.active ? "Deactivate" : "Reactivate") +
+        "</button></td>" +
+        "</tr>";
+    }
+    tbody.innerHTML = rows;
+    el("codesEmpty").style.display = codes.length ? "none" : "block";
+
+    var buttons = tbody.querySelectorAll("button[data-id]");
+    for (var j = 0; j < buttons.length; j++) {
+      buttons[j].addEventListener("click", function () {
+        var makeActive = this.getAttribute("data-active") !== "1";
+        if (!makeActive && !confirm("Deactivate this code? People will no longer be able to redeem it.")) return;
+        api("codes/toggle", { id: this.getAttribute("data-id"), active: makeActive })
+          .then(refresh)
+          .catch(function (e) { setMsg("codeMsg", e.message); });
+      });
+    }
+  }
+
+  // ---- create creator ----
+  el("addCreatorBtn").addEventListener("click", function () {
+    var name = el("creatorName").value.trim();
+    if (!name) { setMsg("creatorMsg", "Enter a name"); return; }
+    el("addCreatorBtn").disabled = true;
+    api("creators", { name: name }).then(function (data) {
+      el("creatorName").value = "";
+      setMsg("creatorMsg", "Added " + data.creator.name, true);
+      refresh();
+    }).catch(function (e) {
+      setMsg("creatorMsg", e.message);
+    }).finally(function () {
+      el("addCreatorBtn").disabled = false;
+    });
+  });
+
+  // ---- mint code ----
+  el("codeType").addEventListener("change", function () {
+    el("monthsWrap").style.display = this.value === "months_free" ? "" : "none";
+  });
+
+  el("addCodeBtn").addEventListener("click", function () {
+    var type = el("codeType").value;
+    var body = {
+      code: el("codeText").value.trim(),
+      type: type,
+      creator_id: el("codeCreator").value
+    };
+    if (!body.code) { setMsg("codeMsg", "Enter the code text"); return; }
+    if (!body.creator_id) { setMsg("codeMsg", "Pick a creator (add one first)"); return; }
+    if (type === "months_free") {
+      var months = parseInt(el("codeMonths").value, 10);
+      if (!months || months < 1) { setMsg("codeMsg", "Enter how many free months"); return; }
+      body.months = months;
+    }
+    var max = parseInt(el("codeMax").value, 10);
+    if (max && max > 0) body.max_redemptions = max;
+    if (el("codePersonal").checked) body.is_personal = true;
+    var expiry = el("codeExpiry").value;
+    if (expiry) body.expires_at = new Date(expiry + "T23:59:59Z").toISOString();
+
+    el("addCodeBtn").disabled = true;
+    api("codes", body).then(function (data) {
+      el("codeText").value = "";
+      el("codeMonths").value = "";
+      el("codeMax").value = "";
+      el("codeExpiry").value = "";
+      el("codePersonal").checked = false;
+      setMsg("codeMsg", "Minted " + data.code.code, true);
+      refresh();
+    }).catch(function (e) {
+      setMsg("codeMsg", e.message);
+    }).finally(function () {
+      el("addCodeBtn").disabled = false;
+    });
+  });
+
+  // auto-login if a password is already stored for this tab
+  if (sessionStorage.getItem(PW_KEY)) {
+    api("login").then(showApp).catch(signOut);
+  }
+})();
+</script>
+</body>
+</html>
