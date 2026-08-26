@@ -32,10 +32,11 @@ function getLimit(limitClass: RateLimitClass): number {
   return DEFAULT_LIMITS[limitClass];
 }
 
-// Fail-open is intentional (availability over strictness), but it must never
-// be SILENT — log once per function instance when Upstash is unconfigured so
-// a missing env var in prod is visible in function logs instead of quietly
-// disabling rate limiting.
+const FAIL_CLOSED_CLASSES: Set<RateLimitClass> = new Set([
+  "authenticated-write",
+  "billing",
+]);
+
 let warnedUnconfigured = false;
 
 export async function checkRateLimit(
@@ -50,9 +51,21 @@ export async function checkRateLimit(
     if (!warnedUnconfigured) {
       warnedUnconfigured = true;
       console.error(
-        "[ratelimit] UPSTASH_REDIS_REST_URL/TOKEN not set — rate limiting is DISABLED (failing open)",
+        "[ratelimit] UPSTASH_REDIS_REST_URL/TOKEN not set — rate limiting is DISABLED",
         { requestId },
       );
+    }
+    if (FAIL_CLOSED_CLASSES.has(limitClass)) {
+      return {
+        ok: false,
+        response: errorResponse(
+          503,
+          "SERVICE_UNAVAILABLE",
+          "Service temporarily unavailable. Please try again later.",
+          requestId,
+          { "Retry-After": "30" },
+        ),
+      };
     }
     return { ok: true };
   }
@@ -72,6 +85,23 @@ export async function checkRateLimit(
     });
 
     if (!res.ok) {
+      console.error("[ratelimit] Upstash returned non-OK status", {
+        status: res.status,
+        requestId,
+        limitClass,
+      });
+      if (FAIL_CLOSED_CLASSES.has(limitClass)) {
+        return {
+          ok: false,
+          response: errorResponse(
+            503,
+            "SERVICE_UNAVAILABLE",
+            "Service temporarily unavailable. Please try again later.",
+            requestId,
+            { "Retry-After": "30" },
+          ),
+        };
+      }
       return { ok: true };
     }
 
@@ -91,7 +121,24 @@ export async function checkRateLimit(
         ),
       };
     }
-  } catch {
+  } catch (err) {
+    console.error("[ratelimit] Upstash request failed", {
+      error: err instanceof Error ? err.message : String(err),
+      requestId,
+      limitClass,
+    });
+    if (FAIL_CLOSED_CLASSES.has(limitClass)) {
+      return {
+        ok: false,
+        response: errorResponse(
+          503,
+          "SERVICE_UNAVAILABLE",
+          "Service temporarily unavailable. Please try again later.",
+          requestId,
+          { "Retry-After": "30" },
+        ),
+      };
+    }
     return { ok: true };
   }
 

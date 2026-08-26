@@ -44,35 +44,15 @@ export function SubscriptionLegalDisclosure({ purchaseUnavailable }: Props) {
         <Text style={styles.note}>Subscription checkout is not available in this build.</Text>
       ) : null}
 
-      {(LEGAL_TERMS_OF_USE_URL || LEGAL_PRIVACY_POLICY_URL) && (
-        <View style={styles.linksRow}>
-          {LEGAL_TERMS_OF_USE_URL ? (
-            <TouchableOpacity
-              onPress={() => {
-                const u = LEGAL_TERMS_OF_USE_URL;
-                if (u) open(u);
-              }}
-              accessibilityRole="link"
-            >
-              <Text style={styles.link}>Terms of Use</Text>
-            </TouchableOpacity>
-          ) : null}
-          {LEGAL_TERMS_OF_USE_URL && LEGAL_PRIVACY_POLICY_URL ? (
-            <Text style={styles.linkSep}> · </Text>
-          ) : null}
-          {LEGAL_PRIVACY_POLICY_URL ? (
-            <TouchableOpacity
-              onPress={() => {
-                const u = LEGAL_PRIVACY_POLICY_URL;
-                if (u) open(u);
-              }}
-              accessibilityRole="link"
-            >
-              <Text style={styles.link}>Privacy Policy</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      )}
+      <View style={styles.linksRow}>
+        <TouchableOpacity onPress={() => open(LEGAL_TERMS_OF_USE_URL)} accessibilityRole="link">
+          <Text style={styles.link}>Terms of Use</Text>
+        </TouchableOpacity>
+        <Text style={styles.linkSep}> · </Text>
+        <TouchableOpacity onPress={() => open(LEGAL_PRIVACY_POLICY_URL)} accessibilityRole="link">
+          <Text style={styles.link}>Privacy Policy</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }

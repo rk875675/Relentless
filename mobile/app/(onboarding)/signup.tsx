@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -30,6 +31,7 @@ import { clearPendingPromoCode, loadPendingPromoCode } from '@/lib/promo-code-st
 import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
 import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
 import { supabase } from '@/lib/supabase';
+import { LEGAL_PRIVACY_POLICY_URL, LEGAL_TERMS_OF_USE_URL } from '@/lib/legal-urls';
 import { colors, spacing } from '@/lib/theme';
 import { getLastTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
 import { InlineErrorCard } from '@/components/InlineErrorCard';
@@ -702,6 +704,13 @@ export default function OnboardingSignupScreen() {
               <Text style={styles.linkText}>Already have an account? Sign In</Text>
             </TouchableOpacity>
           ) : null}
+
+          <Text style={styles.legalText}>
+            By continuing you agree to our{' '}
+            <Text style={styles.legalLink} onPress={() => Linking.openURL(LEGAL_TERMS_OF_USE_URL)}>Terms</Text>
+            {' '}and{' '}
+            <Text style={styles.legalLink} onPress={() => Linking.openURL(LEGAL_PRIVACY_POLICY_URL)}>Privacy Policy</Text>.
+          </Text>
         </View>
       </View>
     );
@@ -787,6 +796,13 @@ export default function OnboardingSignupScreen() {
               <Text style={styles.linkText}>Already have an account? Sign In</Text>
             </TouchableOpacity>
           ) : null}
+
+          <Text style={styles.legalText}>
+            By creating an account you agree to our{' '}
+            <Text style={styles.legalLink} onPress={() => Linking.openURL(LEGAL_TERMS_OF_USE_URL)}>Terms</Text>
+            {' '}and{' '}
+            <Text style={styles.legalLink} onPress={() => Linking.openURL(LEGAL_PRIVACY_POLICY_URL)}>Privacy Policy</Text>.
+          </Text>
         </View>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
@@ -867,5 +883,16 @@ const styles = StyleSheet.create({
   linkText: {
     color: colors.textSecondary,
     fontSize: 14,
+  },
+  legalText: {
+    color: '#666',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 24,
+    lineHeight: 16,
+  },
+  legalLink: {
+    color: '#888',
+    textDecorationLine: 'underline',
   },
 });

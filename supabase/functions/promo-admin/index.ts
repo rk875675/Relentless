@@ -104,6 +104,8 @@ Deno.serve(async (req) => {
       return handleCreateCode(req, requestId);
     case "codes/toggle":
       return handleToggleCode(req, requestId);
+    case "codes/delete":
+      return handleDeleteCode(req, requestId);
     default:
       return errorResponse(404, "NOT_FOUND", "Unknown promo-admin path", requestId);
   }
@@ -184,7 +186,7 @@ async function handleOverview(requestId: string): Promise<Response> {
     supabase
       .from("promo_codes")
       .select(
-        "id, code, type, months, is_personal, max_redemptions, active, expires_at, created_at, creators!inner(name, slug), promo_code_redemptions(count)",
+        "id, code, type, months, is_personal, max_redemptions, redemption_count, active, expires_at, created_at, creators!inner(name, slug)",
       )
       .order("created_at", { ascending: false }),
   ]);
@@ -200,7 +202,6 @@ async function handleOverview(requestId: string): Promise<Response> {
 
   const codes = (codesRes.data ?? []).map((row) => {
     const creator = row.creators as unknown as { name: string; slug: string };
-    const counts = row.promo_code_redemptions as unknown as { count: number }[];
     return {
       id: row.id,
       code: row.code,
@@ -213,7 +214,9 @@ async function handleOverview(requestId: string): Promise<Response> {
       created_at: row.created_at,
       creator_name: creator?.name ?? null,
       creator_slug: creator?.slug ?? null,
-      redemption_count: counts?.[0]?.count ?? 0,
+      // Durable lifetime count from promo_codes, which survives account
+      // deletion — the same number the cap is enforced against.
+      redemption_count: row.redemption_count ?? 0,
     };
   });
 
@@ -373,4 +376,50 @@ async function handleToggleCode(req: Request, requestId: string): Promise<Respon
   }
 
   return successResponse({ code: data }, requestId);
+}
+
+// ---------------------------------------------------------------------------
+// POST /promo-admin/codes/delete
+// ---------------------------------------------------------------------------
+
+const DeleteCodeSchema = z.object({
+  id: z.string().uuid(),
+}).strict();
+
+async function handleDeleteCode(req: Request, requestId: string): Promise<Response> {
+  const parsed = await parseBody(req, DeleteCodeSchema, requestId);
+  if (!parsed.ok) return parsed.response;
+
+  const supabase = createServiceClient();
+
+  // Refuse to delete any code that has been redeemed at least once.
+  const { count, error: countErr } = await supabase
+    .from("promo_code_redemptions")
+    .select("id", { count: "exact", head: true })
+    .eq("promo_code_id", parsed.data.id);
+
+  if (countErr) {
+    console.error("[promo-admin/codes/delete] count failed", { requestId, error: countErr.message });
+    return errorResponse(500, "INTERNAL_ERROR", "Could not verify redemptions", requestId);
+  }
+  if ((count ?? 0) > 0) {
+    return errorResponse(
+      409,
+      "HAS_REDEMPTIONS",
+      "Cannot delete a code that has been redeemed. Deactivate it instead.",
+      requestId,
+    );
+  }
+
+  const { error } = await supabase
+    .from("promo_codes")
+    .delete()
+    .eq("id", parsed.data.id);
+
+  if (error) {
+    console.error("[promo-admin/codes/delete] delete failed", { requestId, error: error.message });
+    return errorResponse(500, "INTERNAL_ERROR", "Could not delete code", requestId);
+  }
+
+  return successResponse({ deleted: true }, requestId);
 }

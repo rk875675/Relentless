@@ -7,6 +7,7 @@ import {
   BackHandler,
   Image,
   Linking,
+  Modal,
   PanResponder,
   Platform,
   ScrollView,
@@ -593,6 +594,11 @@ export default function LessonPlayerScreen() {
   const [packFeedbackSaving, setPackFeedbackSaving] = useState(false);
   const [packFeedbackSaved, setPackFeedbackSaved] = useState(false);
   const [packFeedbackError, setPackFeedbackError] = useState('');
+  // Pack rating modal — first pack-complete only (server pack_completed).
+  const [packRatingVisible, setPackRatingVisible] = useState(false);
+  const [packRatingSelected, setPackRatingSelected] = useState<number | null>(null);
+  const [packRatingSubmitting, setPackRatingSubmitting] = useState(false);
+  const [packRatingError, setPackRatingError] = useState('');
   // Accumulates written content from component-block exercises for the journal.
   const journalPartsRef = useRef<string[]>([]);
 
@@ -987,6 +993,7 @@ export default function LessonPlayerScreen() {
       }
       if (completeData?.pack_completed) {
         setPackComplete({ title: completeData.pack_title ?? null });
+        setPackRatingVisible(true);
       }
       bustCache('/lessons/next', '/progress', '/streak');
       trackLessonCompleted({
@@ -1002,7 +1009,8 @@ export default function LessonPlayerScreen() {
           : null,
       });
       incrementLessonsCompleted();
-      setPhase('done');
+      // First pack-complete: feedback + rating first. Trophy / streak come after.
+      setPhase(completeData?.pack_completed ? 'pack_complete' : 'done');
     }
   }, []);
 
@@ -3750,11 +3758,6 @@ export default function LessonPlayerScreen() {
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={async () => {
-                  // Finishing the whole pack outranks the daily streak screen.
-                  if (packComplete) {
-                    setPhase('pack_complete');
-                    return;
-                  }
                   const now = new Date();
                   const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                   if (preStreakDateRef.current === localToday) {
@@ -3931,22 +3934,9 @@ export default function LessonPlayerScreen() {
 
               <TouchableOpacity
                 style={[styles.primaryBtn, { marginTop: spacing.lg }]}
-                onPress={() => {
-                  maybeRequestAppStoreReview();
-                  router.replace('/programs' as any);
-                }}
+                onPress={() => setPhase('done')}
               >
-                <Text style={styles.primaryBtnText}>Try another program</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.packDoneBtn}
-                onPress={() => {
-                  maybeRequestAppStoreReview();
-                  router.back();
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}
-              >
-                <Text style={styles.packDoneText}>Done</Text>
+                <Text style={styles.primaryBtnText}>Continue</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -3973,6 +3963,80 @@ export default function LessonPlayerScreen() {
             </View>
           </View>
         )}
+
+        {/* ── Pack rating modal ───────────────────────────────────────────────
+            Appears immediately when the pack_complete phase begins.
+            Required: no dismiss path until the user submits a star rating.     */}
+        <Modal
+          visible={packRatingVisible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          onRequestClose={() => {}}
+        >
+          <View style={styles.ratingOverlay}>
+            <View style={styles.ratingCard}>
+              <Text style={styles.ratingTitle}>Rate this program</Text>
+              <Text style={styles.ratingSubtitle}>
+                {packComplete?.title ? packComplete.title : 'How did we do?'}
+              </Text>
+              <View style={styles.ratingStarsRow}>
+                {([1, 2, 3, 4, 5] as const).map((n) => (
+                  <TouchableOpacity
+                    key={n}
+                    onPress={() => {
+                      setPackRatingSelected(n);
+                      setPackRatingError('');
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons
+                      name={n <= (packRatingSelected ?? 0) ? 'star' : 'star-outline'}
+                      size={52}
+                      color={n <= (packRatingSelected ?? 0) ? '#FACC15' : colors.textMuted}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {packRatingError ? (
+                <Text style={styles.ratingErrorText}>{packRatingError}</Text>
+              ) : null}
+              <TouchableOpacity
+                style={[
+                  styles.primaryBtn,
+                  styles.ratingSubmitBtn,
+                  (!packRatingSelected || packRatingSubmitting) && { opacity: 0.4 },
+                ]}
+                disabled={!packRatingSelected || packRatingSubmitting}
+                onPress={async () => {
+                  if (!packRatingSelected || packRatingSubmitting) return;
+                  setPackRatingSubmitting(true);
+                  setPackRatingError('');
+                  const { error } = await apiFetch('/program-rating', {
+                    method: 'POST',
+                    body: {
+                      rating: packRatingSelected,
+                      ...(lessonRef.current?.program_id
+                        ? { program_id: lessonRef.current.program_id }
+                        : {}),
+                      ...(packComplete?.title ? { program_name: packComplete.title } : {}),
+                    },
+                  });
+                  setPackRatingSubmitting(false);
+                  if (error) {
+                    setPackRatingError('Could not save — please try again.');
+                    return;
+                  }
+                  setPackRatingVisible(false);
+                }}
+              >
+                <Text style={styles.primaryBtnText}>
+                  {packRatingSubmitting ? 'Saving…' : 'Submit'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -4916,5 +4980,48 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  // Pack rating modal — JS-only dim (no expo-blur; that native view is
+  // missing from the current binary and red-screens).
+  ratingOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    backgroundColor: 'rgba(0, 0, 0, 0.62)',
+  },
+  ratingCard: {
+    width: '100%',
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  ratingTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  ratingSubtitle: {
+    fontSize: 15,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  ratingStarsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginVertical: spacing.sm,
+  },
+  ratingSubmitBtn: {
+    width: '100%',
+    marginTop: spacing.sm,
+  },
+  ratingErrorText: {
+    fontSize: 13,
+    color: colors.error,
+    textAlign: 'center',
   },
 });

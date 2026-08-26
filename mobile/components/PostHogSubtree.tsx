@@ -21,7 +21,7 @@ export function PostHogSubtree({ children }: { children: ReactNode }) {
       apiKey={POSTHOG_API_KEY}
       options={{
         host: POSTHOG_HOST,
-        captureAppLifecycleEvents: false,
+        captureAppLifecycleEvents: true,
         enableSessionReplay: false,
       }}
       autocapture={false}

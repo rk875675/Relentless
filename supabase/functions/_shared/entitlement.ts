@@ -12,21 +12,23 @@ export async function requireEntitlement(
   userId: string,
   requestId: string,
 ): Promise<EntitlementResult> {
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("is_dev")
-    .eq("id", userId)
-    .maybeSingle();
+  // Parallel: check is_dev AND entitlement status in one round-trip
+  const [{ data: profile }, { data, error }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("is_dev")
+      .eq("id", userId)
+      .maybeSingle(),
+    supabase
+      .from("entitlements")
+      .select("status, expires_at")
+      .eq("user_id", userId)
+      .single(),
+  ]);
 
   if (profile?.is_dev === true) {
     return { ok: true };
   }
-
-  const { data, error } = await supabase
-    .from("entitlements")
-    .select("status, expires_at")
-    .eq("user_id", userId)
-    .single();
 
   const denied = (): EntitlementResult => ({
     ok: false,
@@ -43,19 +45,20 @@ export async function requireEntitlement(
   }
 
   if (data.expires_at && new Date(data.expires_at) < new Date()) {
-    await supabase
-      .from("entitlements")
-      .update({ status: "expired", updated_at: new Date().toISOString() })
-      .eq("user_id", userId);
-
-    await supabase.from("entitlement_events").insert({
-      user_id: userId,
-      event_type: "auto_expired",
-      metadata: {
-        previous_status: data.status,
-        expires_at: data.expires_at,
-      },
-    });
+    await Promise.all([
+      supabase
+        .from("entitlements")
+        .update({ status: "expired", updated_at: new Date().toISOString() })
+        .eq("user_id", userId),
+      supabase.from("entitlement_events").insert({
+        user_id: userId,
+        event_type: "auto_expired",
+        metadata: {
+          previous_status: data.status,
+          expires_at: data.expires_at,
+        },
+      }),
+    ]);
 
     return denied();
   }

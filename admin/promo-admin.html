@@ -295,21 +295,37 @@
         "<td>" + esc(redemptions) + "</td>" +
         "<td>" + esc(fmtDate(k.expires_at)) + "</td>" +
         "<td><span class='pill " + (k.active ? "on'>Active" : "off'>Off") + "</span></td>" +
-        "<td><button class='small' data-id='" + esc(k.id) + "' data-active='" +
-          (k.active ? "1" : "0") + "'>" + (k.active ? "Deactivate" : "Reactivate") +
-        "</button></td>" +
+        "<td style='display:flex;gap:6px;align-items:center;'>" +
+          "<button class='small toggle-btn' data-id='" + esc(k.id) + "' data-active='" +
+            (k.active ? "1" : "0") + "'>" + (k.active ? "Deactivate" : "Reactivate") +
+          "</button>" +
+          (k.redemption_count === 0
+            ? "<button class='small del-btn' data-id='" + esc(k.id) + "' data-code='" + esc(k.code) + "' style='color:var(--danger);border-color:var(--danger);'>Delete</button>"
+            : "") +
+        "</td>" +
         "</tr>";
     }
     tbody.innerHTML = rows;
     el("codesEmpty").style.display = codes.length ? "none" : "block";
 
-    var buttons = tbody.querySelectorAll("button[data-id]");
-    for (var j = 0; j < buttons.length; j++) {
-      buttons[j].addEventListener("click", function () {
+    var toggleBtns = tbody.querySelectorAll("button.toggle-btn");
+    for (var j = 0; j < toggleBtns.length; j++) {
+      toggleBtns[j].addEventListener("click", function () {
         var makeActive = this.getAttribute("data-active") !== "1";
         if (!makeActive && !confirm("Deactivate this code? People will no longer be able to redeem it.")) return;
         api("codes/toggle", { id: this.getAttribute("data-id"), active: makeActive })
           .then(refresh)
+          .catch(function (e) { setMsg("codeMsg", e.message); });
+      });
+    }
+
+    var delBtns = tbody.querySelectorAll("button.del-btn");
+    for (var d = 0; d < delBtns.length; d++) {
+      delBtns[d].addEventListener("click", function () {
+        var code = this.getAttribute("data-code");
+        if (!confirm("Permanently delete the code \"" + code + "\"? This cannot be undone.")) return;
+        api("codes/delete", { id: this.getAttribute("data-id") })
+          .then(function () { setMsg("codeMsg", "Deleted " + code, true); refresh(); })
           .catch(function (e) { setMsg("codeMsg", e.message); });
       });
     }

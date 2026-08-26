@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { Linking, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { InlineErrorCard } from '@/components/InlineErrorCard';
+import { LEGAL_PRIVACY_POLICY_URL, LEGAL_TERMS_OF_USE_URL } from '@/lib/legal-urls';
 
 /** Client-side check mirroring prod's lower_upper_letters_digits requirement.
  *  Prevents the raw Supabase character-list error from ever reaching the UI.
@@ -137,6 +138,13 @@ export default function SignupScreen() {
               <Text style={styles.linkText}>Already have an account? Sign In</Text>
             </TouchableOpacity>
           </Link>
+
+          <Text style={styles.legalText}>
+            By creating an account you agree to our{' '}
+            <Text style={styles.legalLink} onPress={() => Linking.openURL(LEGAL_TERMS_OF_USE_URL)}>Terms</Text>
+            {' '}and{' '}
+            <Text style={styles.legalLink} onPress={() => Linking.openURL(LEGAL_PRIVACY_POLICY_URL)}>Privacy Policy</Text>.
+          </Text>
         </View>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
@@ -204,5 +212,16 @@ const styles = StyleSheet.create({
   linkText: {
     color: '#888',
     fontSize: 14,
+  },
+  legalText: {
+    color: '#666',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 24,
+    lineHeight: 16,
+  },
+  legalLink: {
+    color: '#888',
+    textDecorationLine: 'underline' as const,
   },
 });

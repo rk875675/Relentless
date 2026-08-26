@@ -27,9 +27,6 @@ type Progress = {
   mindfulness_score: number;
   acceptance_score: number;
   commitment_score: number;
-  library_unlocked?: boolean;
-  library_lock_reason?: string | null;
-  library_lock_remaining?: number;
   deltas?: MacDeltas | null;
 };
 
@@ -133,7 +130,6 @@ function PackCard({ pack, onPress }: PackCardProps) {
         <View style={styles.packCoachRow}>
           <Text style={styles.packCoachLine} numberOfLines={1}>
             {pack.coach_name}
-            {pack.coach_sport ? ` (${pack.coach_sport})` : ''}
           </Text>
           {pack.completed && !isActivelyRedoing(pack) ? (
             <View style={styles.completedBadge}>
@@ -146,6 +142,11 @@ function PackCard({ pack, onPress }: PackCardProps) {
             </View>
           ) : null}
         </View>
+        {pack.coach_sport ? (
+          <Text style={styles.packSportLine} numberOfLines={1}>
+            {pack.coach_sport}
+          </Text>
+        ) : null}
         <Text style={styles.packTitle} numberOfLines={1}>{pack.title}</Text>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${fraction * 100}%` }]} />
@@ -273,8 +274,6 @@ export default function LibraryScreen() {
       void fetchPacks();
     }, [fetchPacks]),
   );
-
-  const libraryUnlocked = true;
 
   return (
     <ScrollView
@@ -480,12 +479,22 @@ const styles = StyleSheet.create({
   },
   packCoachLine: {
     flex: 1,
+    flexShrink: 1,
     fontSize: 11,
     fontWeight: '700',
     color: colors.accentLight,
     letterSpacing: 0.2,
   },
+  packSportLine: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.accentLight,
+    letterSpacing: 0.2,
+    marginTop: -1,
+    marginBottom: 2,
+  },
   activeBadge: {
+    flexShrink: 0,
     backgroundColor: colors.accentSubtle,
     borderRadius: 999,
     paddingHorizontal: 8,
@@ -499,6 +508,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   completedBadge: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
@@ -542,23 +552,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     marginBottom: 28,
   },
-  lockedBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  lockedText: {
-    flex: 1,
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 19,
-  },
   categoryBtn: {
     backgroundColor: colors.surface,
     borderRadius: 16,
@@ -569,9 +562,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
-  },
-  categoryBtnDisabled: {
-    opacity: 0.45,
   },
   categoryAccent: {
     width: 4,

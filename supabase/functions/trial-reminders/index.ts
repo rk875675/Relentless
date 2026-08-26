@@ -305,8 +305,9 @@ async function sendReminderEmail(args: {
   productId: ProductId;
   expiresAt: string;
 }): Promise<EmailSendResult> {
-  const email = buildReminderEmail(args.productId, args.expiresAt);
-  const unsubMailto = `mailto:${args.from.replace(/.*<|>.*/g, "")}?subject=unsubscribe`;
+  const fromEmail = args.from.replace(/.*<|>.*/g, "");
+  const email = buildReminderEmail(args.productId, args.expiresAt, fromEmail);
+  const unsubMailto = `mailto:${fromEmail}?subject=unsubscribe`;
   const payload: Record<string, unknown> = {
     from: args.from,
     to: [args.to],
@@ -353,7 +354,7 @@ async function sendReminderEmail(args: {
   }
 }
 
-function buildReminderEmail(productId: ProductId, expiresAt: string) {
+function buildReminderEmail(productId: ProductId, expiresAt: string, fromEmail: string) {
   const isAnnual = productId === PRODUCT_IDS.annual || productId === PRODUCT_IDS.annualB;
   const planLabel = isAnnual ? "annual" : "monthly";
   const renewalText = isAnnual ? "your annual plan starts" : "your monthly plan starts";
@@ -373,6 +374,10 @@ function buildReminderEmail(productId: ProductId, expiresAt: string) {
     "Either way, thanks for giving Relentless a real shot.",
     "",
     "- Relentless",
+    "",
+    "---",
+    "Relentless App LLC, 16100 Foster Street, Overland Park, KS 66085",
+    `To stop receiving these emails, reply with "unsubscribe" or email ${fromEmail}.`,
   ].join("\n");
 
   const html = `<!doctype html>
@@ -390,6 +395,10 @@ function buildReminderEmail(productId: ProductId, expiresAt: string) {
         <p style="margin:0 0 18px;font-size:16px;line-height:1.5;">Either way, thanks for giving Relentless a real shot.</p>
         <p style="margin:0;font-size:16px;line-height:1.5;">- Relentless</p>
       </div>
+      <p style="margin:24px 0 0;font-size:11px;line-height:1.4;color:#9a9080;text-align:center;">
+        Relentless App LLC, 16100 Foster Street, Overland Park, KS 66085<br/>
+        <a href="mailto:${escapeHtml(fromEmail)}?subject=unsubscribe" style="color:#9a9080;">Unsubscribe</a>
+      </p>
     </div>
   </body>
 </html>`;

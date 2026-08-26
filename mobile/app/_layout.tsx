@@ -152,6 +152,8 @@ function RouteGuard() {
     const onPaywall =
       inOnboarding &&
       ((segments as string[]).includes('paywall') || (segments as string[])[1] === 'paywall');
+    const onSignup =
+      inOnboarding && (segments as string[])[1] === 'signup';
     const onWelcome =
       inOnboarding &&
       ((segments as string[])[1] === 'welcome' || (segments as string[]).includes('welcome'));
@@ -211,7 +213,7 @@ function RouteGuard() {
       rootSegment !== '(tabs)'
     ) {
       router.replace('/(onboarding)/welcome');
-    } else if (session && onboardingComplete && !hasPremiumAccess && !onPaywall && !inAuth) {
+    } else if (session && onboardingComplete && !hasPremiumAccess && !onPaywall && !onSignup && !inAuth) {
       router.replace('/(onboarding)/paywall');
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
       prefetchHomeData();

@@ -49,6 +49,7 @@ Deps:  pip install faster-whisper mutagen     (ffmpeg must be installed for Whis
 import argparse
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import uuid
@@ -62,6 +63,7 @@ from urllib.error import HTTPError
 # ---------------------------------------------------------------------------
 URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
 KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+PROJECT_REF = os.environ.get("SUPABASE_PROJECT_REF", "tnetahaviblrrjixzvbd")
 AUDIO_BUCKET = os.environ.get("RELENTLESS_AUDIO_BUCKET", "lesson-audio")
 # No separate images bucket exists today; the lessons Edge Function only signs
 # audio paths in lesson-audio. Coach photos / program covers are not surfaced
@@ -96,18 +98,53 @@ PASSTHROUGH_TYPES = {
 
 # ---------------------------------------------------------------------------
 # REST helpers (PostgREST + Storage). Service role bypasses RLS.
+# Projects with legacy keys disabled use CLI for DB and a resolved JWT for
+# Storage. The fallback is transparent: if PostgREST rejects the key, we
+# switch to CLI mode for all subsequent DB calls.
 # ---------------------------------------------------------------------------
-def _auth_headers(json_body=True):
-    h = {"apikey": KEY, "Authorization": f"Bearer {KEY}"}
-    if json_body:
-        h["Content-Type"] = "application/json"
-    return h
+_USE_CLI_DB = False
+_STORAGE_JWT = None
+
+
+def _resolve_storage_jwt():
+    """Get a JWT that Storage accepts. If KEY is already a JWT, use it.
+    Otherwise fetch the legacy service_role JWT from `npx supabase projects api-keys`."""
+    global _STORAGE_JWT
+    if _STORAGE_JWT:
+        return _STORAGE_JWT
+    if KEY.startswith("ey") and KEY.count(".") == 2:
+        _STORAGE_JWT = KEY
+        return _STORAGE_JWT
+    try:
+        result = subprocess.run(
+            ["npx", "supabase", "projects", "api-keys", "--project-ref", PROJECT_REF],
+            capture_output=True, text=True, timeout=60, shell=True
+        )
+        keys = json.loads(result.stdout).get("keys", [])
+        for k in keys:
+            if k.get("id") == "service_role" and k.get("type") == "legacy":
+                _STORAGE_JWT = k["api_key"]
+                return _STORAGE_JWT
+    except Exception:
+        pass
+    sys.exit("ERROR: cannot resolve a JWT for Storage uploads. Set SUPABASE_SERVICE_ROLE_KEY "
+             "to the legacy JWT, or ensure `npx supabase` is logged in.")
+
+
+def _cli_query(sql):
+    """Execute SQL via the Supabase CLI (bypasses PostgREST, uses management API)."""
+    result = subprocess.run(
+        ["npx", "supabase", "db", "query", "--linked", "--project-ref", PROJECT_REF, sql],
+        capture_output=True, text=True, timeout=60, shell=True
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"CLI db query failed:\n{result.stderr}\n{result.stdout}")
+    payload = json.loads(result.stdout)
+    return payload.get("rows", [])
 
 
 def _open(req, timeout):
-    """urlopen that surfaces the server's response body on HTTP errors, so a
-    PostgREST/Storage 400/409/etc. reports the actual reason instead of a bare
-    'HTTP Error 400: Bad Request'."""
+    """urlopen that surfaces the server's response body on HTTP errors."""
     try:
         return urlopen(req, timeout=timeout)
     except HTTPError as e:
@@ -117,33 +154,127 @@ def _open(req, timeout):
         ) from None
 
 
+def _auth_headers(json_body=True):
+    h = {"apikey": KEY, "Authorization": f"Bearer {KEY}"}
+    if json_body:
+        h["Content-Type"] = "application/json"
+    return h
+
+
+def _sql_val(v):
+    """Escape a Python value for SQL (safe for command-line transport)."""
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, dict) or isinstance(v, list):
+        s = json.dumps(v, ensure_ascii=False, separators=(",", ":"))
+        s = s.replace("\\", "\\\\").replace("'", "''").replace("\n", "\\n").replace("\r", "")
+        return "E'" + s + "'::jsonb"
+    s = str(v).replace("\\", "\\\\").replace("'", "''").replace("\n", "\\n").replace("\r", "")
+    return "E'" + s + "'"
+
+
 def rest_get(path_query):
-    req = Request(f"{URL}/rest/v1/{path_query}", headers=_auth_headers(json_body=False))
-    return json.loads(_open(req, timeout=60).read().decode("utf-8"))
+    global _USE_CLI_DB
+    if not _USE_CLI_DB:
+        try:
+            req = Request(f"{URL}/rest/v1/{path_query}", headers=_auth_headers(json_body=False))
+            return json.loads(_open(req, timeout=60).read().decode("utf-8"))
+        except RuntimeError as e:
+            if "Legacy API keys are disabled" in str(e) or "401" in str(e):
+                _USE_CLI_DB = True
+                print("  (PostgREST unavailable — switching to CLI for DB ops)")
+            else:
+                raise
+    table = path_query.split("?")[0]
+    params = path_query.split("?")[1] if "?" in path_query else ""
+    select = "*"
+    where_parts = []
+    for param in params.split("&"):
+        if param.startswith("select="):
+            select = param[7:]
+        elif "=eq." in param:
+            col, val = param.split("=eq.")
+            where_parts.append(f"{col} = {_sql_val(val)}")
+    where = " AND ".join(where_parts) if where_parts else "TRUE"
+    return _cli_query(f"SELECT {select} FROM public.{table} WHERE {where}")
 
 
 def rest_upsert(table, rows, on_conflict, returning=True):
-    prefer = "resolution=merge-duplicates" + (",return=representation" if returning else "")
-    url = f"{URL}/rest/v1/{table}?on_conflict={on_conflict}"
-    req = Request(url, data=json.dumps(rows).encode("utf-8"), method="POST",
-                  headers={**_auth_headers(), "Prefer": prefer})
-    with _open(req, timeout=60) as r:
-        body = r.read().decode("utf-8")
-    return json.loads(body) if (returning and body) else None
+    global _USE_CLI_DB
+    if not _USE_CLI_DB:
+        try:
+            prefer = "resolution=merge-duplicates" + (",return=representation" if returning else "")
+            url = f"{URL}/rest/v1/{table}?on_conflict={on_conflict}"
+            req = Request(url, data=json.dumps(rows).encode("utf-8"), method="POST",
+                          headers={**_auth_headers(), "Prefer": prefer})
+            with _open(req, timeout=60) as r:
+                body = r.read().decode("utf-8")
+            return json.loads(body) if (returning and body) else None
+        except RuntimeError as e:
+            if "Legacy API keys are disabled" in str(e) or "401" in str(e):
+                _USE_CLI_DB = True
+                print("  (PostgREST unavailable — switching to CLI for DB ops)")
+            else:
+                raise
+    conflict_cols = [c.strip() for c in on_conflict.split(",")]
+    results = []
+    for row in rows:
+        cols = list(row.keys())
+        vals = [_sql_val(row[c]) for c in cols]
+        update_cols = [c for c in cols if c not in conflict_cols]
+        if update_cols:
+            update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
+            conflict_clause = f"DO UPDATE SET {update_set}"
+        else:
+            conflict_clause = "DO NOTHING"
+        sql = (f"INSERT INTO public.{table} ({', '.join(cols)}) "
+               f"VALUES ({', '.join(vals)}) "
+               f"ON CONFLICT ({on_conflict}) {conflict_clause}")
+        if returning:
+            sql += " RETURNING *"
+        result = _cli_query(sql)
+        if returning and result:
+            results.append(result[0])
+    return results if returning else None
 
 
 def rest_delete(table, fil_query):
-    url = f"{URL}/rest/v1/{table}?{fil_query}"
-    req = Request(url, method="DELETE", headers=_auth_headers())
-    _open(req, timeout=60).read()
+    global _USE_CLI_DB
+    if not _USE_CLI_DB:
+        try:
+            url = f"{URL}/rest/v1/{table}?{fil_query}"
+            req = Request(url, method="DELETE", headers=_auth_headers())
+            _open(req, timeout=60).read()
+            return
+        except RuntimeError as e:
+            if "Legacy API keys are disabled" in str(e) or "401" in str(e):
+                _USE_CLI_DB = True
+                print("  (PostgREST unavailable — switching to CLI for DB ops)")
+            else:
+                raise
+    where_parts = []
+    for param in fil_query.split("&"):
+        if "=eq." in param:
+            col, val = param.split("=eq.")
+            where_parts.append(f"{col} = {_sql_val(val)}")
+    where = " AND ".join(where_parts) if where_parts else "FALSE"
+    _cli_query(f"DELETE FROM public.{table} WHERE {where}")
 
 
 def storage_upload(bucket, path, data, content_type):
+    """Upload to Storage using a resolved JWT (legacy key still works for Storage
+    even when PostgREST legacy keys are disabled)."""
+    jwt = _resolve_storage_jwt()
     url = f"{URL}/storage/v1/object/{bucket}/{path}"
-    req = Request(url, data=data, method="POST", headers={
-        "apikey": KEY, "Authorization": f"Bearer {KEY}",
+    headers = {
+        "apikey": jwt, "Authorization": f"Bearer {jwt}",
         "Content-Type": content_type, "x-upsert": "true",
-    })
+    }
+    req = Request(url, data=data, method="POST", headers=headers)
     _open(req, timeout=600).read()
 
 
@@ -675,6 +806,9 @@ def main():
         "external_url": pick("offer_url", coach.get("offer", {}).get("url")),
         "avatar_url": photo_rel,
     }
+    coach_sport = pick("sport", program.get("sport"))
+    if coach_sport:
+        coach_row["sport"] = coach_sport
     if cf:
         coach_row["coachform_id"] = cf["id"]
     if args.dry_run:

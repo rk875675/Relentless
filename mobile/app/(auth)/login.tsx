@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { Linking, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { trackSigninStarted, trackSigninCompleted, trackSigninFailed } from '@/lib/lifecycle-analytics';
 import { InlineErrorCard } from '@/components/InlineErrorCard';
+import { LEGAL_PRIVACY_POLICY_URL, LEGAL_TERMS_OF_USE_URL } from '@/lib/legal-urls';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -96,6 +97,13 @@ export default function LoginScreen() {
           >
             <Text style={styles.linkText}>Don't have an account? Sign Up</Text>
           </TouchableOpacity>
+
+          <Text style={styles.legalText}>
+            By signing in you agree to our{' '}
+            <Text style={styles.legalLink} onPress={() => Linking.openURL(LEGAL_TERMS_OF_USE_URL)}>Terms</Text>
+            {' '}and{' '}
+            <Text style={styles.legalLink} onPress={() => Linking.openURL(LEGAL_PRIVACY_POLICY_URL)}>Privacy Policy</Text>.
+          </Text>
         </View>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
@@ -169,5 +177,16 @@ const styles = StyleSheet.create({
   linkText: {
     color: '#888',
     fontSize: 14,
+  },
+  legalText: {
+    color: '#666',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 24,
+    lineHeight: 16,
+  },
+  legalLink: {
+    color: '#888',
+    textDecorationLine: 'underline' as const,
   },
 });

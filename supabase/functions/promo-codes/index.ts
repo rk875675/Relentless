@@ -130,7 +130,9 @@ async function handleValidate(req: Request, requestId: string): Promise<Response
 
   const { data: promo, error } = await supabase
     .from("promo_codes")
-    .select("id, code, type, months, active, expires_at, max_redemptions, creators!inner(name, slug, active)")
+    .select(
+      "id, code, type, months, active, expires_at, max_redemptions, redemption_count, creators!inner(name, slug, active)",
+    )
     .ilike("code", escapedCode)
     .maybeSingle();
 
@@ -151,21 +153,10 @@ async function handleValidate(req: Request, requestId: string): Promise<Response
     return invalid();
   }
 
-  if (promo.max_redemptions !== null) {
-    const { count, error: countErr } = await supabase
-      .from("promo_code_redemptions")
-      .select("id", { count: "exact", head: true })
-      .eq("promo_code_id", promo.id);
-
-    if (countErr) {
-      console.error("[promo-codes/validate] redemption count failed", {
-        requestId,
-        error: countErr.message,
-      });
-      return errorResponse(500, "INTERNAL_ERROR", "Could not validate code", requestId);
-    }
-
-    if ((count ?? 0) >= promo.max_redemptions) return invalid();
+  // promo_codes.redemption_count, not a live count of redemption rows: those
+  // cascade away when an account is deleted, which would hand the slot back.
+  if (promo.max_redemptions !== null && promo.redemption_count >= promo.max_redemptions) {
+    return invalid();
   }
 
   return successResponse({

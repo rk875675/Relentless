@@ -34,15 +34,6 @@ export function trackLessonCompleted(properties?: CoreProps): void {
   captureCoreEvent('lesson_completed', properties);
 }
 
-/** Library */
-export function trackLibraryLockedViewed(properties?: CoreProps): void {
-  captureCoreEvent('library_locked_viewed', properties);
-}
-
-export function trackLibraryUnlocked(properties?: CoreProps): void {
-  captureCoreEvent('library_unlocked', properties);
-}
-
 /**
  * Lesson pack (coach program) selection — covers every entry point where a
  * user can view or act on a pack (Library, Programs list, Pack detail).

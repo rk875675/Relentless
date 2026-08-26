@@ -34,28 +34,36 @@ export async function apiFetch<T = unknown>(
     ...options?.headers,
   };
 
+  let res: Response;
   try {
-    const res = await fetch(url, {
+    res = await fetch(url, {
       method,
       headers,
       body: options?.body ? JSON.stringify(options.body) : undefined,
       cache: 'default',
     });
-
-    const json = await res.json();
-
-    if (!res.ok) {
-      const code =
-        typeof json?.error?.code === 'string' ? json.error.code : null;
-      return {
-        data: null,
-        error: json?.error?.message ?? `Request failed (${res.status})`,
-        errorCode: code,
-      };
-    }
-
-    return { data: json.data !== undefined ? json.data : json, error: null, errorCode: null, rawBody: json };
-  } catch (err) {
-    return { data: null, error: 'Network error', errorCode: null };
+  } catch {
+    return { data: null, error: 'Could not connect. Check your internet and try again.', errorCode: 'NETWORK_ERROR' };
   }
+
+  let json: Record<string, unknown>;
+  try {
+    json = await res.json();
+  } catch {
+    return { data: null, error: 'Something went wrong. Please try again.', errorCode: 'SERVER_ERROR' };
+  }
+
+  if (!res.ok) {
+    const code =
+      typeof json?.error === 'object' && json.error !== null && 'code' in json.error
+        ? String((json.error as { code?: unknown }).code)
+        : null;
+    const message =
+      typeof json?.error === 'object' && json.error !== null && 'message' in json.error
+        ? String((json.error as { message?: unknown }).message)
+        : `Request failed (${res.status})`;
+    return { data: null, error: message, errorCode: code };
+  }
+
+  return { data: json.data !== undefined ? (json.data as T) : (json as unknown as T), error: null, errorCode: null, rawBody: json };
 }

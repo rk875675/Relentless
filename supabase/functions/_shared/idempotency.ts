@@ -5,6 +5,9 @@ import { errorResponse } from "./response.ts";
 // Human Input Needed: idempotency key TTL not specified in docs. 24h placeholder.
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
+// In-progress keys older than this are considered orphaned (crashed request).
+const STALE_IN_PROGRESS_MS = 5 * 60 * 1000;
+
 export type IdempotencyCheck =
   | { replay: false }
   | { replay: true; response: Response };
@@ -81,6 +84,24 @@ export async function claimIdempotencyKey(
   userId: string,
   requestId: string,
 ): Promise<IdempotencyClaim> {
+  // Expire orphaned in-progress keys (from crashed/timed-out requests) so
+  // subsequent retries with the same key aren't permanently blocked.
+  const staleCutoff = new Date(Date.now() - STALE_IN_PROGRESS_MS).toISOString();
+  await supabase
+    .from("idempotency_keys")
+    .delete()
+    .eq("key", key)
+    .is("response_status", null)
+    .lt("created_at", staleCutoff);
+
+  // Also garbage-collect fully expired keys (past expires_at) to prevent
+  // table bloat. Scoped to this key only to keep the query fast.
+  await supabase
+    .from("idempotency_keys")
+    .delete()
+    .eq("key", key)
+    .lt("expires_at", new Date().toISOString());
+
   const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS).toISOString();
 
   // ON CONFLICT DO NOTHING: only the first concurrent caller wins the insert.

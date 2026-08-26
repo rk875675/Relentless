@@ -172,9 +172,6 @@ type Progress = {
   acceptance_score: number;
   commitment_score: number;
   updated_at?: string | null;
-  library_unlocked?: boolean;
-  library_lock_reason?: string | null;
-  library_lock_remaining?: number;
   deltas?: MacDeltas | null;
 };
 
@@ -210,6 +207,10 @@ const emptyStreak: Streak = {
 
 function streakFreebieModalAckKey(userId: string): string {
   return `relentless:streak_freebie_ack_ymd:${userId}`;
+}
+
+function lastKnownStreakKey(userId: string): string {
+  return `relentless:last_known_streak:${userId}`;
 }
 
 function pushPromptShownKey(userId: string): string {
@@ -336,12 +337,50 @@ export default function HomeScreen() {
   const journalFocusedRef = useRef(false);
   const lastSavedJournalRef = useRef('');
   const initialLoadDone = useRef(false);
-  /** Previous streak value to detect broken/extended transitions. */
+  /** In-session mirror of the persisted streak, so a warm check skips storage. */
   const prevStreakCountRef = useRef<number | null>(null);
+  const streakTransitionBusyRef = useRef(false);
   /** Quiet retries for the post-purchase entitlement race (see fetchData). */
   const entitlementRetryRef = useRef(0);
 
   const journalPrompt = "What's on your mind going into today's session?";
+
+  /**
+   * Fire `streak_broken` on the 0-transition. The comparison value has to
+   * outlive the process: a break only becomes visible on the first load after
+   * the user misses a day, which is almost always the first fetch of a cold
+   * launch, so an in-memory value alone is still empty at that moment and the
+   * transition is never seen.
+   */
+  const checkStreakTransition = useCallback(
+    async (currentStreak: number) => {
+      if (currentUserId == null || streakTransitionBusyRef.current) return;
+      streakTransitionBusyRef.current = true;
+      try {
+        const key = lastKnownStreakKey(currentUserId);
+        let previous = prevStreakCountRef.current;
+        if (previous === null) {
+          const stored = await AsyncStorage.getItem(key);
+          const parsed = stored === null ? Number.NaN : Number.parseInt(stored, 10);
+          previous = Number.isFinite(parsed) ? parsed : null;
+        }
+        // A missing value means we have nothing to compare against yet (fresh
+        // install, or first run after this check shipped) — record, don't report.
+        if (previous !== null && previous > 0 && currentStreak === 0) {
+          trackStreakBroken({ previous_streak_count: previous });
+        }
+        prevStreakCountRef.current = currentStreak;
+        if (previous !== currentStreak) {
+          await AsyncStorage.setItem(key, String(currentStreak));
+        }
+      } catch {
+        // Storage failure must never surface on Home; the next focus retries.
+      } finally {
+        streakTransitionBusyRef.current = false;
+      }
+    },
+    [currentUserId],
+  );
 
   const fetchData = useCallback(async (isPullRefresh = false) => {
     setError('');
@@ -420,6 +459,9 @@ export default function HomeScreen() {
             : Promise.resolve(null),
         ]);
         applyMissReflectionFromStreakAndJournal(cachedStreak, missJournalRes, freebieAckYmd);
+        // prefetchHomeData warms this cache before Home mounts, so on a cold
+        // launch this branch — not the fetch below — is where a break first shows.
+        void checkStreakTransition(cachedStreak.current_streak);
         setRefreshing(false);
         return;
       }
@@ -491,13 +533,7 @@ export default function HomeScreen() {
     if (!streakRes.error) trackStreakViewed({ current_streak: streakData.current_streak });
     if (!progressRes.error) trackProgressRingViewed();
 
-    // Detect streak transitions (broken or extended) compared to last known value
-    if (!streakRes.error && prevStreakCountRef.current !== null) {
-      if (streakData.current_streak === 0 && prevStreakCountRef.current > 0) {
-        trackStreakBroken({ previous_streak_count: prevStreakCountRef.current });
-      }
-    }
-    if (!streakRes.error) prevStreakCountRef.current = streakData.current_streak;
+    if (!streakRes.error) void checkStreakTransition(streakData.current_streak);
 
     applyMissReflectionFromStreakAndJournal(streakData, missJournalRes, freebieAckYmd);
 
@@ -523,7 +559,7 @@ export default function HomeScreen() {
     initialLoadDone.current = true;
     setLoading(false);
     setRefreshing(false);
-  }, [currentUserId, missJournalDismissed]);
+  }, [currentUserId, missJournalDismissed, checkStreakTransition]);
 
   useFocusEffect(
     useCallback(() => {

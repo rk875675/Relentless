@@ -1,8 +1,9 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AuthSocialSignInButtons } from '@/components/auth/AuthSocialSignInButtons';
 import { useSocialSignIn } from '@/lib/use-social-sign-in';
 import { colors, spacing } from '@/lib/theme';
+import { LEGAL_PRIVACY_POLICY_URL, LEGAL_TERMS_OF_USE_URL } from '@/lib/legal-urls';
 
 export default function AuthHubScreen() {
   const router = useRouter();
@@ -42,6 +43,13 @@ export default function AuthHubScreen() {
         >
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
+
+        <Text style={styles.legalText}>
+          By continuing you agree to our{' '}
+          <Text style={styles.legalLink} onPress={() => Linking.openURL(LEGAL_TERMS_OF_USE_URL)}>Terms</Text>
+          {' '}and{' '}
+          <Text style={styles.legalLink} onPress={() => Linking.openURL(LEGAL_PRIVACY_POLICY_URL)}>Privacy Policy</Text>.
+        </Text>
       </View>
     </View>
   );
@@ -79,4 +87,15 @@ const styles = StyleSheet.create({
   emailText: { color: colors.textPrimary, fontSize: 16, fontWeight: '600' },
   backLink: { marginTop: 24, alignItems: 'center' },
   backText: { color: colors.textSecondary, fontSize: 14 },
+  legalText: {
+    color: '#666',
+    fontSize: 11,
+    textAlign: 'center' as const,
+    marginTop: 24,
+    lineHeight: 16,
+  },
+  legalLink: {
+    color: '#888',
+    textDecorationLine: 'underline' as const,
+  },
 });

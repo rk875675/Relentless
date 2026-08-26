@@ -109,7 +109,7 @@ entitlement.
 
 | # | Endpoint | Method | Class | Entitlement | Idempotent | Bounds | Description |
 |---|---|---|---|---|---|---|---|
-| C1 | `/lessons` | GET | Entitlement-protected read | Required | N/A | Paginated; default/max page size TBD | List published lessons in sequence order; **403 `LIBRARY_LOCKED`** until the user has completed at least one scheduled program lesson (see `computeLibraryUnlocked`) |
+| C1 | `/lessons` | GET | Entitlement-protected read | Required | N/A | Paginated; default/max page size TBD | List published lessons in sequence order |
 | C2 | `/lessons/:id` | GET | Entitlement-protected read | Required | N/A | — | Get single lesson detail |
 | C3 | `/lessons/next` | GET | Entitlement-protected read | Required | N/A | — | Get the Daily Workout lesson for `profiles.current_program_day` via `program_schedule` (v1); response includes `program_day`, `program_version`; when the user has completed today's WOD, `repeat_lesson` (metadata object) is included alongside `data` so the client can offer a durable repeat without local state |
 | C4 | `/coaches/:id` | GET | Entitlement-protected read | Required | N/A | — | Get coach metadata (name, bio, external_url) |
@@ -147,7 +147,7 @@ entitlement.
 | # | Endpoint | Method | Class | Entitlement | Idempotent | Bounds | Description |
 |---|---|---|---|---|---|---|---|
 | P1 | `/lessons/:id/complete` | POST | Entitlement-protected write | Required | Idempotency key | — | Record lesson completion; triggers progress and streak updates |
-| P2 | `/progress` | GET | Entitlement-protected read | Required | N/A | — | Get own MAC scores; includes **`library_unlocked`** (scheduled program lesson completed at least once) |
+| P2 | `/progress` | GET | Entitlement-protected read | Required | N/A | — | Get own MAC scores |
 | P3 | `/streak` | GET | Entitlement-protected read | Required | N/A | — | Get own streak state (current, longest, last activity) |
 
 **Notes:**

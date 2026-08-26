@@ -29,6 +29,7 @@ import { MAX_SPORT_LEN, OTHER_SENTINEL, PRESET_SPORTS, isPresetSport } from '@/l
 import { SUPERWALL_ENABLED } from '@/lib/superwall-config';
 import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { supabase } from '@/lib/supabase';
+import { LEGAL_PRIVACY_POLICY_URL, LEGAL_TERMS_OF_USE_URL } from '@/lib/legal-urls';
 import { registerForPushNotifications, disablePushReminders } from '@/lib/push-notifications';
 import {
   trackPushRemindersEnabled,
@@ -581,6 +582,24 @@ export default function ProfileScreen() {
           label="Manage Subscription"
           chevron
           onPress={handleManageSubscription}
+          last
+        />
+      </View>
+
+      {/* Legal */}
+      <Text style={styles.sectionLabel}>LEGAL</Text>
+      <View style={styles.rowsContainer}>
+        <ProfileRow
+          icon="document-text-outline"
+          label="Terms of Use"
+          chevron
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Linking.openURL(LEGAL_TERMS_OF_USE_URL); }}
+        />
+        <ProfileRow
+          icon="shield-checkmark-outline"
+          label="Privacy Policy"
+          chevron
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Linking.openURL(LEGAL_PRIVACY_POLICY_URL); }}
           last
         />
       </View>

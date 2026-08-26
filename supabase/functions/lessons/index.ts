@@ -13,7 +13,7 @@ import {
   storeIdempotencyResult,
 } from "../_shared/idempotency.ts";
 import { checkRateLimit } from "../_shared/ratelimit.ts";
-import { computeLibraryUnlocked, calendarDaysInclusiveYmd } from "../_shared/library.ts";
+import { calendarDaysInclusiveYmd } from "../_shared/library.ts";
 import { parseProgramAnchor, resolveLocalTodayYmd } from "../_shared/client_day.ts";
 import { ensureProgramStartIfHome } from "../_shared/program_start.ts";
 import { ContentBlocksSchema } from "../_shared/content_blocks.ts";
@@ -45,6 +45,31 @@ const PROGRAM_VERSION = "v1";
 const SPRINT_PROGRAM_ID = "b0000000-0000-0000-0000-000000000001";
 const AUDIO_BUCKET = "lesson-audio";
 const SIGNED_URL_TTL = 3600; // 1 hour
+
+// ---------------------------------------------------------------------------
+// Module-level cache for program_schedule (v1). This table has ~30 static rows
+// that change only when content is redeployed — caching saves 1 DB query per
+// /lessons list and /lessons/next (legacy path) call for the lifetime of the
+// edge function instance.
+// ---------------------------------------------------------------------------
+let _scheduleCache: Array<{ day_number: number; lesson_id: string }> | null = null;
+let _scheduleCacheTs = 0;
+const SCHEDULE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getScheduleV1(
+  supabase: ReturnType<typeof createServiceClient>,
+): Promise<Array<{ day_number: number; lesson_id: string }>> {
+  if (_scheduleCache && Date.now() - _scheduleCacheTs < SCHEDULE_CACHE_TTL) {
+    return _scheduleCache;
+  }
+  const { data } = await supabase
+    .from("program_schedule")
+    .select("day_number, lesson_id")
+    .eq("program_version", PROGRAM_VERSION);
+  _scheduleCache = (data ?? []) as Array<{ day_number: number; lesson_id: string }>;
+  _scheduleCacheTs = Date.now();
+  return _scheduleCache;
+}
 
 // Returns signed URLs for the given storage paths, serving from audio_url_cache
 // when possible so the Smart CDN sees stable URLs and can cache at the edge.
@@ -356,18 +381,38 @@ async function handleList(
       ? currentProgramDay
       : 1;
 
-  let lessonsQuery = supabase
+  // Library lessons (no program_id) are always fetched in full so they are
+  // never crowded out by pack WODs competing for the same pagination window.
+  let libraryQuery = supabase
+    .from("lessons")
+    .select(METADATA_COLUMNS)
+    .eq("published", true)
+    .is("program_id", null);
+  if (!isDev) libraryQuery = libraryQuery.eq("production_ready", true);
+  const { data: libraryLessons, error: libraryError } = await libraryQuery
+    .order("sort_order", { ascending: true });
+
+  if (libraryError) {
+    return errorResponse(500, "INTERNAL_ERROR", "Failed to fetch lessons", requestId);
+  }
+
+  // Pack lessons (have a program_id) are paginated separately.
+  let packQuery = supabase
     .from("lessons")
     .select(METADATA_COLUMNS, { count: "exact" })
-    .eq("published", true);
-  if (!isDev) lessonsQuery = lessonsQuery.eq("production_ready", true);
-  const { data: lessons, error, count } = await lessonsQuery
+    .eq("published", true)
+    .not("program_id", "is", null);
+  if (!isDev) packQuery = packQuery.eq("production_ready", true);
+  const { data: packLessons, error: packError, count: packCount } = await packQuery
     .order("sort_order", { ascending: true })
     .range(from, to);
 
-  if (error) {
+  if (packError) {
     return errorResponse(500, "INTERNAL_ERROR", "Failed to fetch lessons", requestId);
   }
+
+  const lessons = [...(libraryLessons ?? []), ...(packLessons ?? [])];
+  const count = (libraryLessons?.length ?? 0) + (packCount ?? 0);
 
   const lessonIds = (lessons ?? []).map((l: { id: string }) => l.id);
   const { data: categories } =
@@ -395,10 +440,7 @@ async function handleList(
     (completions ?? []).map((c: { lesson_id: string }) => c.lesson_id),
   );
 
-  const { data: schedule } = await supabase
-    .from("program_schedule")
-    .select("day_number, lesson_id")
-    .eq("program_version", PROGRAM_VERSION);
+  const schedule = await getScheduleV1(supabase);
 
   // Build lesson_id → earliest day_number map for schedule entries.
   const dayNumberById = new Map<string, number>();
@@ -532,7 +574,7 @@ async function handleList(
 }
 
 // ---------------------------------------------------------------------------
-// C2 — single lesson detail (WOD only while library is locked)
+// C2 — single lesson detail
 // ---------------------------------------------------------------------------
 async function handleDetail(
   supabase: ReturnType<typeof createServiceClient>,
@@ -710,8 +752,73 @@ function nextLessonResponse(
 
 // ---------------------------------------------------------------------------
 // C3 — Daily Workout (next scheduled lesson)
+// Uses get_next_lesson_data RPC for a single DB round-trip (profile + lesson +
+// categories + coach + program metadata). Falls back to the sequential path
+// only if the RPC doesn't exist yet (pre-migration).
 // ---------------------------------------------------------------------------
 async function handleNext(
+  supabase: ReturnType<typeof createServiceClient>,
+  userId: string,
+  requestId: string,
+  localTodayYmd: string,
+): Promise<Response> {
+  const { data: rpcResult, error: rpcError } = await supabase.rpc(
+    "get_next_lesson_data",
+    { p_user_id: userId, p_local_ymd: localTodayYmd },
+  );
+
+  if (rpcError) {
+    // Fallback to sequential path if RPC not deployed yet
+    return handleNextLegacy(supabase, userId, requestId, localTodayYmd);
+  }
+
+  const rpc = rpcResult as Record<string, unknown>;
+
+  if (rpc.error) {
+    return errorResponse(500, "INTERNAL_ERROR", "Failed to load program state", requestId);
+  }
+
+  // No lesson available (pace-gated or no lesson found)
+  if (!rpc.lesson) {
+    const repeatLesson = (rpc.repeat_lesson as Record<string, unknown> | null) ?? null;
+    return nextLessonResponse(null, repeatLesson, requestId);
+  }
+
+  const lesson = rpc.lesson as Record<string, unknown>;
+  const isSprint = rpc.is_sprint as boolean;
+  const effectiveDay = rpc.effective_day as number;
+  const totalDays = rpc.total_days as number;
+
+  // URL signing still requires the storage SDK (cannot be done in SQL)
+  const enriched = await resolveContentBlockUrls(supabase, lesson);
+
+  // Sign coach avatar if it's a storage path
+  let coach = rpc.coach as Record<string, unknown> | null;
+  if (coach?.avatar_url && !/^https?:\/\//i.test(coach.avatar_url as string)) {
+    const signedMap = await getSignedUrls(supabase, [coach.avatar_url as string]);
+    coach = { ...coach, avatar_url: signedMap.get(coach.avatar_url as string) ?? null };
+  }
+
+  const programTotalDays = (rpc.program_total_days as number | null) ??
+    (totalDays > 0 ? totalDays : null);
+
+  const lessonData = {
+    ...enriched,
+    program_day: effectiveDay,
+    program_version: isSprint ? PROGRAM_VERSION : null,
+    categories: rpc.categories ?? [],
+    coach,
+    program_title: rpc.program_title ?? null,
+    program_key: rpc.program_key ?? null,
+    program_total_days: programTotalDays,
+  };
+
+  const repeatLesson = (rpc.repeat_lesson as Record<string, unknown> | null) ?? null;
+  return nextLessonResponse(lessonData, repeatLesson, requestId);
+}
+
+// Legacy sequential path — kept as fallback if RPC hasn't been deployed yet.
+async function handleNextLegacy(
   supabase: ReturnType<typeof createServiceClient>,
   userId: string,
   requestId: string,
@@ -735,9 +842,6 @@ async function handleNext(
   const completedDay = day - 1;
   const isDevAccount = profile.is_dev === true;
 
-  // Resolve using the raw day first to get totalDays, then clamp so a dev
-  // account (or any edge case where current_program_day > pack length) still
-  // serves the final day's lesson instead of returning null.
   const { lessonId: rawLessonId, totalDays } = await resolveProgramDayLessonId(
     supabase,
     activeProgramId,
@@ -750,9 +854,6 @@ async function handleNext(
       ? (await resolveProgramDayLessonId(supabase, activeProgramId, effectiveDay)).lessonId
       : null);
 
-  // Mid-pack pace gate: don't reveal tomorrow's lesson early. Once the pointer
-  // is on the final day (current_program_day caps at pack length), keep serving
-  // that WOD so finished packs stay on Day N/N instead of an empty/complete screen.
   if (!isDevAccount && profile.program_start_date) {
     const elapsed = calendarDaysInclusiveYmd(
       profile.program_start_date as string,
@@ -958,13 +1059,24 @@ async function handleComplete(
           .limit(1)
           .maybeSingle();
         if (typeof maxRow?.sequence === "number" && maxRow.sequence === lessonSequence) {
-          packCompleted = true;
-          const { data: prog } = await supabase
-            .from("programs")
-            .select("title")
-            .eq("id", lessonProgramId)
+          // One celebration + rating per user per pack. Replays of the last
+          // day already fail the completion_count === 1 check above; this
+          // also covers a user who already submitted a star rating.
+          const { data: existingRating } = await supabase
+            .from("program_ratings")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("program_id", lessonProgramId)
             .maybeSingle();
-          packTitle = (prog?.title as string | null) ?? null;
+          if (!existingRating) {
+            packCompleted = true;
+            const { data: prog } = await supabase
+              .from("programs")
+              .select("title")
+              .eq("id", lessonProgramId)
+              .maybeSingle();
+            packTitle = (prog?.title as string | null) ?? null;
+          }
         }
       }
     }
