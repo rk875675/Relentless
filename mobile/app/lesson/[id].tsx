@@ -22,6 +22,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+
 import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 import { apiFetch } from '@/lib/api';
@@ -262,6 +263,8 @@ type CoachSummary = {
   avatar_url?: string | null;
   offer_label?: string | null;
   external_url?: string | null;
+  /** Signed URL for the coach's intro video; null when absent or not yet approved. */
+  intro_video_url?: string | null;
 };
 
 type LessonDetail = {
@@ -292,6 +295,7 @@ function coachAvatarSource(coach: CoachSummary): { uri: string } | number | null
   if (coach.coach_key === 'grant-chiasson') return GRANT_PHOTO;
   return null;
 }
+
 
 type Phase =
   | 'loading'
@@ -573,7 +577,6 @@ export default function LessonPlayerScreen() {
     phaseRef.current = phase;
   }, [phase]);
   const [errorMsg, setErrorMsg] = useState('');
-  const [coachBioExpanded, setCoachBioExpanded] = useState(false);
   const [journalText, setJournalText] = useState('');
   const [journalExerciseContext, setJournalExerciseContext] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -2473,57 +2476,75 @@ export default function LessonPlayerScreen() {
                     <Text style={styles.coachAboutLabel}>About your coach:</Text>
                     <Text style={styles.coachName}>
                       {lesson.coach.name}
-                      {lesson.coach.credentials ? `, ${lesson.coach.credentials}` : ''}
                     </Text>
                   </View>
                 </View>
                 {lesson.coach.bio ? <Text style={styles.coachBio}>{lesson.coach.bio}</Text> : null}
-                {/* TODO: optional coach intro video slots in here, above/alongside the About me toggle. */}
-                {typeof lesson.coach.long_bio === 'string' && lesson.coach.long_bio.trim().length > 0 ? (
-                  <View style={styles.coachLongBioSection}>
-                    <TouchableOpacity
-                      style={styles.coachAboutMeRow}
-                      activeOpacity={0.7}
-                      onPress={() => setCoachBioExpanded((prev) => !prev)}
-                    >
-                      <Text style={styles.coachAboutMeLabel}>About me</Text>
-                      <Ionicons
-                        name={coachBioExpanded ? 'chevron-up' : 'chevron-down'}
-                        size={18}
-                        color={colors.textSecondary}
-                      />
-                    </TouchableOpacity>
-                    {coachBioExpanded ? (
-                      <Text style={styles.coachBio}>{lesson.coach.long_bio}</Text>
-                    ) : null}
-                  </View>
-                ) : null}
                 {lesson.coach.external_url ? (
+                  <View style={styles.coachActionRow}>
+                    <TouchableOpacity
+                      style={[styles.coachOfferBtn, styles.coachOfferBtnFlex]}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        const coach = lesson.coach;
+                        if (!coach) return;
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        router.push({
+                          pathname: '/coach/[key]' as any,
+                          params: {
+                            key: coach.coach_key ?? 'unknown',
+                            coach: JSON.stringify(coach),
+                          },
+                        });
+                      }}
+                    >
+                      <Text style={styles.coachOfferBtnText}>About Me</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.coachOfferBtn, styles.coachOfferBtnFlex]}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        const coach = lesson.coach;
+                        if (!coach?.external_url) return;
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        trackPartnerReferralCtaClicked({
+                          referral_partner_key: coach.coach_key ?? 'unknown',
+                          cta_placement: 'lesson_ready_coach_card',
+                          outbound_url: coach.external_url,
+                          program_id: lesson.program_id ?? null,
+                          program_key: lesson.program_key ?? null,
+                          program_title: lesson.program_title ?? null,
+                          coach_key: coach.coach_key ?? null,
+                          coach_name: coach.name ?? null,
+                        });
+                        void Linking.openURL(coach.external_url);
+                      }}
+                    >
+                      <Text style={styles.coachOfferBtnText}>
+                        {lesson.coach.offer_label ?? 'Book a call'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
                   <TouchableOpacity
-                    style={styles.coachOfferBtn}
+                    style={styles.coachOfferBtnStandalone}
                     activeOpacity={0.85}
                     onPress={() => {
                       const coach = lesson.coach;
-                      if (!coach?.external_url) return;
+                      if (!coach) return;
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      trackPartnerReferralCtaClicked({
-                        referral_partner_key: coach.coach_key ?? 'unknown',
-                        cta_placement: 'lesson_ready_coach_card',
-                        outbound_url: coach.external_url,
-                        program_id: lesson.program_id ?? null,
-                        program_key: lesson.program_key ?? null,
-                        program_title: lesson.program_title ?? null,
-                        coach_key: coach.coach_key ?? null,
-                        coach_name: coach.name ?? null,
+                      router.push({
+                        pathname: '/coach/[key]' as any,
+                        params: {
+                          key: coach.coach_key ?? 'unknown',
+                          coach: JSON.stringify(coach),
+                        },
                       });
-                      void Linking.openURL(coach.external_url);
                     }}
                   >
-                    <Text style={styles.coachOfferBtnText}>
-                      {lesson.coach.offer_label ?? 'Book a call'}
-                    </Text>
+                    <Text style={styles.coachOfferBtnText}>About Me</Text>
                   </TouchableOpacity>
-                ) : null}
+                )}
               </View>
             ) : null}
           </ScrollView>
@@ -4196,7 +4217,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textPrimary,
   },
+  coachActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: spacing.md,
+  },
   coachOfferBtn: {
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSubtle,
+    paddingVertical: 13,
+    marginTop: spacing.md,
+  },
+  coachOfferBtnFlex: {
+    flex: 1,
+    marginTop: 0,
+  },
+  coachOfferBtnStandalone: {
     alignSelf: 'stretch',
     alignItems: 'center',
     borderRadius: 14,

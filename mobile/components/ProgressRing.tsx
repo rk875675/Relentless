@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -12,6 +12,21 @@ import { colors } from '@/lib/theme';
 
 export type ScoreDelta = { amount: number; reason: string };
 
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+function lerpHex(from: string, to: string, t: number): string {
+  if (!from.startsWith('#') || !to.startsWith('#')) return to;
+  const [r1, g1, b1] = hexToRgb(from);
+  const [r2, g2, b2] = hexToRgb(to);
+  const r = Math.round(r1 + (r2 - r1) * t);
+  const g = Math.round(g1 + (g2 - g1) * t);
+  const b = Math.round(b1 + (b2 - b1) * t);
+  return `rgb(${r},${g},${b})`;
+}
+
 type Props = {
   percentage: number;
   label: string;
@@ -19,6 +34,8 @@ type Props = {
   size?: number;
   strokeWidth?: number;
   ringColor?: string;
+  /** Called once when the merge animation finishes — parent should clear the delta. */
+  onDeltaConsumed?: () => void;
 };
 
 export function ProgressRing({
@@ -28,6 +45,7 @@ export function ProgressRing({
   size = 72,
   strokeWidth = 5,
   ringColor = colors.accent,
+  onDeltaConsumed,
 }: Props) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -48,11 +66,74 @@ export function ProgressRing({
 
   const [tooltipVisible, setTooltipVisible] = useState(false);
 
+  // Arc entrance animation: grows from 0 → 1 when delta first appears
+  const [arcProgress, setArcProgress] = useState(0);
+  // Gain merge: 0 = success green, 1 = ringColor (starts 3s after entrance finishes)
+  const [mergeProgress, setMergeProgress] = useState(0);
+  const animFrameRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
+  const mergeFrameRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
+  const mergeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onDeltaConsumedRef = useRef(onDeltaConsumed);
+  onDeltaConsumedRef.current = onDeltaConsumed;
+
+  useEffect(() => {
+    if (animFrameRef.current != null) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; }
+    if (mergeFrameRef.current != null) { cancelAnimationFrame(mergeFrameRef.current); mergeFrameRef.current = null; }
+    if (mergeTimerRef.current != null) { clearTimeout(mergeTimerRef.current); mergeTimerRef.current = null; }
+
+    if (delta == null || delta.amount === 0) {
+      setArcProgress(0);
+      setMergeProgress(0);
+      return;
+    }
+
+    setArcProgress(0);
+    setMergeProgress(0);
+
+    const startTime = Date.now();
+    const DURATION = 900;
+    const tick = () => {
+      const t = Math.min((Date.now() - startTime) / DURATION, 1);
+      setArcProgress(1 - Math.pow(1 - t, 3)); // ease-out cubic
+      if (t < 1) {
+        animFrameRef.current = requestAnimationFrame(tick);
+      } else {
+        // Entrance done — wait 3s then blend arc color into the ring's own color
+        mergeTimerRef.current = setTimeout(() => {
+          mergeTimerRef.current = null;
+          const mergeStart = Date.now();
+          const MERGE_DURATION = 700;
+          const mergeTick = () => {
+            const mt = Math.min((Date.now() - mergeStart) / MERGE_DURATION, 1);
+            setMergeProgress(1 - Math.pow(1 - mt, 2)); // ease-out quad
+            if (mt < 1) {
+              mergeFrameRef.current = requestAnimationFrame(mergeTick);
+            } else {
+              mergeFrameRef.current = null;
+              onDeltaConsumedRef.current?.();
+            }
+          };
+          mergeFrameRef.current = requestAnimationFrame(mergeTick);
+        }, 3000);
+      }
+    };
+    animFrameRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (animFrameRef.current != null) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; }
+      if (mergeFrameRef.current != null) { cancelAnimationFrame(mergeFrameRef.current); mergeFrameRef.current = null; }
+      if (mergeTimerRef.current != null) { clearTimeout(mergeTimerRef.current); mergeTimerRef.current = null; }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [delta?.amount]);
+
   // Edge states
   const isAtCap = isGain && deltaEnd >= 100;
   const isAtFloor = !isGain && hasDelta && pct <= 0;
 
   const deltaColor = isGain ? colors.success : colors.error;
+  // Arc starts as gain/loss color then blends into the ring's own color after merge delay
+  const arcStroke = lerpHex(deltaColor, ringColor, mergeProgress);
 
   // Floor: red-tinted track so the empty ring reads as "hit the bottom"
   const trackStroke = isAtFloor ? 'rgba(239,68,68,0.28)' : colors.ringTrack;
@@ -65,9 +146,9 @@ export function ProgressRing({
 
   // Delta label with edge-state suffix
   const deltaSign = hasDelta && delta!.amount >= 0 ? '+' : '';
-  const deltaMag = hasDelta ? (Math.round(delta!.amount * 10) / 10).toFixed(1) : '0';
+  const deltaMag = hasDelta ? Math.round(delta!.amount) : 0;
   const deltaSuffix = isAtCap ? ' max' : isAtFloor ? ' min' : '';
-  const deltaLabel = `${deltaSign}${deltaMag}${deltaSuffix}`;
+  const deltaLabel = `${deltaSign}${deltaMag}%${deltaSuffix}`;
 
   return (
     <>
@@ -124,10 +205,10 @@ export function ProgressRing({
                   cx={size / 2}
                   cy={size / 2}
                   r={radius}
-                  stroke={deltaColor}
+                  stroke={arcStroke}
                   strokeWidth={strokeWidth}
                   fill="none"
-                  strokeDasharray={`${deltaDash} ${circumference - deltaDash}`}
+                  strokeDasharray={[deltaDash * arcProgress, circumference - deltaDash * arcProgress]}
                   strokeDashoffset={deltaOffset}
                   strokeLinecap="round"
                   transform={`rotate(-90 ${size / 2} ${size / 2})`}
@@ -141,7 +222,7 @@ export function ProgressRing({
             </Text>
             {hasDelta && (
               <Text
-                style={[styles.deltaText, { color: isAtFloor ? 'rgba(239,68,68,0.55)' : deltaColor }]}
+                style={[styles.deltaText, { color: isAtFloor ? 'rgba(239,68,68,0.55)' : deltaColor, opacity: 1 - mergeProgress }]}
                 numberOfLines={1}
               >
                 {deltaLabel}
@@ -166,7 +247,7 @@ export function ProgressRing({
             <View style={styles.tooltip}>
               <Text style={styles.tooltipTitle}>{label}</Text>
               <Text style={[styles.tooltipDelta, { color: isAtFloor ? 'rgba(239,68,68,0.7)' : deltaColor }]}>
-                {deltaLabel}%
+                {deltaLabel}
               </Text>
               <Text style={styles.tooltipReason}>{delta!.reason}</Text>
               {(isAtCap || isAtFloor) && (

@@ -17,7 +17,9 @@ import { apiFetch } from '@/lib/api';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { getDeviceLocalCalendarYmd } from '@/lib/device-calendar';
 import { ProgressRing, type ScoreDelta } from '@/components/ProgressRing';
-import { getPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
+import { getPendingGainDeltas, clearPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
+import { markDeltaSeen, isDeltaSeen } from '@/lib/seen-deltas';
+import { useAuth } from '@/lib/auth-context';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { coachAvatarSource } from '@/lib/coach-photo';
 import { trackPackOpened } from '@/lib/core-analytics';
@@ -184,12 +186,26 @@ const MAC_CATEGORIES = [
 
 export default function LibraryScreen() {
   const router = useRouter();
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id ?? null;
   const [progress, setProgress] = useState<Progress | null>(null);
   const [streak, setStreak] = useState<Streak | null>(null);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [activeDeltas, setActiveDeltas] = useState<MacDeltas | null>(null);
+  const activeDeltasRef = useRef<MacDeltas | null>(null);
+  activeDeltasRef.current = activeDeltas;
+
+  const handleDeltaConsumed = useCallback(() => {
+    const snap = activeDeltasRef.current;
+    setActiveDeltas(null);
+    clearPendingGainDeltas();
+    if (currentUserId && snap) {
+      void markDeltaSeen(currentUserId, snap as Record<string, { amount: number }>);
+    }
+  }, [currentUserId]);
+
   const deltaDateRef = useRef<string | null>(null);
   /** null = not yet loaded this session (skeleton). */
   const [packs, setPacks] = useState<LessonPack[] | null>(null);
@@ -227,7 +243,10 @@ export default function LibraryScreen() {
         const gainDeltas = getPendingGainDeltas();
         if (gainDeltas) { setActiveDeltas(gainDeltas); deltaDateRef.current = today; }
         else if (cachedProgress.deltas && Object.keys(cachedProgress.deltas).length > 0) {
-          setActiveDeltas(cachedProgress.deltas); deltaDateRef.current = today;
+          const alreadySeen = currentUserId
+            ? await isDeltaSeen(currentUserId, cachedProgress.deltas as Record<string, { amount: number }>)
+            : false;
+          if (!alreadySeen) { setActiveDeltas(cachedProgress.deltas); deltaDateRef.current = today; }
         } else if (deltaDateRef.current && deltaDateRef.current !== today) {
           setActiveDeltas(null); deltaDateRef.current = null;
         }
@@ -252,8 +271,13 @@ export default function LibraryScreen() {
       setActiveDeltas(gainDeltas);
       deltaDateRef.current = today;
     } else if (prog?.deltas && Object.keys(prog.deltas).length > 0) {
-      setActiveDeltas(prog.deltas);
-      deltaDateRef.current = today;
+      const alreadySeen = currentUserId
+        ? await isDeltaSeen(currentUserId, prog.deltas as Record<string, { amount: number }>)
+        : false;
+      if (!alreadySeen) {
+        setActiveDeltas(prog.deltas);
+        deltaDateRef.current = today;
+      }
     } else if (deltaDateRef.current && deltaDateRef.current !== today) {
       setActiveDeltas(null);
       deltaDateRef.current = null;
@@ -307,18 +331,21 @@ export default function LibraryScreen() {
           label="Mindfulness"
           delta={activeDeltas?.mindfulness}
           ringColor={colors.ringMindfulness}
+          onDeltaConsumed={handleDeltaConsumed}
         />
         <ProgressRing
           percentage={ringBasePct(progress?.acceptance_score, activeDeltas?.acceptance)}
           label="Acceptance"
           delta={activeDeltas?.acceptance}
           ringColor={colors.ringAcceptance}
+          onDeltaConsumed={handleDeltaConsumed}
         />
         <ProgressRing
           percentage={ringBasePct(progress?.commitment_score, activeDeltas?.commitment)}
           label="Commitment"
           delta={activeDeltas?.commitment}
           ringColor={colors.ringCommitment}
+          onDeltaConsumed={handleDeltaConsumed}
         />
       </View>
 

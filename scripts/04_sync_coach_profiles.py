@@ -28,6 +28,20 @@ import sys
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
+# Auto-load .env from the repo root so the script works without manually
+# exporting every variable (the file is gitignored and never committed).
+_env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+if os.path.isfile(_env_path):
+    with open(_env_path) as _ef:
+        for _line in _ef:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                _k = _k.strip()
+                _v = _v.strip().strip('"').strip("'")
+                if _k:
+                    os.environ[_k] = _v
+
 URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
 KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
 CF_URL = os.environ.get("COACHFORM_SUPABASE_URL", "").strip().rstrip("/")
@@ -36,10 +50,13 @@ CF_BUCKET = os.environ.get("COACHFORM_ASSETS_BUCKET", "coach-assets")
 IMAGE_BUCKET = os.environ.get("RELENTLESS_IMAGE_BUCKET", "lesson-audio")
 
 # Portal column -> app coaches column.
+# NOTE: portal "bio" is the coach's own long description → we map it to long_bio.
+# App "bio" is a short curated 1-2 line intro written by the Relentless team;
+# it is NEVER auto-synced — set it manually after onboarding a new coach.
 FIELD_MAP = {
     "display_name": "name",
     "credentials": "credentials",
-    "bio": "bio",
+    "bio": "long_bio",   # portal bio (their words) -> app long_bio (About Me)
     "offer_label": "offer_label",
     "offer_url": "external_url",
 }
@@ -81,13 +98,34 @@ def upload_photo(rel_path, data):
     _open(req, timeout=300).read()
 
 
+def upload_video(rel_path, data, content_type):
+    req = Request(f"{URL}/storage/v1/object/{IMAGE_BUCKET}/{rel_path}", data=data,
+                  method="POST", headers={**_headers(KEY), "Content-Type": content_type,
+                                          "x-upsert": "true"})
+    _open(req, timeout=600).read()
+
+
 def _trimmed(v):
     return v.strip() if isinstance(v, str) and v.strip() else None
+
+
+# Coach-card CTAs sit beside "About Me" — keep portal labels short so a
+# coach-authored sentence does not overflow the two-button row.
+_OFFER_LABEL_MAX = 22
+
+
+def _short_offer_label(label):
+    if not label or len(label) <= _OFFER_LABEL_MAX:
+        return label
+    print(f"  !! offer_label {label!r} is {len(label)} chars (max {_OFFER_LABEL_MAX}); using 'Book a call'")
+    return "Book a call"
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="report changes, write nothing")
+    ap.add_argument("--coaches", nargs="+", metavar="COACH_KEY",
+                    help="only sync these coach_keys (default: all linked coaches)")
     args = ap.parse_args()
 
     missing = [n for n, v in [("SUPABASE_URL", URL), ("SUPABASE_SERVICE_ROLE_KEY", KEY),
@@ -100,11 +138,16 @@ def main():
     linked = get_json(
         URL, KEY,
         "/rest/v1/coaches?coachform_id=not.is.null"
-        "&select=id,coach_key,name,credentials,bio,offer_label,external_url,avatar_url,coachform_id",
+        "&select=id,coach_key,name,credentials,bio,long_bio,offer_label,external_url,avatar_url,intro_video_path,coachform_id",
     )
     if not linked:
         print("No app coaches linked to the portal (coaches.coachform_id is empty everywhere).")
         return
+
+    if args.coaches:
+        linked = [r for r in linked if r["coach_key"] in args.coaches]
+        if not linked:
+            sys.exit(f"ERROR: none of {args.coaches} matched any linked coach_key")
 
     for row in linked:
         cf = portal.get(row["coachform_id"])
@@ -116,6 +159,8 @@ def main():
         patch = {}
         for src, dst in FIELD_MAP.items():
             new = _trimmed(cf.get(src))
+            if dst == "offer_label":
+                new = _short_offer_label(new)
             if new is not None and new != row.get(dst):
                 patch[dst] = new
 
@@ -133,8 +178,31 @@ def main():
                     patch_app(f"/rest/v1/coaches?id=eq.{row['id']}", {"avatar_url": rel})
             photo_note = f"  photo -> {rel}"
 
+        # Intro video: copy portal video to app storage.
+        # intro_video_approved is intentionally NOT synced here — it is an
+        # admin-only field set manually after review.
+        # Note: the portal column is named "video_path" (not "intro_video_path").
+        video_note = ""
+        if cf.get("video_path"):
+            portal_vpath = cf["video_path"]
+            ext = portal_vpath.rsplit(".", 1)[-1] if "." in portal_vpath else "mp4"
+            video_rel = row.get("intro_video_path") or f"coach/{row['coach_key']}_intro.{ext}"
+            if not args.dry_run:
+                try:
+                    req = Request(f"{CF_URL}/storage/v1/object/{CF_BUCKET}/{portal_vpath}",
+                                  headers=_headers(CF_KEY))
+                    video_data = _open(req, timeout=600).read()
+                    upload_video(video_rel, video_data, f"video/{ext}")
+                    if row.get("intro_video_path") != video_rel:
+                        patch_app(f"/rest/v1/coaches?id=eq.{row['id']}", {"intro_video_path": video_rel})
+                    video_note = f"  intro_video -> {video_rel}"
+                except Exception as e:
+                    video_note = f"  intro_video FAILED: {e}"
+            else:
+                video_note = f"  intro_video (dry-run) -> {video_rel}"
+
         changed = ", ".join(f"{k}={v!r}" for k, v in patch.items()) or "no field changes"
-        print(f"  {label}: {changed}{photo_note}")
+        print(f"  {label}: {changed}{photo_note}{video_note}")
 
     print("\nDONE." + ("  (dry run — nothing written)" if args.dry_run else ""))
 

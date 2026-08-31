@@ -2,7 +2,7 @@
   "expo": {
     "name": "Relentless",
     "slug": "relentless",
-    "version": "2.1.1",
+    "version": "2.1.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "relentless",
@@ -13,7 +13,7 @@
       "backgroundColor": "#2d2c2c"
     },
     "ios": {
-      "buildNumber": "29",
+      "buildNumber": "31",
       "supportsTablet": false,
       "usesAppleSignIn": true,
       "bundleIdentifier": "com.relentlessmentaltoughness.relentless",
@@ -63,8 +63,15 @@
         "NSPrivacyTrackingDomains": []
       }
     },
+    "updates": {
+      "url": "https://u.expo.dev/3cac0b27-c2b7-4368-a154-b4292e7d7030"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "plugins": [
       "expo-router",
+      "expo-updates",
       "@react-native-community/datetimepicker",
       "expo-audio",
       "expo-asset",
@@ -95,7 +102,7 @@
       "enableAppStoreReviewPrompt": true
     },
     "android": {
-      "versionCode": 29,
+      "versionCode": 31,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"

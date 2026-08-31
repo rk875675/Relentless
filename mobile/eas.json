@@ -12,6 +12,7 @@
       }
     },
     "preview": {
+      "channel": "preview",
       "distribution": "internal",
       "environment": "preview",
       "env": {
@@ -19,6 +20,7 @@
       }
     },
     "production": {
+      "channel": "production",
       "environment": "production",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production"

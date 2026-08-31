@@ -205,6 +205,8 @@ type CoachInfo = {
   avatar_url: string | null;
   offer_label: string | null;
   external_url: string | null;
+  /** Signed URL for the coach's intro video, null when absent or not yet approved. */
+  intro_video_url: string | null;
 };
 
 async function loadCoachAndProgram(
@@ -226,7 +228,7 @@ async function loadCoachAndProgram(
     const { data: c } = await supabase
       .from("coaches")
       .select(
-        "coach_key, name, credentials, bio, long_bio, avatar_url, offer_label, external_url",
+        "coach_key, name, credentials, bio, long_bio, avatar_url, offer_label, external_url, intro_video_path, intro_video_approved",
       )
       .eq("id", coachId)
       .maybeSingle();
@@ -238,6 +240,21 @@ async function loadCoachAndProgram(
         const signedMap = await getSignedUrls(supabase, [avatarUrl]);
         avatarUrl = signedMap.get(avatarUrl) ?? null;
       }
+      // Sign the intro video path only when the coach has approved it.
+      // The audio_url_cache table keeps the signed URL stable for 1 hour so
+      // all concurrent users receive the same URL and the CDN can cache the
+      // actual video bytes at the edge.
+      // Absolute https:// paths (e.g. a temporary test URL) pass through as-is.
+      let introVideoUrl: string | null = null;
+      const videoPath = (c.intro_video_path as string | null) ?? null;
+      if (videoPath && c.intro_video_approved === true) {
+        if (/^https?:\/\//i.test(videoPath)) {
+          introVideoUrl = videoPath;
+        } else {
+          const signedMap = await getSignedUrls(supabase, [videoPath]);
+          introVideoUrl = signedMap.get(videoPath) ?? null;
+        }
+      }
       coach = {
         coach_key: (c.coach_key as string | null) ?? null,
         name: c.name as string,
@@ -247,6 +264,7 @@ async function loadCoachAndProgram(
         avatar_url: avatarUrl,
         offer_label: (c.offer_label as string | null) ?? null,
         external_url: (c.external_url as string | null) ?? null,
+        intro_video_url: introVideoUrl,
       };
     }
   }
@@ -792,11 +810,39 @@ async function handleNext(
   // URL signing still requires the storage SDK (cannot be done in SQL)
   const enriched = await resolveContentBlockUrls(supabase, lesson);
 
-  // Sign coach avatar if it's a storage path
+  // Sign coach avatar if it's a storage path; sign intro video if approved.
   let coach = rpc.coach as Record<string, unknown> | null;
-  if (coach?.avatar_url && !/^https?:\/\//i.test(coach.avatar_url as string)) {
-    const signedMap = await getSignedUrls(supabase, [coach.avatar_url as string]);
-    coach = { ...coach, avatar_url: signedMap.get(coach.avatar_url as string) ?? null };
+  if (coach) {
+    const pathsToSign: string[] = [];
+    const avatarPath = coach.avatar_url as string | null;
+    if (avatarPath && !/^https?:\/\//i.test(avatarPath)) pathsToSign.push(avatarPath);
+    const videoPath = (coach.intro_video_path as string | null) ?? null;
+    if (videoPath && coach.intro_video_approved === true) pathsToSign.push(videoPath);
+
+    const signedMap = pathsToSign.length > 0
+      ? await getSignedUrls(supabase, pathsToSign)
+      : new Map<string, string>();
+
+    // Resolve intro video URL: signed storage path, or absolute URL passthrough.
+    let introVideoUrl: string | null = null;
+    if (videoPath && coach.intro_video_approved === true) {
+      if (/^https?:\/\//i.test(videoPath)) {
+        introVideoUrl = videoPath;
+      } else {
+        introVideoUrl = signedMap.get(videoPath) ?? null;
+      }
+    }
+
+    coach = {
+      ...coach,
+      avatar_url: avatarPath && signedMap.has(avatarPath)
+        ? signedMap.get(avatarPath)!
+        : coach.avatar_url,
+      intro_video_url: introVideoUrl,
+      // Strip the raw path + approval flag; the app only needs the signed URL.
+      intro_video_path: undefined,
+      intro_video_approved: undefined,
+    };
   }
 
   const programTotalDays = (rpc.program_total_days as number | null) ??
@@ -1006,15 +1052,12 @@ async function handleComplete(
   // Reason strings are built in TS so PRD's "tunables centralised in scoring.ts"
   // text formatting stays here. Amounts come from SQL (single source of truth
   // for atomicity).
+  //
+  // deltas contains only per-lesson gains. Decay is intentionally excluded: the
+  // workout-complete screen is a reward screen and should only show what this
+  // lesson earned. The DB scores (rpc.scores.*) already reflect decay + gains
+  // combined, and the home screen surfaces ring values after any decay.
   const deltas: Record<string, { amount: number; reason: string }> = {};
-
-  if (rpc.decay) {
-    const amount = Number(rpc.decay.amount);
-    const reason = `${rpc.decay.gap_days}d inactive (\u2212${fmt1(amount)})`;
-    for (const cat of ["mindfulness", "acceptance", "commitment"] as const) {
-      deltas[cat] = { amount: -amount, reason };
-    }
-  }
 
   for (const g of rpc.gains ?? []) {
     const gainAmount = Number(g.amount);

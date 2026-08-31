@@ -379,6 +379,22 @@ function RouteGuard() {
           headerLeft: () => <HeaderBackButton label="Library" fallbackHref="/(tabs)/library" />,
         }}
       />
+      <Stack.Screen
+        name="coach/[key]"
+        options={{
+          headerShown: true,
+          animation: 'slide_from_right',
+          headerBackTitle: 'Back',
+          headerStyle: { backgroundColor: '#1A1A1B' },
+          headerTintColor: '#9B82D4',
+          headerTitleStyle: {
+            fontSize: 17,
+            fontWeight: '600',
+            color: '#F2F2F7',
+          },
+          title: '',
+        }}
+      />
     </Stack>
     </>
   );

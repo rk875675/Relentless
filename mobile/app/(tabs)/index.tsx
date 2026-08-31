@@ -29,7 +29,8 @@ import { supabase } from '@/lib/supabase';
 import { getDeviceLocalCalendarYmd, HOME_PROGRAM_ANCHOR_HEADERS } from '@/lib/device-calendar';
 import { ProgressRing, type ScoreDelta } from '@/components/ProgressRing';
 import { MoreProgramsSkeleton, WorkoutCardSkeleton } from '@/components/Skeleton';
-import { getPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
+import { getPendingGainDeltas, clearPendingGainDeltas, type MacDeltas } from '@/lib/pending-deltas';
+import { markDeltaSeen, isDeltaSeen } from '@/lib/seen-deltas';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { coachAvatarSource } from '@/lib/coach-photo';
@@ -306,6 +307,18 @@ export default function HomeScreen() {
   const [journalSaveError, setJournalSaveError] = useState('');
   const [journalSavedHint, setJournalSavedHint] = useState(false);
   const [activeDeltas, setActiveDeltas] = useState<MacDeltas | null>(null);
+  const activeDeltasRef = useRef<MacDeltas | null>(null);
+  activeDeltasRef.current = activeDeltas;
+
+  const handleDeltaConsumed = useCallback(() => {
+    const snap = activeDeltasRef.current;
+    setActiveDeltas(null);
+    clearPendingGainDeltas();
+    if (currentUserId && snap) {
+      void markDeltaSeen(currentUserId, snap as Record<string, { amount: number }>);
+    }
+  }, [currentUserId]);
+
   const [showMissReflection, setShowMissReflection] = useState(false);
   const [missJournalText, setMissJournalText] = useState('');
   const [missJournalSaving, setMissJournalSaving] = useState(false);
@@ -543,8 +556,13 @@ export default function HomeScreen() {
       setActiveDeltas(gainDeltas);
       deltaDateRef.current = today;
     } else if (prog.deltas && Object.keys(prog.deltas).length > 0) {
-      setActiveDeltas(prog.deltas);
-      deltaDateRef.current = today;
+      const alreadySeen = currentUserId
+        ? await isDeltaSeen(currentUserId, prog.deltas as Record<string, { amount: number }>)
+        : false;
+      if (!alreadySeen) {
+        setActiveDeltas(prog.deltas);
+        deltaDateRef.current = today;
+      }
     } else if (deltaDateRef.current && deltaDateRef.current !== today) {
       setActiveDeltas(null);
       deltaDateRef.current = null;
@@ -906,18 +924,21 @@ export default function HomeScreen() {
           label="Mindfulness"
           delta={activeDeltas?.mindfulness}
           ringColor={colors.ringMindfulness}
+          onDeltaConsumed={handleDeltaConsumed}
         />
         <ProgressRing
           percentage={ringBasePct(progress?.acceptance_score, activeDeltas?.acceptance)}
           label="Acceptance"
           delta={activeDeltas?.acceptance}
           ringColor={colors.ringAcceptance}
+          onDeltaConsumed={handleDeltaConsumed}
         />
         <ProgressRing
           percentage={ringBasePct(progress?.commitment_score, activeDeltas?.commitment)}
           label="Commitment"
           delta={activeDeltas?.commitment}
           ringColor={colors.ringCommitment}
+          onDeltaConsumed={handleDeltaConsumed}
         />
       </View>
       {progressLoadError && (

@@ -307,6 +307,29 @@ def _coachform_headers():
             "User-Agent": "relentless-loader/1.0"}
 
 
+# Coach-card CTAs sit beside "About Me" — keep labels short so new packs
+# don't overflow the two-button row (Brock's original 42-char label did).
+_OFFER_LABEL_MAX = 22
+
+
+def _short_offer_label(label, warnings=None, coach_key=None):
+    if not label:
+        return label
+    if len(label) <= _OFFER_LABEL_MAX:
+        return label
+    note = (
+        f"offer_label {label!r} is {len(label)} chars (max {_OFFER_LABEL_MAX}); "
+        f"using 'Book a call'"
+    )
+    if coach_key:
+        note = f"{coach_key}: {note}"
+    if warnings is not None:
+        warnings.append(note)
+    else:
+        print(f"  !! {note}")
+    return "Book a call"
+
+
 def _slugify(name):
     out = "".join(c if c.isalnum() else "-" for c in (name or "").strip().lower())
     while "--" in out:
@@ -787,6 +810,28 @@ def main():
         storage_upload(IMAGE_BUCKET, photo_rel, portal_photo, content_type_for(photo_rel))
     else:
         upload_image(coach.get("photo"))
+
+    # --- Portal intro video: copy to app storage if present ---
+    # The video is stored as-is in the app bucket under coach/<coach_key>_intro.<ext>.
+    # intro_video_approved stays false (default) — admin must set it manually.
+    # Note: the portal column is named "video_path" (not "intro_video_path").
+    portal_video_rel = None
+    if cf and cf.get("video_path") and not args.dry_run:
+        portal_video_path = cf["video_path"]
+        # Derive extension from the portal path (e.g. .mp4); default to .mp4.
+        ext = portal_video_path.rsplit(".", 1)[-1] if "." in portal_video_path else "mp4"
+        portal_video_rel = f"coach/{ck}_intro.{ext}"
+        try:
+            req = Request(
+                f"{COACHFORM_URL}/storage/v1/object/{COACHFORM_ASSETS_BUCKET}/{portal_video_path}",
+                headers=_coachform_headers(),
+            )
+            video_bytes = _open(req, timeout=300).read()
+            storage_upload(IMAGE_BUCKET, portal_video_rel, video_bytes, f"video/{ext}")
+            print(f"  intro video uploaded -> {portal_video_rel}")
+        except Exception as e:
+            warnings.append(f"intro video upload failed for {ck!r}: {e}")
+            portal_video_rel = None
     # Coach Portal 2026-07-01: program.cover_image was removed from the manifest
     # (the coach photo represents the program). Nothing to upload here anymore.
 
@@ -801,11 +846,27 @@ def main():
         "coach_key": ck,
         "name": pick("display_name", coach["display_name"]),
         "credentials": pick("credentials", coach.get("credentials")),
-        "bio": pick("bio", coach.get("bio")),
-        "offer_label": pick("offer_label", coach.get("offer", {}).get("label")),
+        # NOTE: "bio" (curated 1-2 line short intro) is intentionally NOT auto-set here.
+        # The portal "bio" column holds the coach's own long description, which goes to
+        # long_bio (About Me section). After loading, manually write a curated short bio
+        # into the `bio` column via SQL. Omitting it from coach_row means re-loading a
+        # pack never overwrites an already-curated bio.
+        "offer_label": _short_offer_label(
+            pick("offer_label", coach.get("offer", {}).get("label")),
+            warnings,
+            ck,
+        ),
         "external_url": pick("offer_url", coach.get("offer", {}).get("url")),
         "avatar_url": photo_rel,
     }
+    if portal_video_rel:
+        # Only write the path; approval stays false until admin review.
+        coach_row["intro_video_path"] = portal_video_rel
+    # Portal "bio" IS the coach's long description → long_bio (the "About Me" collapsible).
+    # Use pack manifest as fallback so offline/dry-run loads still populate it.
+    long_bio_val = pick("bio", coach.get("bio"))
+    if long_bio_val:
+        coach_row["long_bio"] = long_bio_val
     coach_sport = pick("sport", program.get("sport"))
     if coach_sport:
         coach_row["sport"] = coach_sport

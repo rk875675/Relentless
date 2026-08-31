@@ -1,0 +1,15 @@
+﻿# Block Agent / Tab / @-mention access to secret files.
+# .gitignore only affects indexing; this is what stops Read/Grep on .env.
+# Terminal can still reach these files — never cat/Get-Content them.
+
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Common secret dumps (none should exist; keep blocked anyway)
+**/*credentials*.json
+**/*secrets*.json
+**/*.pem
+**/*.key
+!mobile/app.json
