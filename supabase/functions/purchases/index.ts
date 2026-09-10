@@ -329,6 +329,35 @@ Deno.serve(async (req) => {
     },
   });
 
+  // Reconcile any Apple Server Notifications that arrived before this
+  // entitlement row existed (INITIAL_BUY race condition). The authoritative
+  // subscription state is already written above from Apple's API, so the
+  // pending notifications are moot. Delete them and log for observability.
+  const { data: pendingRows, error: pendingSelectErr } = await supabase
+    .from("pending_apple_notifications")
+    .select("id, notification_type, subtype, created_at")
+    .eq("original_transaction_id", originalTransactionId);
+
+  if (pendingSelectErr) {
+    console.warn("[purchases/restore] Could not query pending_apple_notifications", pendingSelectErr);
+  } else if (pendingRows && pendingRows.length > 0) {
+    console.log("[purchases/restore] Reconciling pending Apple notifications", {
+      count: pendingRows.length,
+      types: pendingRows.map((p: { notification_type: string | null; subtype: string | null }) =>
+        `${p.notification_type ?? "?"}/${p.subtype ?? "?"}`,
+      ),
+      originalTransactionId,
+      requestId,
+    });
+    const { error: deleteErr } = await supabase
+      .from("pending_apple_notifications")
+      .delete()
+      .eq("original_transaction_id", originalTransactionId);
+    if (deleteErr) {
+      console.warn("[purchases/restore] Failed to delete reconciled pending notifications", deleteErr);
+    }
+  }
+
   // Fire trial_started exactly once: only when transitioning from a non-active
   // state into trial or active. Re-syncs (e.g. app restarts) will see the DB
   // already at trial/active and skip the event.

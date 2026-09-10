@@ -14,7 +14,7 @@ import { verifyAppleJws, type AppleJwsResult } from "../_shared/apple_jws.ts";
 // Supabase secrets required (all already set):
 //   POSTHOG_API_KEY              — PostHog project API key
 //   POSTHOG_HOST                 — PostHog ingest host
-//   SUPERWALL_APPLE_WEBHOOK_URL  — Superwall's full webhook URL (copied from App Store Connect)
+//   SUPERWALL_APPLE_WEBHOOK_URL  — Superwall Option 2 URL (Settings → Revenue Tracking)
 // ---------------------------------------------------------------------------
 
 const BUNDLE_ID = "com.relentlessmentaltoughness.relentless";
@@ -72,13 +72,21 @@ async function capturePostHogEvent(
 
 async function forwardToSuperwall(rawBody: string): Promise<void> {
   const superwallUrl = Deno.env.get("SUPERWALL_APPLE_WEBHOOK_URL") ?? "";
-  if (!superwallUrl) return;
+  if (!superwallUrl) {
+    console.warn("[apple-notifications] SUPERWALL_APPLE_WEBHOOK_URL is not set; skipping Superwall forward");
+    return;
+  }
   try {
-    await fetch(superwallUrl, {
+    const res = await fetch(superwallUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: rawBody,
     });
+    if (!res.ok) {
+      console.error("[apple-notifications] Superwall forward HTTP", res.status);
+      return;
+    }
+    console.log("[apple-notifications] Superwall forward OK", res.status);
   } catch (err) {
     console.error("[apple-notifications] Superwall forward failed:", err);
   }
@@ -282,7 +290,27 @@ Deno.serve(async (req) => {
     console.warn(
       "[apple-notifications] No entitlement row for originalTransactionId",
       originalTransactionId,
+      "— saving to pending_apple_notifications for reconciliation by purchases/restore",
     );
+    // Persist so purchases/restore can reconcile once the user's row exists.
+    // This is the dead-letter queue for the INITIAL_BUY race condition.
+    const { error: pendingErr } = await supabase
+      .from("pending_apple_notifications")
+      .insert({
+        original_transaction_id: originalTransactionId,
+        notification_type: notificationType ?? null,
+        subtype: subtype || null,
+        raw_body: rawBody,
+      });
+    if (pendingErr) {
+      console.error("[apple-notifications] Failed to save pending notification", pendingErr);
+    } else {
+      console.log("[apple-notifications] Pending notification saved", {
+        originalTransactionId,
+        notificationType,
+        subtype,
+      });
+    }
     await Promise.allSettled(pendingWork);
     return new Response("OK", { status: 200 });
   }
