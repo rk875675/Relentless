@@ -14,13 +14,15 @@ import {
   type AppleEnvironment,
   readAppleSubscription,
 } from "../_shared/apple_subscription.ts";
+import { signPromotionalOffer } from "../_shared/apple_promotional_offer.ts";
 
 // ---------------------------------------------------------------------------
 // Referral offer — teammate share (PRD 10.5).
 //
-//   GET  /referral/eligibility — may this user share right now?
-//   POST /referral/invites     — reserve a code and open an invite.
-//   POST /referral/claim       — invitee binds a code and gets the one to redeem.
+//   GET  /referral/eligibility     — may this user share right now?
+//   POST /referral/invites         — reserve a code and open an invite.
+//   POST /referral/claim           — invitee binds a code and gets the one to redeem.
+//   POST /referral/offer-signature — mint the sharer's signed promotional offer.
 //
 // Everything is gated on the referral_offer_enabled flag, which is OFF. The
 // read answers with eligible=false/feature_disabled so the client has one
@@ -42,6 +44,7 @@ import {
 const FLAG_KEY = "referral_offer_enabled";
 const DEFAULT_MAX_OPEN_INVITES = 5;
 const DEFAULT_TTL_DAYS = 90;
+const BUNDLE_ID = "com.relentlessmentaltoughness.relentless";
 
 /**
  * Machine-readable state, never user-facing copy — final strings are not
@@ -90,6 +93,11 @@ Deno.serve(async (req) => {
         return errorResponse(405, "VALIDATION_ERROR", "Method not allowed", requestId);
       }
       return handleClaim(req, requestId);
+    case "offer-signature":
+      if (req.method !== "POST") {
+        return errorResponse(405, "VALIDATION_ERROR", "Method not allowed", requestId);
+      }
+      return handleOfferSignature(req, requestId);
     default:
       return errorResponse(404, "NOT_FOUND", "Unknown referral path", requestId);
   }
@@ -105,6 +113,8 @@ type FlagConfig = {
   ttlDays: number;
   /** Current live SKU per cadence. Never sell legacy pricing (PRD 10.5.4). */
   liveProducts: Partial<Record<Cadence, string>>;
+  /** Subscribed SKU -> the promotional offer that discounts it, legacy included. */
+  sharerOffers: Record<string, string>;
 };
 
 async function loadFlag(
@@ -127,6 +137,12 @@ async function loadFlag(
 
   const metadata = (data?.metadata ?? {}) as Record<string, unknown>;
   const live = (metadata.live_products ?? {}) as Record<string, unknown>;
+  const offers = (metadata.sharer_offers ?? {}) as Record<string, unknown>;
+
+  const sharerOffers: Record<string, string> = {};
+  for (const [sku, offer] of Object.entries(offers)) {
+    if (typeof offer === "string" && offer.length > 0) sharerOffers[sku] = offer;
+  }
 
   return {
     ok: true,
@@ -142,6 +158,7 @@ async function loadFlag(
         monthly: typeof live.monthly === "string" ? live.monthly : undefined,
         annual: typeof live.annual === "string" ? live.annual : undefined,
       },
+      sharerOffers,
     },
   };
 }
@@ -638,4 +655,187 @@ async function handleClaim(req: Request, requestId: string): Promise<Response> {
       console.error("[referral/claim] unexpected rpc result", { requestId, result: result.result });
       return errorResponse(500, "INTERNAL_ERROR", "Could not claim code", requestId);
   }
+}
+
+// ---------------------------------------------------------------------------
+// POST /referral/offer-signature
+//
+// The sharer's half of the reward. Apple validates the signature against the
+// exact parameters the app then sends, so the server picks every one of them:
+// the client names nothing and the In-App Purchase key never leaves here
+// (PRD 10.5.2).
+//
+// Minting a signature is not the same as applying the offer. The sharer may
+// never complete the purchase, so the reward only becomes 'applied' when
+// Apple reports the offer on their next renewal, which the notification
+// handler confirms.
+// ---------------------------------------------------------------------------
+
+async function handleOfferSignature(req: Request, requestId: string): Promise<Response> {
+  const supabase = createServiceClient();
+
+  const auth = await getUser(req, supabase, requestId);
+  if (!auth.ok) return auth.response;
+
+  const rl = await checkRateLimit(auth.userId, requestId, "billing");
+  if (!rl.ok) return rl.response;
+
+  const flag = await loadFlag(supabase, requestId);
+  if (!flag.ok) return flag.response;
+  if (!flag.config.enabled) {
+    return errorResponse(403, "FEATURE_DISABLED", "Referral rewards are not available", requestId);
+  }
+
+  const { data: ent, error: entErr } = await supabase
+    .from("entitlements")
+    .select("product_id, original_transaction_id")
+    .eq("user_id", auth.userId)
+    .maybeSingle();
+
+  if (entErr) {
+    console.error("[referral/offer-signature] entitlement read failed", {
+      requestId,
+      error: entErr.message,
+    });
+    return errorResponse(500, "INTERNAL_ERROR", "Could not load entitlement", requestId);
+  }
+  if (!ent?.original_transaction_id) {
+    return errorResponse(403, "NOT_ELIGIBLE", "No Apple subscription to discount", requestId);
+  }
+
+  const { data: reward, error: rewardErr } = await supabase
+    .from("referral_rewards")
+    .select("id, product_id, offer_identifier, status")
+    .eq("user_id", auth.userId)
+    .eq("role", "gave")
+    .in("status", ["ready", "applied"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (rewardErr) {
+    console.error("[referral/offer-signature] reward read failed", {
+      requestId,
+      error: rewardErr.message,
+    });
+    return errorResponse(500, "INTERNAL_ERROR", "Could not load reward", requestId);
+  }
+  if (!reward) {
+    return errorResponse(404, "NO_REWARD_READY", "No referral reward is ready", requestId);
+  }
+  if (reward.status === "applied") {
+    return errorResponse(409, "ALREADY_APPLIED", "This reward has already been applied", requestId);
+  }
+
+  // Apple decides whether this subscription can take an offer at all.
+  const apple = await readAppleSubscription(ent.original_transaction_id);
+  if (!apple.ok) {
+    console.warn("[referral/offer-signature] Apple read failed", {
+      requestId,
+      reason: apple.reason,
+    });
+    return errorResponse(503, "APPLE_UNAVAILABLE", "Could not reach the App Store", requestId);
+  }
+
+  const state = apple.state;
+  if (state.status !== APPLE_SUBSCRIPTION_STATUS.ACTIVE) {
+    return errorResponse(409, "SUBSCRIPTION_NOT_ACTIVE", "Subscription is not active", requestId);
+  }
+  // A promotional offer takes effect at the next billing event. With
+  // auto-renew off there is no next billing event for it to discount.
+  if (state.autoRenewStatus !== 1) {
+    return errorResponse(409, "AUTO_RENEW_OFF", "Subscription is set to not renew", requestId);
+  }
+
+  // Sign for the product that will actually RENEW, not the one currently
+  // active: a subscriber who has switched plans renews onto a different SKU,
+  // and Apple only applies a same-product promotional offer.
+  const renewProduct = state.autoRenewProductId ?? state.productId ?? ent.product_id;
+  if (!renewProduct) {
+    return errorResponse(409, "UNKNOWN_PRODUCT", "Could not determine the renewing product", requestId);
+  }
+
+  const offerIdentifier = flag.config.sharerOffers[renewProduct];
+  if (!offerIdentifier) {
+    console.error("[referral/offer-signature] no promotional offer configured for SKU", {
+      requestId,
+      renewProduct,
+    });
+    return errorResponse(
+      409,
+      "NO_OFFER_FOR_SKU",
+      "No offer is available for this subscription",
+      requestId,
+    );
+  }
+
+  // Apple permits one active promotional offer at a time (PRD 10.5.7).
+  if (state.renewalOfferIdentifier) {
+    if (state.renewalOfferIdentifier === offerIdentifier) {
+      // Already attached: record it rather than handing out another signature.
+      const { error: confirmErr } = await supabase.rpc("confirm_sharer_offer_applied", {
+        p_original_transaction_id: ent.original_transaction_id,
+        p_offer_identifier: offerIdentifier,
+      });
+      if (confirmErr) {
+        console.error("[referral/offer-signature] confirm failed", {
+          requestId,
+          error: confirmErr.message,
+        });
+      }
+      return errorResponse(409, "ALREADY_APPLIED", "This reward is already applied", requestId);
+    }
+    return errorResponse(
+      409,
+      "OFFER_ALREADY_ACTIVE",
+      "Another offer is already attached to your next renewal",
+      requestId,
+    );
+  }
+
+  // Keep the reward row describing what we are actually signing, in case the
+  // sharer changed plans between earning and applying.
+  if (reward.product_id !== renewProduct || reward.offer_identifier !== offerIdentifier) {
+    const { error: syncErr } = await supabase
+      .from("referral_rewards")
+      .update({ product_id: renewProduct, offer_identifier: offerIdentifier })
+      .eq("id", reward.id);
+    if (syncErr) {
+      console.warn("[referral/offer-signature] could not re-point reward to the renewing SKU", {
+        requestId,
+        error: syncErr.message,
+      });
+    }
+  }
+
+  const signed = await signPromotionalOffer(BUNDLE_ID, renewProduct, offerIdentifier);
+  if (!signed.ok) {
+    return errorResponse(
+      signed.reason === "not_configured" ? 503 : 500,
+      "INTERNAL_ERROR",
+      "Could not sign the offer",
+      requestId,
+    );
+  }
+
+  // The signature itself is deliberately absent from the log line: it
+  // authorizes a discounted charge.
+  console.log("[referral/offer-signature] signed", {
+    requestId,
+    reward_id: reward.id,
+    product_id: renewProduct,
+    offer_identifier: offerIdentifier,
+  });
+
+  return successResponse({
+    reward_id: reward.id,
+    product_id: signed.signature.productId,
+    offer_identifier: signed.signature.offerIdentifier,
+    key_identifier: signed.signature.keyIdentifier,
+    nonce: signed.signature.nonce,
+    timestamp: signed.signature.timestamp,
+    signature: signed.signature.signature,
+    // Folded into the signature, so the purchase must send exactly this.
+    app_account_token: signed.signature.appAccountToken,
+  }, requestId);
 }

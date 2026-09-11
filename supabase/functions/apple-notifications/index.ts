@@ -23,6 +23,9 @@ const BUNDLE_ID = "com.relentlessmentaltoughness.relentless";
 // invitee redeems. 1 is introductory, 2 promotional, 4 win-back.
 const APPLE_OFFER_TYPE_CODE = 3;
 
+// offerType 2 is a signed promotional offer — the sharer's half of the reward.
+const APPLE_OFFER_TYPE_PROMOTIONAL = 2;
+
 // Notifications that mean money actually moved for an offer-code subscription.
 // An intro-eligible invitee trials first and converts at DID_RENEW; a lapsed
 // subscriber starts paying immediately at SUBSCRIBED.
@@ -608,6 +611,48 @@ Deno.serve(async (req) => {
         });
       } catch (err) {
         console.error("[apple-notifications] Referral reward release threw", err);
+      }
+    })());
+  }
+
+  // -------------------------------------------------------------------------
+  // Sharer reward applied (PRD 10.5.6)
+  //
+  // "Applied" means Apple reports the signed offer attached to the sharer's
+  // next renewal. Minting the signature is not enough — the sharer may never
+  // complete the purchase — so this is the only thing that sets the applied
+  // state, and never the client. offerType 2 is a promotional offer; the SQL
+  // side also matches the reference name, so an unrelated promotional offer
+  // on the same subscription cannot mark a referral reward applied.
+  // -------------------------------------------------------------------------
+
+  if (
+    renewalInfo?.offerType === APPLE_OFFER_TYPE_PROMOTIONAL &&
+    typeof renewalInfo.offerIdentifier === "string" &&
+    renewalInfo.offerIdentifier.length > 0
+  ) {
+    const sharerOffer = renewalInfo.offerIdentifier;
+    pendingWork.push((async () => {
+      try {
+        const { data, error } = await supabase.rpc("confirm_sharer_offer_applied", {
+          p_original_transaction_id: originalTransactionId,
+          p_offer_identifier: sharerOffer,
+        });
+        if (error) {
+          console.error("[apple-notifications] Sharer offer confirm failed", {
+            originalTransactionId,
+            error: error.message,
+          });
+          return;
+        }
+        // no_reward is the normal case for any non-referral promotional offer.
+        console.log("[apple-notifications] Sharer offer confirm", {
+          originalTransactionId,
+          offerIdentifier: sharerOffer,
+          result: data,
+        });
+      } catch (err) {
+        console.error("[apple-notifications] Sharer offer confirm threw", err);
       }
     })());
   }
