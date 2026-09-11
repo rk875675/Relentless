@@ -1,3 +1,5 @@
+import { z } from "https://esm.sh/zod@3";
+import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createServiceClient } from "../_shared/supabase.ts";
 import {
   corsHeaders,
@@ -9,36 +11,41 @@ import { getUser } from "../_shared/auth.ts";
 import { checkRateLimit } from "../_shared/ratelimit.ts";
 import {
   APPLE_SUBSCRIPTION_STATUS,
+  type AppleEnvironment,
   readAppleSubscription,
 } from "../_shared/apple_subscription.ts";
 
 // ---------------------------------------------------------------------------
 // Referral offer — teammate share (PRD 10.5).
 //
-//   GET /referral/eligibility — may this user share right now, and what is
-//     the state of their invites and reward?
+//   GET  /referral/eligibility — may this user share right now?
+//   POST /referral/invites     — reserve a code and open an invite.
+//   POST /referral/claim       — invitee binds a code and gets the one to redeem.
 //
-// Everything here is gated on the referral_offer_enabled flag, which is OFF.
-// With the flag off the endpoint still answers, but always with
-// eligible = false and reason = feature_disabled, so the client has one
-// consistent shape to render and the kill switch needs no client release.
+// Everything is gated on the referral_offer_enabled flag, which is OFF. The
+// read answers with eligible=false/feature_disabled so the client has one
+// shape to render; the two writes refuse outright.
 //
 // Eligibility is computed server-side only (PRD 10.5.3). The client never
-// decides it and never marks a billing period as used.
+// decides it, never names a product id, and never marks a period as used.
 //
 // This is the "separate new endpoint" that reads Apple eligibility: the
 // purchase and restore paths are deliberately left untouched. entitlements
 // collapses billing retry and grace into 'active' and has never carried
 // auto-renew state, so the two PRD criteria "auto-renew on" and "not in
 // billing retry or grace" can only be answered by reading Apple live.
+//
+// Codes are live App Store discounts. They are returned to the one user
+// entitled to them and are never written to a log line.
 // ---------------------------------------------------------------------------
 
 const FLAG_KEY = "referral_offer_enabled";
 const DEFAULT_MAX_OPEN_INVITES = 5;
+const DEFAULT_TTL_DAYS = 90;
 
 /**
- * Reasons are machine-readable state, never user-facing copy — final strings
- * are not locked (PRD 10.5.9) and must not be invented here.
+ * Machine-readable state, never user-facing copy — final strings are not
+ * locked (PRD 10.5.9) and must not be invented here.
  */
 type Reason =
   | "feature_disabled"
@@ -46,6 +53,7 @@ type Reason =
   | "trial_not_paid"
   | "not_active"
   | "no_original_transaction_id"
+  | "unknown_cadence"
   | "apple_unavailable"
   | "billing_retry"
   | "billing_grace"
@@ -53,6 +61,8 @@ type Reason =
   | "auto_renew_off"
   | "give_slot_used"
   | "pool_unavailable";
+
+type Cadence = "monthly" | "annual";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -64,134 +74,171 @@ Deno.serve(async (req) => {
   const pathMatch = url.pathname.match(/\/referral(?:\/(.+))?$/);
   const subPath = (pathMatch?.[1] ?? "").replace(/\/$/, "");
 
-  if (subPath !== "eligibility") {
-    return errorResponse(404, "NOT_FOUND", "Unknown referral path", requestId);
+  switch (subPath) {
+    case "eligibility":
+      if (req.method !== "GET") {
+        return errorResponse(405, "VALIDATION_ERROR", "Method not allowed", requestId);
+      }
+      return handleEligibility(req, requestId);
+    case "invites":
+      if (req.method !== "POST") {
+        return errorResponse(405, "VALIDATION_ERROR", "Method not allowed", requestId);
+      }
+      return handleCreateInvite(req, requestId);
+    case "claim":
+      if (req.method !== "POST") {
+        return errorResponse(405, "VALIDATION_ERROR", "Method not allowed", requestId);
+      }
+      return handleClaim(req, requestId);
+    default:
+      return errorResponse(404, "NOT_FOUND", "Unknown referral path", requestId);
   }
-  if (req.method !== "GET") {
-    return errorResponse(405, "VALIDATION_ERROR", "Method not allowed", requestId);
-  }
-
-  return handleEligibility(req, requestId);
 });
 
 // ---------------------------------------------------------------------------
-// GET /referral/eligibility
+// Feature flag + server-side config
 // ---------------------------------------------------------------------------
 
-type EligibilityBody = {
+type FlagConfig = {
   enabled: boolean;
-  eligible: boolean;
-  reason: Reason | null;
-  cadence: "monthly" | "annual" | null;
-  product_id: string | null;
-  period_end: string | null;
-  open_invites: number;
-  max_open_invites: number;
-  /** Apple allows one promotional offer at a time; 4d must not stack onto it. */
-  has_active_renewal_offer: boolean;
-  reward: { status: string; product_id: string; ready_at: string | null } | null;
+  maxOpenInvites: number;
+  ttlDays: number;
+  /** Current live SKU per cadence. Never sell legacy pricing (PRD 10.5.4). */
+  liveProducts: Partial<Record<Cadence, string>>;
 };
 
-function cadenceOf(productId: string | null): "monthly" | "annual" | null {
+async function loadFlag(
+  supabase: SupabaseClient,
+  requestId: string,
+): Promise<{ ok: true; config: FlagConfig } | { ok: false; response: Response }> {
+  const { data, error } = await supabase
+    .from("feature_flags")
+    .select("enabled, metadata")
+    .eq("key", FLAG_KEY)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[referral] flag read failed", { requestId, error: error.message });
+    return {
+      ok: false,
+      response: errorResponse(500, "INTERNAL_ERROR", "Could not load configuration", requestId),
+    };
+  }
+
+  const metadata = (data?.metadata ?? {}) as Record<string, unknown>;
+  const live = (metadata.live_products ?? {}) as Record<string, unknown>;
+
+  return {
+    ok: true,
+    config: {
+      enabled: data?.enabled === true,
+      maxOpenInvites: typeof metadata.max_open_invites_per_period === "number"
+        ? metadata.max_open_invites_per_period
+        : DEFAULT_MAX_OPEN_INVITES,
+      ttlDays: typeof metadata.invite_ttl_days === "number"
+        ? metadata.invite_ttl_days
+        : DEFAULT_TTL_DAYS,
+      liveProducts: {
+        monthly: typeof live.monthly === "string" ? live.monthly : undefined,
+        annual: typeof live.annual === "string" ? live.annual : undefined,
+      },
+    },
+  };
+}
+
+function cadenceOf(productId: string | null): Cadence | null {
   if (!productId) return null;
   if (productId.includes("monthly")) return "monthly";
   if (productId.includes("annual")) return "annual";
   return null;
 }
 
-async function handleEligibility(req: Request, requestId: string): Promise<Response> {
-  const supabase = createServiceClient();
+// ---------------------------------------------------------------------------
+// Shared eligibility computation (PRD 10.5.3)
+//
+// One implementation, used both to render the CTA state and to authorize an
+// invite. The write path must never trust a decision the read path made
+// earlier on the client's behalf.
+// ---------------------------------------------------------------------------
 
-  const auth = await getUser(req, supabase, requestId);
-  if (!auth.ok) return auth.response;
+type EligibilityFacts = {
+  originalTransactionId: string;
+  productId: string | null;
+  periodEnd: string | null;
+  cadence: Cadence | null;
+  environment: AppleEnvironment | null;
+  hasActiveRenewalOffer: boolean;
+  openInvites: number;
+  reward: { status: string; product_id: string; ready_at: string | null } | null;
+};
 
-  // Billing-class rather than read-class: each eligible call costs one App
-  // Store Server API request, so the roomier read budget would let a single
-  // client hammer Apple on our behalf.
-  const rl = await checkRateLimit(auth.userId, requestId, "billing");
-  if (!rl.ok) return rl.response;
+type EligibilityOutcome =
+  | { kind: "eligible"; facts: EligibilityFacts & { environment: AppleEnvironment } }
+  | { kind: "denied"; reason: Reason; facts: Partial<EligibilityFacts> }
+  | { kind: "error"; response: Response };
 
-  const base: EligibilityBody = {
-    enabled: false,
-    eligible: false,
-    reason: null,
-    cadence: null,
-    product_id: null,
-    period_end: null,
-    open_invites: 0,
-    max_open_invites: DEFAULT_MAX_OPEN_INVITES,
-    has_active_renewal_offer: false,
-    reward: null,
-  };
+async function computeEligibility(
+  supabase: SupabaseClient,
+  userId: string,
+  config: FlagConfig,
+  requestId: string,
+): Promise<EligibilityOutcome> {
+  const fail = (reason: Reason, facts: Partial<EligibilityFacts> = {}): EligibilityOutcome => ({
+    kind: "denied",
+    reason,
+    facts,
+  });
+  const oops = (msg: string): EligibilityOutcome => ({
+    kind: "error",
+    response: errorResponse(500, "INTERNAL_ERROR", msg, requestId),
+  });
 
-  const deny = (reason: Reason, extra: Partial<EligibilityBody> = {}) =>
-    successResponse({ ...base, ...extra, eligible: false, reason }, requestId);
-
-  // --- kill switch ---------------------------------------------------------
-  const { data: flag, error: flagErr } = await supabase
-    .from("feature_flags")
-    .select("enabled, metadata")
-    .eq("key", FLAG_KEY)
-    .maybeSingle();
-
-  if (flagErr) {
-    console.error("[referral/eligibility] flag read failed", {
-      requestId,
-      error: flagErr.message,
-    });
-    return errorResponse(500, "INTERNAL_ERROR", "Could not load configuration", requestId);
-  }
-
-  if (!flag?.enabled) return deny("feature_disabled");
-
-  const metadata = (flag.metadata ?? {}) as Record<string, unknown>;
-  const maxOpenInvites = typeof metadata.max_open_invites_per_period === "number"
-    ? metadata.max_open_invites_per_period
-    : DEFAULT_MAX_OPEN_INVITES;
-  base.enabled = true;
-  base.max_open_invites = maxOpenInvites;
-
-  // --- Relentless-side entitlement ----------------------------------------
   const { data: ent, error: entErr } = await supabase
     .from("entitlements")
     .select("status, source, product_id, expires_at, original_transaction_id")
-    .eq("user_id", auth.userId)
+    .eq("user_id", userId)
     .maybeSingle();
 
   if (entErr) {
-    console.error("[referral/eligibility] entitlement read failed", {
-      requestId,
-      error: entErr.message,
-    });
-    return errorResponse(500, "INTERNAL_ERROR", "Could not load entitlement", requestId);
+    console.error("[referral] entitlement read failed", { requestId, error: entErr.message });
+    return oops("Could not load entitlement");
   }
 
   // Apple-backed only: a promo grant has no Apple subscription to discount.
   // 'none' is the column default, so a user who has never purchased has a row
   // with source 'apple' — never-subscribed and promo-granted both land here.
   if (!ent || ent.source !== "apple" || ent.status === "none") {
-    return deny("no_apple_subscription");
+    return fail("no_apple_subscription");
   }
-  if (ent.status === "trial") return deny("trial_not_paid");
-  if (ent.status !== "active") return deny("not_active");
-  if (!ent.original_transaction_id) return deny("no_original_transaction_id");
+  if (ent.status === "trial") return fail("trial_not_paid");
+  if (ent.status !== "active") return fail("not_active");
+  if (!ent.original_transaction_id) return fail("no_original_transaction_id");
 
+  const otid: string = ent.original_transaction_id;
   const periodEnd: string | null = ent.expires_at ?? null;
-  base.product_id = ent.product_id ?? null;
-  base.cadence = cadenceOf(ent.product_id ?? null);
-  base.period_end = periodEnd;
+  const cadence = cadenceOf(ent.product_id ?? null);
 
-  // --- reward + invite state (independent of the Apple read) ---------------
+  const partial: Partial<EligibilityFacts> = {
+    originalTransactionId: otid,
+    productId: ent.product_id ?? null,
+    periodEnd,
+    cadence,
+  };
+
+  // Without a cadence we cannot pick which SKU the invitee is sold, and
+  // guessing would risk selling the wrong plan.
+  if (!cadence) return fail("unknown_cadence", partial);
+
   const [invitesRes, rewardRes] = await Promise.all([
     supabase
       .from("referral_invites")
       .select("id", { count: "exact", head: true })
-      .eq("sharer_original_transaction_id", ent.original_transaction_id)
+      .eq("sharer_original_transaction_id", otid)
       .eq("status", "open"),
     supabase
       .from("referral_rewards")
-      .select("status, product_id, ready_at, period_end")
-      .eq("original_transaction_id", ent.original_transaction_id)
+      .select("status, product_id, ready_at")
+      .eq("original_transaction_id", otid)
       .eq("role", "gave")
       .order("created_at", { ascending: false })
       .limit(1)
@@ -199,37 +246,35 @@ async function handleEligibility(req: Request, requestId: string): Promise<Respo
   ]);
 
   if (invitesRes.error || rewardRes.error) {
-    console.error("[referral/eligibility] referral state read failed", {
+    console.error("[referral] referral state read failed", {
       requestId,
       invitesError: invitesRes.error?.message,
       rewardError: rewardRes.error?.message,
     });
-    return errorResponse(500, "INTERNAL_ERROR", "Could not load referral state", requestId);
+    return oops("Could not load referral state");
   }
 
-  base.open_invites = invitesRes.count ?? 0;
-  if (rewardRes.data) {
-    base.reward = {
+  partial.openInvites = invitesRes.count ?? 0;
+  partial.reward = rewardRes.data
+    ? {
       status: rewardRes.data.status,
       product_id: rewardRes.data.product_id,
       ready_at: rewardRes.data.ready_at,
-    };
-  }
+    }
+    : null;
 
   // --- Apple, the authority for the remaining criteria ---------------------
-  const apple = await readAppleSubscription(ent.original_transaction_id);
+  const apple = await readAppleSubscription(otid);
   if (!apple.ok) {
     // Fail closed. Showing a share CTA we cannot stand behind is worse than
     // hiding it for one request.
-    console.warn("[referral/eligibility] Apple read failed", {
-      requestId,
-      reason: apple.reason,
-    });
-    return deny("apple_unavailable");
+    console.warn("[referral] Apple read failed", { requestId, reason: apple.reason });
+    return fail("apple_unavailable", partial);
   }
 
   const state = apple.state;
-  base.has_active_renewal_offer = state.renewalOfferIdentifier !== null;
+  partial.environment = state.environment;
+  partial.hasActiveRenewalOffer = state.renewalOfferIdentifier !== null;
 
   // Cache what Apple just told us onto the columns added for exactly this
   // (PRD 10.5.10). Only the four nullable referral columns are written —
@@ -242,61 +287,355 @@ async function handleEligibility(req: Request, requestId: string): Promise<Respo
       renewal_offer_identifier: state.renewalOfferIdentifier,
       renewal_offer_type: state.renewalOfferType,
     })
-    .eq("user_id", auth.userId);
+    .eq("user_id", userId);
   if (cacheErr) {
     // Non-fatal: the decision below uses the live values either way.
-    console.warn("[referral/eligibility] renewal cache write failed", {
-      requestId,
-      error: cacheErr.message,
-    });
+    console.warn("[referral] renewal cache write failed", { requestId, error: cacheErr.message });
   }
 
-  if (state.status === APPLE_SUBSCRIPTION_STATUS.BILLING_RETRY) return deny("billing_retry");
-  if (state.status === APPLE_SUBSCRIPTION_STATUS.BILLING_GRACE) return deny("billing_grace");
-  if (state.status === APPLE_SUBSCRIPTION_STATUS.REVOKED) return deny("revoked");
-  if (state.status !== APPLE_SUBSCRIPTION_STATUS.ACTIVE) return deny("not_active");
-  if (state.autoRenewStatus !== 1) return deny("auto_renew_off");
+  if (state.status === APPLE_SUBSCRIPTION_STATUS.BILLING_RETRY) {
+    return fail("billing_retry", partial);
+  }
+  if (state.status === APPLE_SUBSCRIPTION_STATUS.BILLING_GRACE) {
+    return fail("billing_grace", partial);
+  }
+  if (state.status === APPLE_SUBSCRIPTION_STATUS.REVOKED) return fail("revoked", partial);
+  if (state.status !== APPLE_SUBSCRIPTION_STATUS.ACTIVE) return fail("not_active", partial);
+  if (state.autoRenewStatus !== 1) return fail("auto_renew_off", partial);
 
   // --- give slot for the current billing period ----------------------------
   // Mirrors the referral_rewards_gave_once_per_period unique index, which is
-  // what actually enforces the cap; this only avoids showing a CTA that the
+  // what actually enforces the cap; this only avoids offering a share the
   // database would later refuse.
   let gaveQuery = supabase
     .from("referral_rewards")
     .select("id", { count: "exact", head: true })
-    .eq("original_transaction_id", ent.original_transaction_id)
+    .eq("original_transaction_id", otid)
     .eq("role", "gave");
   gaveQuery = periodEnd ? gaveQuery.eq("period_end", periodEnd) : gaveQuery.is("period_end", null);
 
   const { count: gaveCount, error: gaveErr } = await gaveQuery;
   if (gaveErr) {
-    console.error("[referral/eligibility] give-slot read failed", {
-      requestId,
-      error: gaveErr.message,
-    });
-    return errorResponse(500, "INTERNAL_ERROR", "Could not load referral state", requestId);
+    console.error("[referral] give-slot read failed", { requestId, error: gaveErr.message });
+    return oops("Could not load referral state");
   }
-  if ((gaveCount ?? 0) > 0) return deny("give_slot_used");
+  if ((gaveCount ?? 0) > 0) return fail("give_slot_used", partial);
 
-  // --- pool must actually be able to issue a code --------------------------
-  // Cadence-agnostic on purpose: which SKU an invite binds is decided at
-  // invite creation, not here. This only enforces PRD 10.5.7's "fail closed
-  // if the pool is exhausted or a batch has not been loaded".
+  // --- the pool must actually be able to issue a code ----------------------
+  // PRD 10.5.7: if the pool is exhausted or a batch has not been loaded,
+  // sharing fails closed. Scoped to the SKU this sharer's invitee would be
+  // sold, so a drained monthly pool cannot advertise a share that dies on
+  // creation.
+  const inviteeProduct = config.liveProducts[cadence];
+  if (!inviteeProduct) {
+    console.error("[referral] live_products missing a cadence", { requestId, cadence });
+    return oops("Referral products are not configured");
+  }
+
   const { count: poolCount, error: poolErr } = await supabase
     .from("referral_offer_codes")
     .select("id", { count: "exact", head: true })
     .eq("environment", state.environment)
+    .eq("product_id", inviteeProduct)
     .eq("status", "available")
     .gt("apple_expires_at", new Date().toISOString());
 
   if (poolErr) {
-    console.error("[referral/eligibility] pool read failed", {
-      requestId,
-      error: poolErr.message,
-    });
-    return errorResponse(500, "INTERNAL_ERROR", "Could not load referral state", requestId);
+    console.error("[referral] pool read failed", { requestId, error: poolErr.message });
+    return oops("Could not load referral state");
   }
-  if ((poolCount ?? 0) === 0) return deny("pool_unavailable");
+  if ((poolCount ?? 0) === 0) return fail("pool_unavailable", partial);
 
-  return successResponse({ ...base, eligible: true, reason: null }, requestId);
+  return {
+    kind: "eligible",
+    facts: {
+      originalTransactionId: otid,
+      productId: ent.product_id ?? null,
+      periodEnd,
+      cadence,
+      environment: state.environment,
+      hasActiveRenewalOffer: partial.hasActiveRenewalOffer ?? false,
+      openInvites: partial.openInvites ?? 0,
+      reward: partial.reward ?? null,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// GET /referral/eligibility
+// ---------------------------------------------------------------------------
+
+async function handleEligibility(req: Request, requestId: string): Promise<Response> {
+  const supabase = createServiceClient();
+
+  const auth = await getUser(req, supabase, requestId);
+  if (!auth.ok) return auth.response;
+
+  // Billing-class rather than read-class: each call costs one App Store
+  // Server API request, so the roomier read budget would let a single client
+  // hammer Apple on our behalf.
+  const rl = await checkRateLimit(auth.userId, requestId, "billing");
+  if (!rl.ok) return rl.response;
+
+  const flag = await loadFlag(supabase, requestId);
+  if (!flag.ok) return flag.response;
+
+  const body = {
+    enabled: flag.config.enabled,
+    eligible: false,
+    reason: null as Reason | null,
+    cadence: null as Cadence | null,
+    product_id: null as string | null,
+    period_end: null as string | null,
+    open_invites: 0,
+    max_open_invites: flag.config.maxOpenInvites,
+    has_active_renewal_offer: false,
+    reward: null as EligibilityFacts["reward"],
+  };
+
+  if (!flag.config.enabled) {
+    return successResponse({ ...body, enabled: false, reason: "feature_disabled" }, requestId);
+  }
+
+  const outcome = await computeEligibility(supabase, auth.userId, flag.config, requestId);
+  if (outcome.kind === "error") return outcome.response;
+
+  const facts = outcome.facts;
+  return successResponse({
+    ...body,
+    eligible: outcome.kind === "eligible",
+    reason: outcome.kind === "eligible" ? null : outcome.reason,
+    cadence: facts.cadence ?? null,
+    product_id: facts.productId ?? null,
+    period_end: facts.periodEnd ?? null,
+    open_invites: facts.openInvites ?? 0,
+    has_active_renewal_offer: facts.hasActiveRenewalOffer ?? false,
+    reward: facts.reward ?? null,
+  }, requestId);
+}
+
+// ---------------------------------------------------------------------------
+// POST /referral/invites
+// ---------------------------------------------------------------------------
+
+type CreateInviteRpc = {
+  result: "created" | "cap_reached" | "pool_empty";
+  invite_id?: string;
+  code?: string;
+  invitee_product_id?: string;
+  ttl_expires_at?: string;
+  apple_expires_at?: string;
+  open_invites?: number;
+};
+
+async function handleCreateInvite(req: Request, requestId: string): Promise<Response> {
+  const supabase = createServiceClient();
+
+  const auth = await getUser(req, supabase, requestId);
+  if (!auth.ok) return auth.response;
+
+  const rl = await checkRateLimit(auth.userId, requestId, "billing");
+  if (!rl.ok) return rl.response;
+
+  const flag = await loadFlag(supabase, requestId);
+  if (!flag.ok) return flag.response;
+  if (!flag.config.enabled) {
+    return errorResponse(403, "FEATURE_DISABLED", "Referral sharing is not available", requestId);
+  }
+
+  const outcome = await computeEligibility(supabase, auth.userId, flag.config, requestId);
+  if (outcome.kind === "error") return outcome.response;
+  if (outcome.kind === "denied") {
+    return errorResponse(403, "NOT_ELIGIBLE", `Not eligible to share (${outcome.reason})`, requestId);
+  }
+
+  const facts = outcome.facts;
+  // The invitee is sold the current live SKU for the SHARER's cadence. If the
+  // invitee picks the other cadence at claim time, the claim swaps the code.
+  const inviteeProduct = flag.config.liveProducts[facts.cadence!];
+  if (!inviteeProduct) {
+    return errorResponse(500, "INTERNAL_ERROR", "Referral products are not configured", requestId);
+  }
+
+  const { data, error } = await supabase.rpc("create_referral_invite", {
+    p_sharer_user_id: auth.userId,
+    p_sharer_original_transaction_id: facts.originalTransactionId,
+    p_sharer_product_id: facts.productId,
+    p_sharer_period_end: facts.periodEnd,
+    p_invitee_product_id: inviteeProduct,
+    p_environment: facts.environment,
+    p_ttl_days: flag.config.ttlDays,
+    p_max_open: flag.config.maxOpenInvites,
+  });
+
+  if (error) {
+    console.error("[referral/invites] rpc failed", { requestId, error: error.message });
+    return errorResponse(500, "INTERNAL_ERROR", "Could not create invite", requestId);
+  }
+
+  const result = (data ?? {}) as CreateInviteRpc;
+
+  switch (result.result) {
+    case "cap_reached":
+      return errorResponse(
+        409,
+        "INVITE_CAP_REACHED",
+        "You have reached the limit of open invites for this billing period",
+        requestId,
+      );
+    case "pool_empty":
+      return errorResponse(
+        503,
+        "POOL_UNAVAILABLE",
+        "Sharing is temporarily unavailable",
+        requestId,
+      );
+    case "created":
+      // Deliberately no code value in the log line.
+      console.log("[referral/invites] invite created", {
+        requestId,
+        invite_id: result.invite_id,
+        invitee_product_id: result.invitee_product_id,
+        environment: facts.environment,
+        open_invites: result.open_invites,
+      });
+      return successResponse({
+        invite_id: result.invite_id,
+        code: result.code,
+        product_id: result.invitee_product_id,
+        ttl_expires_at: result.ttl_expires_at,
+        apple_expires_at: result.apple_expires_at,
+        open_invites: result.open_invites,
+        max_open_invites: flag.config.maxOpenInvites,
+      }, requestId);
+    default:
+      console.error("[referral/invites] unexpected rpc result", { requestId, result: result.result });
+      return errorResponse(500, "INTERNAL_ERROR", "Could not create invite", requestId);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST /referral/claim
+//
+// The invitee names a CADENCE, never a product id: the server owns the
+// cadence -> live SKU mapping so a client can never ask to be sold legacy
+// pricing or another plan's code.
+// ---------------------------------------------------------------------------
+
+const ClaimSchema = z.object({
+  code: z.string().trim().min(1).max(64),
+  cadence: z.enum(["monthly", "annual"]),
+}).strict();
+
+type ClaimRpc = {
+  result:
+    | "claimed"
+    | "invalid"
+    | "self_share"
+    | "reciprocity_blocked"
+    | "already_received"
+    | "pool_empty";
+  replay?: boolean;
+  invite_id?: string;
+  code?: string;
+  product_id?: string;
+  apple_expires_at?: string;
+};
+
+async function handleClaim(req: Request, requestId: string): Promise<Response> {
+  const supabase = createServiceClient();
+
+  const auth = await getUser(req, supabase, requestId);
+  if (!auth.ok) return auth.response;
+
+  const rl = await checkRateLimit(auth.userId, requestId, "billing");
+  if (!rl.ok) return rl.response;
+
+  const flag = await loadFlag(supabase, requestId);
+  if (!flag.ok) return flag.response;
+  if (!flag.config.enabled) {
+    return errorResponse(403, "FEATURE_DISABLED", "Referral codes are not available", requestId);
+  }
+
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return errorResponse(400, "VALIDATION_ERROR", "Invalid JSON body", requestId);
+  }
+  const parsed = ClaimSchema.safeParse(raw);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const where = issue?.path?.length ? `${issue.path.join(".")}: ` : "";
+    return errorResponse(
+      400,
+      "VALIDATION_ERROR",
+      `${where}${issue?.message ?? "Invalid request body"}`,
+      requestId,
+    );
+  }
+
+  const targetProduct = flag.config.liveProducts[parsed.data.cadence];
+  if (!targetProduct) {
+    console.error("[referral/claim] live_products missing a cadence", {
+      requestId,
+      cadence: parsed.data.cadence,
+    });
+    return errorResponse(500, "INTERNAL_ERROR", "Referral products are not configured", requestId);
+  }
+
+  const { data, error } = await supabase.rpc("claim_referral_code", {
+    p_code: parsed.data.code,
+    p_user_id: auth.userId,
+    p_target_product_id: targetProduct,
+  });
+
+  if (error) {
+    console.error("[referral/claim] rpc failed", { requestId, error: error.message });
+    return errorResponse(500, "INTERNAL_ERROR", "Could not claim code", requestId);
+  }
+
+  const result = (data ?? {}) as ClaimRpc;
+
+  switch (result.result) {
+    case "invalid":
+      // Same answer for unknown, lapsed, exhausted and wrong-type codes, so
+      // the response never reveals which code system was probed (PRD 10.5.7).
+      return errorResponse(404, "INVALID_CODE", "This code is not valid", requestId);
+    case "self_share":
+      return errorResponse(409, "SELF_SHARE", "You cannot redeem your own invite", requestId);
+    case "reciprocity_blocked":
+      return errorResponse(
+        409,
+        "RECIPROCITY_BLOCKED",
+        "You cannot redeem an invite from someone you already invited",
+        requestId,
+      );
+    case "already_received":
+      return errorResponse(
+        409,
+        "ALREADY_RECEIVED",
+        "This Apple account has already used a referral offer",
+        requestId,
+      );
+    case "pool_empty":
+      return errorResponse(503, "POOL_UNAVAILABLE", "This offer is temporarily unavailable", requestId);
+    case "claimed":
+      console.log("[referral/claim] code claimed", {
+        requestId,
+        invite_id: result.invite_id,
+        product_id: result.product_id,
+        replay: result.replay === true,
+      });
+      return successResponse({
+        claimed: true,
+        replay: result.replay === true,
+        code: result.code,
+        product_id: result.product_id,
+        apple_expires_at: result.apple_expires_at,
+      }, requestId);
+    default:
+      console.error("[referral/claim] unexpected rpc result", { requestId, result: result.result });
+      return errorResponse(500, "INTERNAL_ERROR", "Could not claim code", requestId);
+  }
 }
