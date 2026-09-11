@@ -19,6 +19,15 @@ import { verifyAppleJws, type AppleJwsResult } from "../_shared/apple_jws.ts";
 
 const BUNDLE_ID = "com.relentlessmentaltoughness.relentless";
 
+// Apple offerType 3 is a subscription offer code — the mechanism the referral
+// invitee redeems. 1 is introductory, 2 promotional, 4 win-back.
+const APPLE_OFFER_TYPE_CODE = 3;
+
+// Notifications that mean money actually moved for an offer-code subscription.
+// An intro-eligible invitee trials first and converts at DID_RENEW; a lapsed
+// subscriber starts paying immediately at SUBSCRIBED.
+const REWARDING_NOTIFICATIONS = new Set(["SUBSCRIBED", "DID_RENEW", "OFFER_REDEEMED"]);
+
 // ---------------------------------------------------------------------------
 // JWS decode helper (matches purchases/index.ts — decode only, no sig verify)
 // ---------------------------------------------------------------------------
@@ -545,6 +554,62 @@ Deno.serve(async (req) => {
         );
       }
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Referral reward release (PRD 10.5.5)
+  //
+  // Apple has confirmed a transaction carrying an offer CODE that is not a
+  // free trial, which is the only thing that can release a teammate-share
+  // reward. Whether it actually does is decided in SQL: it requires a claimed
+  // invite whose issued code carries exactly this reference name, and both
+  // caps unused. A code redeemed outside our flow finds no invite and pays
+  // nobody.
+  //
+  // Deliberately not gated on referral_offer_enabled. Apple has already
+  // charged this account a discounted price, so the reward is a fact to
+  // record rather than a choice; the kill switch stops new invites, claims
+  // and offer signing. Failures here are logged and swallowed — a referral
+  // problem must never cost us a billing notification.
+  // -------------------------------------------------------------------------
+
+  if (
+    txInfo &&
+    notificationType &&
+    txInfo.offerType === APPLE_OFFER_TYPE_CODE &&
+    typeof txInfo.offerIdentifier === "string" &&
+    txInfo.offerIdentifier.length > 0 &&
+    !isFreeTrialTx(txInfo) &&
+    REWARDING_NOTIFICATIONS.has(notificationType)
+  ) {
+    const offerIdentifier = txInfo.offerIdentifier;
+    const rewardProductId =
+      txInfo.productId ?? renewalInfo?.productId ?? renewalInfo?.autoRenewProductId ?? null;
+    pendingWork.push((async () => {
+      try {
+        const { data, error } = await supabase.rpc("release_referral_reward", {
+          p_invitee_user_id: entRow.user_id,
+          p_original_transaction_id: originalTransactionId,
+          p_offer_identifier: offerIdentifier,
+          p_product_id: rewardProductId,
+        });
+        if (error) {
+          console.error("[apple-notifications] Referral reward release failed", {
+            originalTransactionId,
+            notificationType,
+            error: error.message,
+          });
+          return;
+        }
+        console.log("[apple-notifications] Referral reward release", {
+          originalTransactionId,
+          notificationType,
+          result: data,
+        });
+      } catch (err) {
+        console.error("[apple-notifications] Referral reward release threw", err);
+      }
+    })());
   }
 
   // -------------------------------------------------------------------------
