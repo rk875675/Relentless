@@ -19,11 +19,28 @@ import {
   type ValidatedPromoCode,
 } from '@/lib/promo-codes';
 import { savePendingPromoCode } from '@/lib/promo-code-state';
+import {
+  claimReferralCode,
+  isReferralEnabled,
+  looksLikeOfferCode,
+  presentAppleOfferCodeSheet,
+  type ReferralCadence,
+  type ReferralClaimErrorCode,
+} from '@/lib/referral';
+import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { colors, spacing } from '@/lib/theme';
 
 // ---------------------------------------------------------------------------
 // HUMAN INPUT NEEDED — placeholder copy. Every user-facing string for the
 // promo-code sheet lives in this one block; review/replace before release.
+//
+// The referral strings below are additionally constrained by PRD 10.5.9: they
+// must anchor on the teammate's first payment rather than trial completion,
+// must say the discount covers one billing period and then returns to full
+// price, and must never say "this month" to someone who may be on annual.
+// No discount percentage is stated anywhere here on purpose — "20% off" may
+// only be shown once the configured App Store price points are confirmed to
+// be at least 20% below list.
 // ---------------------------------------------------------------------------
 const COPY = {
   title: 'Enter your code',
@@ -35,7 +52,42 @@ const COPY = {
   alreadyUsed: 'This code has already been used.',
   alreadyEntitled: 'You already have an active subscription.',
   redeemFailed: 'Could not redeem your code. Please try again.',
+  // --- referral path ---
+  cadenceTitle: 'Choose your plan',
+  cadenceMonthly: 'Monthly',
+  cadenceAnnual: 'Annual',
+  cadenceBack: 'Back',
+  redeemTitle: 'Redeem in the App Store',
+  redeemInstructions:
+    'Enter this code on the next screen to start your subscription. Press and hold to copy it.',
+  redeemOpen: 'Continue',
+  redeemDone: 'Done',
+  referralUnavailable: 'This offer is temporarily unavailable. Please try again later.',
+  referralSelfShare: 'You cannot use your own invite.',
+  referralAlreadyReceived: 'This account has already used a referral offer.',
 };
+
+/** Which pane of the sheet is showing. Entry is the only creator-path pane. */
+type Step = 'entry' | 'cadence' | 'redeem';
+
+function referralErrorCopy(code: ReferralClaimErrorCode): string {
+  switch (code) {
+    case 'SELF_SHARE':
+    case 'RECIPROCITY_BLOCKED':
+      return COPY.referralSelfShare;
+    case 'ALREADY_RECEIVED':
+      return COPY.referralAlreadyReceived;
+    case 'POOL_UNAVAILABLE':
+      return COPY.referralUnavailable;
+    case 'NETWORK':
+      return COPY.network;
+    // INVALID_CODE, FEATURE_DISABLED and RATE_LIMITED all collapse into the
+    // generic error so the sheet never reveals which code system was probed,
+    // or that a referral system exists at all (PRD 10.5.7).
+    default:
+      return COPY.invalid;
+  }
+}
 
 type PromoCodeSheetProps = {
   visible: boolean;
@@ -56,11 +108,15 @@ export function PromoCodeSheet({
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [step, setStep] = useState<Step>('entry');
+  const [issuedCode, setIssuedCode] = useState('');
 
   const reset = () => {
     setCode('');
     setBusy(false);
     setError('');
+    setStep('entry');
+    setIssuedCode('');
   };
 
   const handleClose = () => {
@@ -77,6 +133,24 @@ export function PromoCodeSheet({
 
     const validated = await validatePromoCode(trimmed);
     if (!validated.ok) {
+      // Creator codes take precedence and their path is unchanged (PRD
+      // 10.5.10). Only a string the creator system does not recognize is
+      // offered to the referral system, and the two are told apart by which
+      // table owns the code rather than by inspecting the string — creator
+      // codes have no reserved format, so no prefix or length test would be
+      // safe.
+      if (
+        validated.reason === 'invalid' &&
+        session &&
+        looksLikeOfferCode(trimmed) &&
+        (await isReferralEnabled())
+      ) {
+        setBusy(false);
+        // The invitee picks a plan before redemption, and is always issued a
+        // code for the current live SKU for that cadence (PRD 10.5.4).
+        setStep('cadence');
+        return;
+      }
       setError(validated.reason === 'invalid' ? COPY.invalid : COPY.network);
       setBusy(false);
       return;
@@ -124,6 +198,44 @@ export function PromoCodeSheet({
     onValidatedPreAuth(validated.data);
   };
 
+  // -------------------------------------------------------------------------
+  // Referral path (PRD 10.5.4)
+  // -------------------------------------------------------------------------
+
+  const handleCadence = async (cadence: ReferralCadence) => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+
+    const claimed = await claimReferralCode(code.trim(), cadence);
+    setBusy(false);
+
+    if (!claimed.ok) {
+      setError(referralErrorCopy(claimed.errorCode));
+      setStep('entry');
+      return;
+    }
+
+    // Not necessarily the string they typed: choosing the other cadence
+    // issues the code for that plan instead, so the redeem pane has to show
+    // whatever the server actually bound.
+    setIssuedCode(claimed.code);
+    setStep('redeem');
+  };
+
+  const handlePresentRedemption = async () => {
+    if (busy) return;
+    setBusy(true);
+    await presentAppleOfferCodeSheet();
+    // Apple neither reports whether the user redeemed nor which code was
+    // used, so this only syncs whatever StoreKit now has. The reward itself
+    // is released server-side from Apple's notification, never from here.
+    await restorePurchasesViaStoreKit().catch(() => undefined);
+    setBusy(false);
+    reset();
+    onRedeemed();
+  };
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
       <Pressable style={styles.backdrop} onPress={handleClose}>
@@ -133,6 +245,79 @@ export function PromoCodeSheet({
         >
           {/* Stop backdrop-press from closing when tapping the card itself. */}
           <Pressable style={styles.card} onPress={() => {}}>
+            {step === 'cadence' ? (
+              <>
+                <Text style={styles.title}>{COPY.cadenceTitle}</Text>
+
+                {(['monthly', 'annual'] as const).map((cadence) => (
+                  <TouchableOpacity
+                    key={cadence}
+                    style={[styles.button, styles.cadenceButton, busy && styles.buttonDisabled]}
+                    onPress={() => {
+                      void handleCadence(cadence);
+                    }}
+                    disabled={busy}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.buttonText}>
+                      {cadence === 'monthly' ? COPY.cadenceMonthly : COPY.cadenceAnnual}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+
+                {busy ? <ActivityIndicator color={colors.white} style={styles.spinner} /> : null}
+
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => {
+                    if (!busy) setStep('entry');
+                  }}
+                  disabled={busy}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.cancelText}>{COPY.cadenceBack}</Text>
+                </TouchableOpacity>
+              </>
+            ) : step === 'redeem' ? (
+              <>
+                <Text style={styles.title}>{COPY.redeemTitle}</Text>
+
+                {/* Apple's redemption sheet cannot be pre-filled, so the code
+                    has to be readable and copyable here. */}
+                <Text style={styles.issuedCode} selectable>
+                  {issuedCode}
+                </Text>
+
+                <Text style={styles.instructions}>{COPY.redeemInstructions}</Text>
+
+                <TouchableOpacity
+                  style={[styles.button, busy && styles.buttonDisabled]}
+                  onPress={() => {
+                    void handlePresentRedemption();
+                  }}
+                  disabled={busy}
+                  activeOpacity={0.85}
+                >
+                  {busy ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <Text style={styles.buttonText}>{COPY.redeemOpen}</Text>
+                  )}
+                </TouchableOpacity>
+
+                {/* Closing here is safe: the code stays bound to this account,
+                    so re-entering it resolves to the same invite. */}
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={handleClose}
+                  disabled={busy}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.cancelText}>{COPY.redeemDone}</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
             <Text style={styles.title}>{COPY.title}</Text>
 
             <TextInput
@@ -176,6 +361,8 @@ export function PromoCodeSheet({
             >
               <Text style={styles.cancelText}>{COPY.cancel}</Text>
             </TouchableOpacity>
+              </>
+            )}
           </Pressable>
         </KeyboardAvoidingView>
       </Pressable>
@@ -235,6 +422,23 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: colors.white, fontSize: 16, fontWeight: '700' },
+  cadenceButton: { marginBottom: spacing.md },
+  spinner: { marginTop: spacing.sm },
+  issuedCode: {
+    color: colors.white,
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 3,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  instructions: {
+    color: colors.textMuted,
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+    lineHeight: 20,
+  },
   cancelBtn: {
     marginTop: spacing.md,
     alignItems: 'center',
