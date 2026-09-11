@@ -605,6 +605,17 @@ export default function OnboardingSignupScreen() {
       // stranded here and the claim would never run. Send them to the paywall,
       // which finishes the claim — the same hop the email path makes below.
       if (await loadPendingReferralClaim()) {
+        // Persist the onboarding answers first, exactly as the email path
+        // does. They arrive as route params and are otherwise lost, since
+        // nothing downstream of the paywall collects them again.
+        if (competitionDate) {
+          const comp = Array.isArray(competitionDate) ? competitionDate[0] : competitionDate;
+          if (comp) await updateCompetitionDate(comp).catch(() => {});
+        }
+        const sportTrim = sportArg?.trim();
+        if (sportTrim) {
+          await updateSport(sportTrim).catch(() => {});
+        }
         setTimeout(() => {
           router.push('/(onboarding)/paywall');
         }, 300);
