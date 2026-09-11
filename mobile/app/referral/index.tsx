@@ -70,6 +70,9 @@ const COPY = {
     'Submitted to Apple. Your discount takes effect at your next billing date once Apple confirms it.',
 
   ineligibleSubscription: 'Inviting is available to subscribers on an active plan.',
+  // A trial user IS on an active plan, so the string above would mislead them.
+  // The sharer must have paid at least once.
+  ineligibleTrial: 'Inviting unlocks after your first payment goes through.',
   ineligibleAutoRenewOff:
     'Turn your subscription renewal back on to invite a teammate.',
   ineligibleBilling: 'We could not confirm your subscription with the App Store.',
@@ -84,8 +87,12 @@ const COPY = {
     'You already have an offer on your next renewal. Apple allows only one at a time.',
 };
 
+// Covers every Reason the eligibility endpoint can return; the default is the
+// set of states that all mean "not a paying subscriber right now".
 function ineligibleCopy(reason: string | null): string {
   switch (reason) {
+    case 'trial_not_paid':
+      return COPY.ineligibleTrial;
     case 'auto_renew_off':
       return COPY.ineligibleAutoRenewOff;
     case 'give_slot_used':
@@ -98,8 +105,7 @@ function ineligibleCopy(reason: string | null): string {
     case 'feature_disabled':
     case 'unknown_cadence':
       return COPY.ineligibleUnavailable;
-    // no_apple_subscription, trial_not_paid, not_active, revoked,
-    // no_original_transaction_id
+    // no_apple_subscription, not_active, revoked, no_original_transaction_id
     default:
       return COPY.ineligibleSubscription;
   }
