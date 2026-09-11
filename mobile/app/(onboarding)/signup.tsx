@@ -28,6 +28,7 @@ import { clearOnboardingProgress, loadOnboardingAnswers } from '@/lib/onboarding
 import { postGrantJournalWithRetry } from '@/lib/pending-grant-journal';
 import { redeemPromoCode } from '@/lib/promo-codes';
 import { clearPendingPromoCode, loadPendingPromoCode } from '@/lib/promo-code-state';
+import { loadPendingReferralClaim } from '@/lib/referral-claim-state';
 import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
 import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
 import { supabase } from '@/lib/supabase';
@@ -597,6 +598,17 @@ export default function OnboardingSignupScreen() {
       }
       // Pre-paywall (rare path) — let RouteGuard / useSocialSignIn-style routing happen
       // via session change. Nothing else to do here.
+      //
+      // Except for a referral invitee, who was sent here to create an account
+      // with a claim already stashed. RouteGuard has no branch for a signed-in
+      // user sitting on signup with onboarding incomplete, so they would be
+      // stranded here and the claim would never run. Send them to the paywall,
+      // which finishes the claim — the same hop the email path makes below.
+      if (await loadPendingReferralClaim()) {
+        setTimeout(() => {
+          router.push('/(onboarding)/paywall');
+        }, 300);
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Could not sign in.';
       if (isPostPaywall) {

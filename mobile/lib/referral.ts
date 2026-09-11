@@ -243,6 +243,30 @@ function isCancellation(err: unknown): boolean {
 }
 
 /**
+ * Finishes one transaction, retrying once, and never throwing.
+ *
+ * Isolating each finish matters: the purchase has already gone through by this
+ * point, so one failure must not abandon the remaining transactions, and it
+ * must not escape into the caller's error path either — that would report a
+ * completed purchase as failed and invite the user to buy again.
+ */
+async function finishQuietly(
+  iap: NonNullable<ReturnType<typeof loadExpoIap>>,
+  purchase: Parameters<typeof iap.finishTransaction>[0]['purchase'],
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      // isConsumable false: this is an auto-renewing subscription.
+      await iap.finishTransaction({ purchase, isConsumable: false });
+      return true;
+    } catch {
+      // fall through to the retry
+    }
+  }
+  return false;
+}
+
+/**
  * Applies the sharer's earned reward by buying their own subscription with a
  * server-signed promotional offer attached.
  *
@@ -322,9 +346,18 @@ export async function applySharerReward(): Promise<ApplyRewardResult> {
       return { ok: false, reason: 'purchase_failed' };
     }
 
+    let unfinished = 0;
     for (const purchase of purchases) {
-      // isConsumable false: this is an auto-renewing subscription.
-      await iap.finishTransaction({ purchase, isConsumable: false });
+      if (!(await finishQuietly(iap, purchase))) unfinished += 1;
+    }
+
+    if (unfinished > 0) {
+      // Worth surfacing: an unfinished transaction is the leak PRD 10.5.10
+      // warns about. The purchase itself still succeeded, so this is reported
+      // as success rather than prompting the user to buy again.
+      console.warn('[referral] promotional offer purchase left transactions unfinished', {
+        unfinished,
+      });
     }
 
     return { ok: true };
