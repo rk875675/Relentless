@@ -217,11 +217,18 @@ At launch, the only paid access model is subscription-based access.
 Premium is the only access tier after onboarding.
 Do not design a separate freemium product model for V1.
 The paywall should appear after the onboarding / sample experience.
-Subscription purchase options (initial — may change before launch):
-Monthly: $4.99/month with a 3-day free trial.
-Annual: $3.49/month (billed annually) with a 7-day free trial.
-Both are auto-renewable subscriptions in the same subscription group.
-App Store product IDs: com.relentless.monthly, com.relentless.annual.
+Subscription purchase options (actual live state — may change before launch):
+Four auto-renewable SKUs exist in one subscription group. The `.b` SKUs are the
+current live price variant sold by the onboarding paywall; the base SKUs remain
+active for legacy subscribers who bought before the price change and must keep
+being supported everywhere (offers, reminders, entitlement sync).
+com.relentless.monthly — $4.99/month, 3-day free trial. Legacy subscribers only.
+com.relentless.annual — $39.99/year, 7-day free trial. Legacy subscribers only.
+com.relentless.monthly.b — $7.99/month, 3-day free trial. Live paywall (secondary).
+com.relentless.annual.b — $59.99/year, 7-day free trial. Live paywall (primary).
+Which SKUs a paywall sells is controlled in Superwall, not in the app binary.
+Any monetization feature that references "the user's plan" must resolve the exact
+owned SKU from server-side entitlement state, never assume a price or cadence.
 iOS bundle identifier and Android applicationId for release builds: com.relentlessmentaltoughness.relentless.
 Support purchase restoration.
 iOS monetization architecture
@@ -244,6 +251,177 @@ Wording correction incorporated
 This PRD no longer frames billing provider choice as open-ended.
 Baseline iOS purchase path is locked to Apple IAP / StoreKit, with Superwall as the paywall layer.
 Initial pricing is locked above; final pricing may be adjusted before launch.
+
+10.5. Referral offer — teammate share
+
+10.5.1 Purpose and reward shape
+An existing paid subscriber shares Relentless with one teammate or friend.
+If that friend starts a subscription and converts to paid, both sides receive
+20% off exactly one billing period, then return to full price.
+The discounted period matches the plan each side actually owns, so a monthly
+subscriber's discount is one month and an annual subscriber's is one year.
+Paid conversion is the only trigger. Starting a free trial never triggers a reward.
+The goal is inherent virality with no exploitable surface.
+
+10.5.2 Two distinct Apple mechanisms
+These are different Apple features and must never be collapsed into one path.
+Invitee (never subscribed on Apple, or lapsed) uses an Apple offer code.
+Signed promotional offers are rejected by Apple for never-subscribed Apple IDs,
+so an offer code is the only mechanism available for a new subscriber.
+Sharer (existing paid subscriber) uses a signed Apple promotional offer.
+The offer signature is minted server-side; the In-App Purchase key never
+reaches the client.
+Do not implement either discount by writing entitlements, by extending the
+Relentless creator promo-code system with a percent-off type, or by granting a
+Relentless-side entitlement. None of those change what Apple charges.
+Do not use subscription renewal-date extension (free days) as the discount.
+It is the wrong mechanism, is capped by Apple at two per year, and does not
+produce a cheaper receipt.
+
+10.5.3 Sharer eligibility
+The share CTA is shown only to a user who is all of the following:
+has a Relentless account with an Apple-backed entitlement,
+has status active and paid (not trial, not a promo grant, not expired),
+has auto-renew on (has not cancelled),
+is not in billing retry or grace,
+has a non-null Apple original_transaction_id,
+and has not already consumed their give slot for the current billing period.
+There is no pre-renewal timing window. Apple applies a same-product promotional
+offer at the subscriber's next billing event regardless of when it is redeemed,
+so the sharer may apply at any point in their period.
+Eligibility is computed server-side only. The client never decides eligibility
+and never marks a billing period as used.
+
+10.5.4 Invitee flow — redemption is in-app only
+Redeeming an Apple offer code is itself the subscription purchase. An invitee
+does not redeem a code and then also buy through the paywall.
+The share message contains an App Store link to the app plus the code as text.
+Apple redeem URLs are not distributed, because redemption outside the app
+destroys attribution and bypasses onboarding.
+The invitee installs or opens Relentless, reaches the onboarding paywall, and
+enters the code in the existing "Have a code?" entry point. A router classifies
+the string: an existing Relentless creator code follows the current creator path
+unchanged and takes precedence; a referral code follows the new Apple path.
+The invitee chooses monthly or annual before redemption, and is always issued a
+code for the current live SKU for that cadence. Legacy pricing is never sold to
+a new subscriber.
+The client claims the code server-side before presenting Apple's redemption
+sheet, then presents StoreKit's code redemption sheet. Apple starts the
+subscription: an intro-eligible invitee receives the normal free trial first and
+converts into the discounted period; a previously-expired invitee has already
+consumed their intro offer and begins at the discounted paid period immediately.
+
+10.5.5 Attribution
+Apple does not disclose which individual one-time code was redeemed. Notifications
+and transactions carry only the offer reference name and offer type, which are
+identical for every code in a batch. Nothing in this feature may depend on Apple
+identifying a specific code.
+Attribution therefore binds the code to the invite server-side at claim time,
+immediately before the redemption sheet is presented.
+A reward is released only when all three of the following hold:
+the redeemed string matched an issued, unclaimed referral code bound to an invite,
+Apple confirms a successful paid transaction carrying the referral offer type and
+our offer reference name on that account's original_transaction_id,
+and the receive cap for that original_transaction_id is unused.
+A client claim with no corresponding Apple paid transaction earns nothing.
+
+10.5.6 What "discount applied" means
+No Relentless-side flag is ever set from the client.
+Invitee applied means the offer code was redeemed and the first paid transaction
+for that original_transaction_id carries that offer identifier.
+Sharer applied means the promotional offer was confirmed by Apple and a webhook
+or App Store Server API read shows the offer on the next renewal.
+Until Apple confirms, the sharer's UI says the reward is waiting on the
+teammate's first payment, or is ready to apply. It never states that the next
+charge will be discounted.
+If the sharer never applies, they are not discounted. The ready-to-apply state
+persists until they apply, the offer eligibility lapses, or they cancel.
+
+10.5.7 Caps, slots, and anti-exploit rules
+All caps are server-authoritative and keyed on Apple original_transaction_id plus
+billing period plus role (gave or received), and additionally bound to user_id.
+A sharer may have up to 5 open invites per billing period.
+The give slot is consumed only when a friend's first paid charge succeeds, so
+unredeemed invites never burn a period.
+A sharer earns at most one reward per billing period. Additional conversions in
+the same period are discarded, and this limit is disclosed in the share UI before
+the user invites anyone. Rewards are never queued or stacked: Apple permits only
+one active promotional offer at a time, and accepting a second cancels the first.
+A conversion in a later billing period earns a new reward for that period.
+One inbound receive per Apple original_transaction_id. Apple independently
+enforces one code per active offer per Apple ID.
+Invite TTL is 90 days and governs slot recycling only. Because an individual Apple
+code cannot be revoked, a conversion still earns the sharer a reward whenever it
+occurs up to the Apple code expiry, provided the invite binding exists.
+Self-share is rejected: same user_id or same original_transaction_id.
+Pairwise reciprocity is permanently blocked: if A has ever been the sharer for B,
+B can never be the sharer for A.
+A holder of a Relentless creator promo grant may redeem a referral code and does
+earn the sharer a reward, because the outcome is a new paying Apple subscriber.
+Unknown, exhausted, expired, and wrong-type codes all return the same invalid
+error, so the response never reveals which code system was probed.
+Invite creation, code validation, redemption claim, and offer-signature endpoints
+are all billing-class rate limited. Redemption claim and reward release are
+idempotent.
+If the code pool is exhausted or a batch has not been loaded, sharing fails
+closed with a safe error. A code is never invented or synthesized.
+
+10.5.8 Presentation
+The share CTA appears as an in-app popup after the user finishes a lesson and
+returns to the home screen, at most twice per calendar month, and only when the
+user is currently eligible.
+The home screen has no modal coordinator today, so the referral popup must have
+explicit priority against the existing streak-freebie modal, push-permission
+prompt, and native review prompt, and must never present alongside them.
+Profile contains a referral space that is share-only: invite status, how the
+offer works, and the apply action when a reward is ready. Profile does not accept
+code entry, because an active subscriber cannot use a new-subscriber offer code.
+
+10.5.9 Copy constraints
+Final strings are not locked here and must not be invented during implementation.
+Copy anchors on the teammate's first payment, never on trial completion, because
+previously-expired invitees receive no trial.
+Copy states that the discount covers one billing period and then returns to full
+price, and never says "this month" to a user who may be on annual.
+Copy never claims the sharer's next charge is discounted before Apple has
+accepted the promotional offer.
+"20% off" is only displayed where the configured App Store price point is at
+least 20% below list. Where an exact 20% point does not exist, the selected point
+must be at or below 0.8 times list, so the stated discount is never overstated.
+
+10.5.10 Existing systems that must not change
+The mobile promo-code sheet, the Superwall custom action that opens it, the
+creator promo-code endpoints, and the promo-admin tooling keep their current
+behavior. The referral path is added behind a router, not by replacing them.
+Relentless creator codes and Apple offer codes must remain distinguishable, so
+the two systems can never be confused by a single entered string.
+The trial-reminder email is a separate pre-bill notification and is not reused
+as the share CTA.
+The Apple notification handler must persist the offer identifier and offer type,
+which it does not store today, and must become idempotent per notification.
+That hardening ships and is verified in production as its own release, before any
+referral surface is enabled.
+The sharer's apply action introduces the first purchase path outside Superwall.
+Its transaction must be finished correctly so it cannot leak into entitlement
+auto-restore or the restore endpoint.
+
+10.5.11 Rollout
+The feature ships behind a server-side kill switch, defaulted off.
+Order is: notification hardening, then sandbox verification, then TestFlight,
+then a limited percentage of production users.
+No step may change entitlement behavior for existing live subscribers.
+
+10.5.12 Human-step inputs still required
+Exact App Store price points for each of the four promotional offers. Three are
+effectively exact at 20% ($4.99 to $3.99, $39.99 to $31.99, $59.99 to $47.99).
+The $7.99 monthly SKU has no exact 20% point and requires a decision from the
+App Store Connect extended price list.
+Final user-facing copy for the popup, share message, apply sheet, waiting state,
+and error states.
+Confirmation of whether promotional-offer signing reuses the existing In-App
+Purchase key or requires a separate key.
+Note that the App Store Connect setting allowing the introductory offer to run
+before the offer code cannot be changed or reverted once saved.
 
 11. Core architecture decisions
 Baseline stack for Relentless is React Native + Expo for the iOS app, Supabase for auth/backend/database, Apple IAP / StoreKit for iOS digital subscription purchases, Superwall for paywall presentation and purchase flow orchestration, and Upstash Redis for rate limiting.
