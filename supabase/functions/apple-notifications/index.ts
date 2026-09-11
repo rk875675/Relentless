@@ -464,6 +464,26 @@ Deno.serve(async (req) => {
         source: "apple",
         // Never blank out a known product_id with a payload that omits it.
         ...(productId ? { product_id: productId } : {}),
+        // Renewal state, used only by referral-offer eligibility (PRD 10.5.3):
+        // auto-renew must be ON, and we must not stack a second promotional
+        // offer. Written only when Apple actually sent renewalInfo — absent
+        // renewalInfo means "no information", not "no offer", so we leave the
+        // previous values alone rather than wrongly clearing them. When
+        // renewalInfo IS present, a missing offerIdentifier genuinely means no
+        // offer is attached to the next renewal, so null is correct.
+        ...(renewalInfo
+          ? {
+              auto_renew_status:
+                typeof renewalInfo.autoRenewStatus === "number"
+                  ? renewalInfo.autoRenewStatus
+                  : null,
+              renewal_product_id:
+                renewalInfo.autoRenewProductId ?? renewalInfo.productId ?? null,
+              renewal_offer_identifier: renewalInfo.offerIdentifier ?? null,
+              renewal_offer_type:
+                typeof renewalInfo.offerType === "number" ? renewalInfo.offerType : null,
+            }
+          : {}),
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", entRow.user_id);
@@ -497,6 +517,7 @@ Deno.serve(async (req) => {
             expires_at: synced.expiresAt,
             original_transaction_id: originalTransactionId,
             environment: data?.environment ?? null,
+            auto_renew_status: renewalInfo?.autoRenewStatus ?? null,
             ...offerMeta,
           },
         }),
