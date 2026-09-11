@@ -28,6 +28,7 @@ import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { MAX_SPORT_LEN, OTHER_SENTINEL, PRESET_SPORTS, isPresetSport } from '@/lib/sport-presets';
 import { SUPERWALL_ENABLED } from '@/lib/superwall-config';
 import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
+import { isReferralEnabled } from '@/lib/referral';
 import { supabase } from '@/lib/supabase';
 import { LEGAL_PRIVACY_POLICY_URL, LEGAL_TERMS_OF_USE_URL } from '@/lib/legal-urls';
 import { registerForPushNotifications, disablePushReminders } from '@/lib/push-notifications';
@@ -79,6 +80,7 @@ export default function ProfileScreen() {
     refreshUserState,
     revokePremiumForTesting,
     isDevAccount,
+    hasPremiumAccess,
   } = useAuth();
   const router = useRouter();
   const [streak, setStreak] = useState<Streak | null>(null);
@@ -100,10 +102,26 @@ export default function ProfileScreen() {
   const [devToolsVisible, setDevToolsVisible] = useState(false);
   const [profileStatsError, setProfileStatsError] = useState('');
   const [profileStatsLoading, setProfileStatsLoading] = useState(false);
+  const [referralVisible, setReferralVisible] = useState(false);
 
   useEffect(() => {
     if (isDevAccount) setDevToolsVisible(true);
   }, [isDevAccount]);
+
+  // The referral space is share-only and only meaningful to a subscriber, so
+  // the row stays hidden unless the feature is on and this user has access.
+  // Whether they can actually invite right now is decided server-side inside
+  // the screen itself (PRD 10.5.3).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const on = await isReferralEnabled();
+      if (!cancelled) setReferralVisible(on);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const persistCompDate = useCallback(
     async (date: string | null) => {
@@ -585,6 +603,27 @@ export default function ProfileScreen() {
           last
         />
       </View>
+
+      {/* Referral — share-only. Code entry deliberately lives on the paywall
+          instead: an active subscriber cannot use a new-subscriber offer code
+          (PRD 10.5.8). */}
+      {referralVisible && hasPremiumAccess && (
+        <>
+          <Text style={styles.sectionLabel}>INVITE</Text>
+          <View style={styles.rowsContainer}>
+            <ProfileRow
+              icon="gift-outline"
+              label="Invite a teammate"
+              chevron
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/referral' as any);
+              }}
+              last
+            />
+          </View>
+        </>
+      )}
 
       {/* Legal */}
       <Text style={styles.sectionLabel}>LEGAL</Text>

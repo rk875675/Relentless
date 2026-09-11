@@ -282,6 +282,7 @@ function RouteGuard() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="lesson/[id]" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
       <Stack.Screen name="journal/index" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="referral/index" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen
         name="journal/wod-day/[day]"
         options={{
