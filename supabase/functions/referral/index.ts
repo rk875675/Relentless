@@ -123,6 +123,15 @@ function clientIp(req: Request): string {
   return first && first.length > 0 ? first : "unknown";
 }
 
+/**
+ * The answer is one boolean and identical for every caller, so it is cached
+ * per instance. This matters because the rate-limit key below derives from
+ * x-forwarded-for, which a caller can rotate to get a fresh bucket — the
+ * cache means doing so buys no database work, only a cached boolean.
+ */
+let configCache: { enabled: boolean; at: number } | null = null;
+const CONFIG_CACHE_MS = 60_000;
+
 async function handleConfig(req: Request, requestId: string): Promise<Response> {
   // Pre-auth: rate limit by IP instead of user id, as promo-codes/validate does.
   const rl = await checkRateLimit(
@@ -132,10 +141,16 @@ async function handleConfig(req: Request, requestId: string): Promise<Response> 
   );
   if (!rl.ok) return rl.response;
 
+  const now = Date.now();
+  if (configCache && now - configCache.at < CONFIG_CACHE_MS) {
+    return successResponse({ enabled: configCache.enabled }, requestId);
+  }
+
   const supabase = createServiceClient();
   const flag = await loadFlag(supabase, requestId);
   if (!flag.ok) return flag.response;
 
+  configCache = { enabled: flag.config.enabled, at: now };
   return successResponse({ enabled: flag.config.enabled }, requestId);
 }
 
