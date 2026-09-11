@@ -99,6 +99,7 @@ async function forwardToSuperwall(rawBody: string): Promise<void> {
 type NotificationPayload = {
   notificationType?: string;
   subtype?: string;
+  notificationUUID?: string;
   version?: string;
   signedDate?: number;
   data?: {
@@ -116,6 +117,11 @@ type RenewalInfo = {
   autoRenewProductId?: string;
   autoRenewStatus?: number; // 0 = off (user cancelled), 1 = on
   gracePeriodExpiresDate?: number;
+  // Offer riding on the UPCOMING renewal: how Apple reports a redeemed
+  // promotional offer before it has actually been charged.
+  offerIdentifier?: string;
+  offerType?: number;
+  offerDiscountType?: string;
 };
 
 type TransactionInfo = {
@@ -125,6 +131,12 @@ type TransactionInfo = {
   isTrialPeriod?: boolean;
   is_trial_period?: boolean;
   offerDiscountType?: string;
+  // offerType 1 = introductory, 2 = promotional, 3 = offer code, 4 = win-back.
+  // The identifier is the App Store Connect reference name, which is shared by
+  // every code in a batch — Apple never discloses the individual code redeemed.
+  offerIdentifier?: string;
+  offerType?: number;
+  offerPeriod?: string;
   expiresDate?: number;
   revocationDate?: number;
 };
@@ -190,6 +202,93 @@ function computeSyncedEntitlement(
     status: isActive ? (isFreeTrialTx(txInfo) ? "trial" : "active") : "expired",
     expiresAt: txInfo.expiresDate ? new Date(txInfo.expiresDate).toISOString() : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Notification ledger (apple_notification_log)
+//
+// Two jobs: dedupe by notificationUUID, and persist the offer metadata Apple
+// gives us. Both are best-effort — a ledger failure must never drop or delay a
+// real billing event, so every path here degrades to "act on it anyway".
+// ---------------------------------------------------------------------------
+
+type ServiceClient = ReturnType<typeof createServiceClient>;
+
+type OfferMeta = {
+  offer_identifier: string | null;
+  offer_type: number | null;
+  offer_discount_type: string | null;
+  renewal_offer_identifier: string | null;
+  renewal_offer_type: number | null;
+};
+
+function extractOfferMeta(
+  txInfo: TransactionInfo | null,
+  renewalInfo: RenewalInfo | null,
+): OfferMeta {
+  return {
+    offer_identifier: txInfo?.offerIdentifier ?? null,
+    offer_type: typeof txInfo?.offerType === "number" ? txInfo.offerType : null,
+    offer_discount_type: txInfo?.offerDiscountType ?? null,
+    renewal_offer_identifier: renewalInfo?.offerIdentifier ?? null,
+    renewal_offer_type:
+      typeof renewalInfo?.offerType === "number" ? renewalInfo.offerType : null,
+  };
+}
+
+/**
+ * "fresh"     — not seen before (or a previous attempt did not complete): act on it.
+ * "duplicate" — already applied end-to-end: skip database writes.
+ */
+async function claimNotification(
+  supabase: ServiceClient,
+  notificationUuid: string | null,
+  row: Record<string, unknown>,
+): Promise<"fresh" | "duplicate"> {
+  // Apple always sends notificationUUID, but a missing one must not cost us a
+  // real event — fall through and process it as today.
+  if (!notificationUuid) return "fresh";
+  try {
+    const { error } = await supabase
+      .from("apple_notification_log")
+      .insert({ ...row, notification_uuid: notificationUuid });
+    if (!error) return "fresh";
+
+    if (error.code === "23505") {
+      const { data: existing } = await supabase
+        .from("apple_notification_log")
+        .select("processed_at")
+        .eq("notification_uuid", notificationUuid)
+        .maybeSingle();
+      if (existing?.processed_at) {
+        console.log("[apple-notifications] Duplicate notification, already applied", notificationUuid);
+        return "duplicate";
+      }
+      // Claimed but never completed — a prior attempt failed midway. Retry it.
+      return "fresh";
+    }
+
+    console.error("[apple-notifications] Ledger insert failed; processing anyway", error);
+    return "fresh";
+  } catch (err) {
+    console.error("[apple-notifications] Ledger unavailable; processing anyway", err);
+    return "fresh";
+  }
+}
+
+async function markNotificationProcessed(
+  supabase: ServiceClient,
+  notificationUuid: string | null,
+): Promise<void> {
+  if (!notificationUuid) return;
+  try {
+    await supabase
+      .from("apple_notification_log")
+      .update({ processed_at: new Date().toISOString() })
+      .eq("notification_uuid", notificationUuid);
+  } catch (err) {
+    console.error("[apple-notifications] Failed to mark notification processed", err);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -278,8 +377,32 @@ Deno.serve(async (req) => {
     return new Response("OK", { status: 200 });
   }
 
-  // Look up the owning user via the indexed original_transaction_id column.
   const supabase = createServiceClient();
+
+  // Record the notification and its offer metadata, and stop here if this exact
+  // notification has already been applied. Superwall has already been forwarded
+  // to above, so dedupe never withholds anything from their pipeline.
+  const offerMeta = extractOfferMeta(txInfo, renewalInfo);
+  const notificationUuid = notification.notificationUUID ?? null;
+  const claim = await claimNotification(supabase, notificationUuid, {
+    notification_type: notificationType ?? null,
+    subtype: subtype || null,
+    original_transaction_id: originalTransactionId,
+    product_id:
+      txInfo?.productId ?? renewalInfo?.productId ?? renewalInfo?.autoRenewProductId ?? null,
+    environment: data?.environment ?? null,
+    signed_date: notification.signedDate
+      ? new Date(notification.signedDate).toISOString()
+      : null,
+    ...offerMeta,
+  });
+
+  if (claim === "duplicate") {
+    await Promise.allSettled(pendingWork);
+    return new Response("OK", { status: 200 });
+  }
+
+  // Look up the owning user via the indexed original_transaction_id column.
   const { data: entRow } = await supabase
     .from("entitlements")
     .select("user_id, status, expires_at")
@@ -310,6 +433,9 @@ Deno.serve(async (req) => {
         notificationType,
         subtype,
       });
+      // Queued for purchases/restore to reconcile; a redelivery must not queue
+      // a second copy of the same notification.
+      pendingWork.push(markNotificationProcessed(supabase, notificationUuid));
     }
     await Promise.allSettled(pendingWork);
     return new Response("OK", { status: 200 });
@@ -371,9 +497,12 @@ Deno.serve(async (req) => {
             expires_at: synced.expiresAt,
             original_transaction_id: originalTransactionId,
             environment: data?.environment ?? null,
+            ...offerMeta,
           },
         }),
       );
+
+      pendingWork.push(markNotificationProcessed(supabase, notificationUuid));
 
       // Keep the PostHog person record accurate on every real state change so
       // dashboards segment on live subscription state, not launch-time state.
