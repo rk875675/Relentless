@@ -406,8 +406,10 @@ async function handleEligibility(req: Request, requestId: string): Promise<Respo
     period_end: null as string | null,
     open_invites: 0,
     max_open_invites: flag.config.maxOpenInvites,
+    invite_ttl_days: flag.config.ttlDays,
     has_active_renewal_offer: false,
     reward: null as EligibilityFacts["reward"],
+    invites: [] as InviteSummary[],
   };
 
   if (!flag.config.enabled) {
@@ -428,7 +430,73 @@ async function handleEligibility(req: Request, requestId: string): Promise<Respo
     open_invites: facts.openInvites ?? 0,
     has_active_renewal_offer: facts.hasActiveRenewalOffer ?? false,
     reward: facts.reward ?? null,
+    invites: await loadInvites(supabase, auth.userId, requestId),
   }, requestId);
+}
+
+type InviteSummary = {
+  id: string;
+  status: string;
+  /**
+   * Present only while the invite is still open. Once claimed, the code is
+   * bound to that invitee and re-sharing it does nothing, so handing it back
+   * would only invite confusion.
+   */
+  code: string | null;
+  invitee_product_id: string;
+  created_at: string;
+  ttl_expires_at: string;
+  claimed_at: string | null;
+  converted_at: string | null;
+};
+
+/**
+ * The sharer's own invites, so the share surface can re-share an invite that
+ * already exists. Without this the UI can only create, and every visit to the
+ * share screen would consume another code from a finite pool.
+ */
+async function loadInvites(
+  supabase: SupabaseClient,
+  userId: string,
+  requestId: string,
+): Promise<InviteSummary[]> {
+  const { data, error } = await supabase
+    .from("referral_invites")
+    .select(
+      "id, status, created_at, ttl_expires_at, claimed_at, converted_at, invitee_product_id, " +
+        "code:referral_offer_codes!referral_invites_code_id_fkey(code)",
+    )
+    .eq("sharer_user_id", userId)
+    .in("status", ["open", "claimed", "converted"])
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error) {
+    // A failure here costs the invite list, not the eligibility answer.
+    console.error("[referral] invite list read failed", { requestId, error: error.message });
+    return [];
+  }
+
+  // The generated types cannot describe an embed with an explicit FK hint,
+  // which is required here because referral_invites has three foreign keys
+  // into referral_offer_codes.
+  type Row = Omit<InviteSummary, "code"> & {
+    code: { code?: string } | { code?: string }[] | null;
+  };
+
+  return ((data ?? []) as unknown as Row[]).map((row) => {
+    const code = Array.isArray(row.code) ? row.code[0]?.code : row.code?.code;
+    return {
+      id: row.id,
+      status: row.status,
+      code: row.status === "open" ? (code ?? null) : null,
+      invitee_product_id: row.invitee_product_id,
+      created_at: row.created_at,
+      ttl_expires_at: row.ttl_expires_at,
+      claimed_at: row.claimed_at,
+      converted_at: row.converted_at,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
