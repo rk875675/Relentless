@@ -28,6 +28,11 @@ import { PromoCodeSheet } from '@/components/PromoCodeSheet';
 import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { clearOnboardingProgress, saveOnboardingProgress } from '@/lib/onboarding-local-state';
 import { subscribeTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
+import { isReferralEnabled } from '@/lib/referral';
+import {
+  loadPendingReferralClaim,
+  type PendingReferralClaim,
+} from '@/lib/referral-claim-state';
 
 let useSuperwall: any = () => ({
   registerPlacement: async () => {},
@@ -120,6 +125,27 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
     });
   };
 
+  /**
+   * Signup route for a pre-auth referral invitee.
+   *
+   * Deliberately omits postPaywall: that flow requires a verified purchase and
+   * throws without one. This invitee has not bought anything yet — redeeming
+   * the offer code IS their purchase, and it can only happen once the account
+   * exists, because claiming binds the code to a user.
+   */
+  const navigateToSignupForReferral = () => {
+    if (navigatedToSignup.current) return;
+    navigatedToSignup.current = true;
+    setPromoSheetVisible(false);
+    router.replace({
+      pathname: '/(onboarding)/signup' as any,
+      params: {
+        ...(sport ? { sport } : {}),
+        ...(competitionDate ? { competitionDate } : {}),
+      },
+    });
+  };
+
   // -------------------------------------------------------------------------
   // Promo codes: the Superwall paywall's "Have a code?" element fires the
   // PROMO_CODE_CUSTOM_ACTION custom action. Dismiss the Superwall sheet (a RN
@@ -129,6 +155,25 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
   // where the redemption runs right after the account exists.
   // -------------------------------------------------------------------------
   const [promoSheetVisible, setPromoSheetVisible] = useState(false);
+
+  // A referral invitee who chose a plan before signing up comes back here with
+  // an account. Reopen the sheet and finish the claim rather than making them
+  // type the code again. Inert unless the feature is on and a stash exists.
+  const [resumeReferral, setResumeReferral] = useState<PendingReferralClaim | null>(null);
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    void (async () => {
+      if (!(await isReferralEnabled())) return;
+      const pending = await loadPendingReferralClaim();
+      if (!pending || cancelled) return;
+      setResumeReferral(pending);
+      setPromoSheetVisible(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
   // Timestamp of the last paywallOpen event. Used by the presentation watchdog
   // below to detect the documented stale-config failure where registerPlacement
@@ -151,6 +196,7 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
 
   const handlePromoRedeemed = () => {
     setPromoSheetVisible(false);
+    setResumeReferral(null);
     // hasPremiumAccess flips on refresh → the effect below completes
     // onboarding for signed-in users and RouteGuard routes into the app.
     refreshUserState().catch(() => {});
@@ -403,12 +449,17 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
         </View>
       </ScrollView>
 
-      <PromoCodeSheet
-        visible={promoSheetVisible}
-        onClose={() => setPromoSheetVisible(false)}
-        onRedeemed={handlePromoRedeemed}
-        onValidatedPreAuth={handlePromoValidatedPreAuth}
-      />
+        <PromoCodeSheet
+          visible={promoSheetVisible}
+          onClose={() => {
+            setPromoSheetVisible(false);
+            setResumeReferral(null);
+          }}
+          onRedeemed={handlePromoRedeemed}
+          onValidatedPreAuth={handlePromoValidatedPreAuth}
+          onReferralPreAuth={navigateToSignupForReferral}
+          resumeReferral={resumeReferral}
+        />
     </SafeAreaView>
   );
 }

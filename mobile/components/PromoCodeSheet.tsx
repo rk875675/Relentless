@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -19,6 +19,11 @@ import {
   type ValidatedPromoCode,
 } from '@/lib/promo-codes';
 import { savePendingPromoCode } from '@/lib/promo-code-state';
+import {
+  clearPendingReferralClaim,
+  savePendingReferralClaim,
+  type PendingReferralClaim,
+} from '@/lib/referral-claim-state';
 import {
   claimReferralCode,
   isReferralEnabled,
@@ -96,6 +101,18 @@ type PromoCodeSheetProps = {
   onRedeemed: () => void;
   /** Pre-auth path: the code was validated and stashed; continue to signup. */
   onValidatedPreAuth: (validated: ValidatedPromoCode) => void;
+  /**
+   * Pre-auth referral path: the code and cadence are stashed, but claiming
+   * needs an account first. The paywall routes to signup, WITHOUT the
+   * post-paywall flow — that one demands a verified purchase, and this user
+   * has not bought anything yet.
+   */
+  onReferralPreAuth?: () => void;
+  /**
+   * Set when the paywall reopens the sheet after signup to finish a stashed
+   * referral claim. Sends the sheet straight to the claim step.
+   */
+  resumeReferral?: PendingReferralClaim | null;
 };
 
 export function PromoCodeSheet({
@@ -103,6 +120,8 @@ export function PromoCodeSheet({
   onClose,
   onRedeemed,
   onValidatedPreAuth,
+  onReferralPreAuth,
+  resumeReferral,
 }: PromoCodeSheetProps) {
   const { session } = useAuth();
   const [code, setCode] = useState('');
@@ -125,6 +144,17 @@ export function PromoCodeSheet({
     onClose();
   };
 
+  // Resuming after signup: the code and cadence were chosen before the account
+  // existed, so claim now rather than making the user type it a second time.
+  const resumeStarted = useRef(false);
+  useEffect(() => {
+    if (!visible || !resumeReferral || !session || resumeStarted.current) return;
+    resumeStarted.current = true;
+    setCode(resumeReferral.code);
+    void handleCadence(resumeReferral.cadence, resumeReferral.code);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, resumeReferral, session]);
+
   const handleSubmit = async () => {
     const trimmed = code.trim();
     if (!trimmed || busy) return;
@@ -141,8 +171,8 @@ export function PromoCodeSheet({
       // safe.
       if (
         validated.reason === 'invalid' &&
-        session &&
         looksLikeOfferCode(trimmed) &&
+        (session || onReferralPreAuth) &&
         (await isReferralEnabled())
       ) {
         setBusy(false);
@@ -202,19 +232,40 @@ export function PromoCodeSheet({
   // Referral path (PRD 10.5.4)
   // -------------------------------------------------------------------------
 
-  const handleCadence = async (cadence: ReferralCadence) => {
+  const handleCadence = async (cadence: ReferralCadence, codeOverride?: string) => {
     if (busy) return;
+    const entered = (codeOverride ?? code).trim();
+    if (!entered) return;
+
+    // No account yet: the claim has to wait, because binding the code to a
+    // user is what makes attribution work at all.
+    if (!session) {
+      await savePendingReferralClaim({
+        code: entered,
+        cadence,
+        savedAt: new Date().toISOString(),
+      });
+      reset();
+      onReferralPreAuth?.();
+      return;
+    }
+
     setBusy(true);
     setError('');
 
-    const claimed = await claimReferralCode(code.trim(), cadence);
+    const claimed = await claimReferralCode(entered, cadence);
     setBusy(false);
 
     if (!claimed.ok) {
+      // A stashed claim that the server rejects must not follow the user
+      // around; they can re-enter a code from here.
+      void clearPendingReferralClaim();
       setError(referralErrorCopy(claimed.errorCode));
       setStep('entry');
       return;
     }
+
+    void clearPendingReferralClaim();
 
     // Not necessarily the string they typed: choosing the other cadence
     // issues the code for that plan instead, so the redeem pane has to show

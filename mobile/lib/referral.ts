@@ -1,6 +1,5 @@
 import { Platform } from 'react-native';
 import { apiFetch } from '@/lib/api';
-import { isFeatureFlagEnabled } from '@/lib/config-flags';
 
 // ---------------------------------------------------------------------------
 // Referral offer — invitee side (PRD 10.5.4).
@@ -48,9 +47,40 @@ export type ReferralClaimErrorCode =
   | 'RATE_LIMITED'
   | 'NETWORK';
 
-/** Cheap client-side gate. The server is still authoritative on every call. */
+const FLAG_TTL_MS = 5 * 60 * 1000;
+let _flagCache: { value: boolean; at: number } | null = null;
+
+/**
+ * Cheap client-side gate. The server is still authoritative on every call;
+ * this only decides whether to show a surface at all.
+ *
+ * Read from /referral/config rather than /config because the invitee reaches
+ * the paywall BEFORE creating an account, and /config requires a token — so a
+ * flag read through it would always come back false for exactly the user who
+ * needs this path most. Uses the publishable anon key, same as any other
+ * pre-auth call.
+ */
 export async function isReferralEnabled(): Promise<boolean> {
-  return isFeatureFlagEnabled(REFERRAL_FLAG_KEY);
+  const now = Date.now();
+  if (_flagCache && now - _flagCache.at < FLAG_TTL_MS) return _flagCache.value;
+
+  const baseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+  const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+  if (!baseUrl || !anonKey) return false;
+
+  try {
+    const res = await fetch(`${baseUrl}/functions/v1/referral/config`, {
+      headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` },
+    });
+    if (!res.ok) return false;
+    const json = await res.json();
+    const value = json?.data?.enabled === true;
+    _flagCache = { value, at: now };
+    return value;
+  } catch {
+    // Failing closed keeps the feature invisible rather than half-present.
+    return false;
+  }
 }
 
 /**

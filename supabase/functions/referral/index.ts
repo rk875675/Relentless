@@ -78,6 +78,11 @@ Deno.serve(async (req) => {
   const subPath = (pathMatch?.[1] ?? "").replace(/\/$/, "");
 
   switch (subPath) {
+    case "config":
+      if (req.method !== "GET") {
+        return errorResponse(405, "VALIDATION_ERROR", "Method not allowed", requestId);
+      }
+      return handleConfig(req, requestId);
     case "eligibility":
       if (req.method !== "GET") {
         return errorResponse(405, "VALIDATION_ERROR", "Method not allowed", requestId);
@@ -102,6 +107,37 @@ Deno.serve(async (req) => {
       return errorResponse(404, "NOT_FOUND", "Unknown referral path", requestId);
   }
 });
+
+// ---------------------------------------------------------------------------
+// GET /referral/config — pre-auth
+//
+// The invitee reaches the paywall before creating an account, so the client
+// has to know whether this feature is live before it has a token. /config
+// cannot answer that: it requires auth. This returns the single boolean and
+// nothing else — no metadata, no offer identifiers, no pool state.
+// ---------------------------------------------------------------------------
+
+function clientIp(req: Request): string {
+  const fwd = req.headers.get("x-forwarded-for") ?? "";
+  const first = fwd.split(",")[0]?.trim();
+  return first && first.length > 0 ? first : "unknown";
+}
+
+async function handleConfig(req: Request, requestId: string): Promise<Response> {
+  // Pre-auth: rate limit by IP instead of user id, as promo-codes/validate does.
+  const rl = await checkRateLimit(
+    `referral-cfg-ip:${clientIp(req)}`,
+    requestId,
+    "authenticated-read",
+  );
+  if (!rl.ok) return rl.response;
+
+  const supabase = createServiceClient();
+  const flag = await loadFlag(supabase, requestId);
+  if (!flag.ok) return flag.response;
+
+  return successResponse({ enabled: flag.config.enabled }, requestId);
+}
 
 // ---------------------------------------------------------------------------
 // Feature flag + server-side config
