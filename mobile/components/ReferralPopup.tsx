@@ -13,8 +13,8 @@ import type { ReferralCadence } from '@/lib/referral';
  *   - names the reader's own period rather than saying "billing period", and
  *     never says "this month" to someone who may be on annual
  *   - never implies the sharer's next charge is already discounted
- *   - DEVIATION FROM RULE 2, pending a PRD amendment — see the matching note
- *     in mobile/app/referral/index.tsx
+ *   - need not state the return to full price (PRD 10.5.9 as amended
+ *     2026-09-12) — see the note in mobile/app/referral/index.tsx
  *   - may state 20% only while every configured point stays at or below
  *     0.8 x list, which currently holds on all four SKUs (the $7.99 monthly
  *     is configured at $6.39, or 20.03% off)

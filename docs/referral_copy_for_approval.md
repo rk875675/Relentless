@@ -16,17 +16,28 @@ From PRD 10.5.9:
 
 1. Anchor on the teammate's **first payment**, never on trial completion — a
    previously-expired invitee gets no trial.
-2. Say the discount covers **one billing period** and then returns to full
-   price.
-3. Never say "this month" — the reader may be on annual.
+2. ~~Say the discount covers one billing period and then returns to full
+   price.~~ **Amended 2026-09-12.** The copy names the reader's actual period
+   ("month" or "year") instead of the phrase "billing period", and is no
+   longer required to state the return to full price — "20% off your first
+   month" carries it, and Apple's redemption and confirmation screens disclose
+   the real price and renewal terms before any charge.
+3. Never say "this month" to someone who may be on annual. Satisfied by
+   naming the real period: the eligibility response reports the sharer's
+   cadence, and the invitee picks a plan before any discount copy appears.
+   Where the period genuinely isn't known — the teammate hasn't chosen yet —
+   the copy says "their first payment" instead.
 4. Never claim the sharer's next charge is discounted **before Apple has
    accepted** the promotional offer.
 5. "20% off" may only appear where the configured App Store price point is at
    least 20% below list.
 
-Rule 5 is now satisfied on all four SKUs, so the strings state 20%. See
+Rule 5 is satisfied on all four SKUs, so the strings state 20%. See
 [The 20% question](#the-20-question) for the arithmetic and the one pricing
 condition it depends on.
+
+Strings that vary by period are written below in their **monthly** form. The
+annual reader sees "year" in the same slot; nothing else changes.
 
 ---
 
@@ -80,6 +91,11 @@ the string they typed: picking the cadence the sharer didn't reserve issues
 that plan's code instead. `redeemInstructions` is doing the heavy lifting
 there and is the string I'd most want you to rewrite.
 
+Tapping the code copies it and floats a "Copied" badge for about a second.
+On a build without the clipboard module the tap wording drops out of
+`redeemInstructions` automatically, so it never promises a tap that does
+nothing; the code stays long-press selectable either way.
+
 | Key | Draft | Notes |
 | --- | --- | --- |
 | `cadenceTitle` | Choose your plan | Shown after a referral code is recognized. |
@@ -87,7 +103,8 @@ there and is the string I'd most want you to rewrite.
 | `cadenceAnnual` | Annual | |
 | `cadenceBack` | Back | |
 | `redeemTitle` | Redeem in the App Store | |
-| `redeemInstructions` | Enter this code on the next screen to start your subscription with 20% off your first billing period. Press and hold to copy it. | Must work even when the code shown differs from the one typed. |
+| `redeemInstructions` | Tap the code to copy it, then tap Continue to open Apple's Redeem Code screen and enter it there for 20% off your first month. |
+| `codeCopied` | Copied | Must work even when the code shown differs from the one typed. |
 | `redeemOpen` | Continue | Opens Apple's sheet. |
 | `redeemDone` | Done | Dismisses without redeeming; the code stays bound to them. |
 | `referralUnavailable` | This offer is temporarily unavailable. Please try again later. | Pool empty or feature mid-rollout. |
@@ -112,21 +129,21 @@ entry, because an active subscriber cannot use a new-subscriber offer code.
 | --- | --- |
 | `title` | Invite a teammate |
 | `howTitle` | How it works |
-| `howBody` | Send a teammate your invite code. When they subscribe and their first payment goes through, you each get 20% off one billing period, then both return to full price. |
-| `capDisclosure` | You can earn one reward per billing period. Extra conversions in the same period do not add another. |
+| `howBody` | Send a teammate your invite code. When their first payment goes through, you both get 20% off — your next month, and their first payment. |
+| `capDisclosure` | You can earn one reward per month. Extra teammates in the same month do not add another. |
 
-`howBody` carries rules 1, 2 and 3 at once: "their first payment goes
-through" (not trial), "20% off one billing period", "both return to full
-price", and no "this month". `capDisclosure` satisfies PRD 10.5.7's
-requirement that the per-period limit is disclosed **before** the user
-invites anyone.
+`howBody` carries rules 1 and 3 at once: "their first payment goes through"
+(not trial) for the teammate, whose plan is unknown, and "your next month" for
+the reader, whose plan the server reports — so nobody on annual is shown the
+word "month". `capDisclosure` satisfies PRD 10.5.7's requirement that the
+per-period limit is disclosed **before** the user invites anyone.
 
 ### Sharing
 
 | Key | Draft |
 | --- | --- |
 | `shareCta` | Get an invite code |
-| `shareMessage` | Join me on Relentless and get 20% off your first billing period. Use code {CODE} when you subscribe, then it renews at full price.\n\n{APP_STORE_LINK} |
+| `shareMessage` | Join me on Relentless and get 20% off your first month. Use code {CODE} when you subscribe.\n\n{APP_STORE_LINK} |
 
 The message carries the App Store link plus the code as text, per PRD 10.5.4.
 Apple redeem URLs are deliberately not distributed. **Worth your attention:**
@@ -153,10 +170,10 @@ sharer has earned nothing until the first charge actually succeeds.
 | --- | --- |
 | `rewardTitle` | Your reward |
 | `rewardPending` | Waiting on your teammate's first payment. |
-| `rewardReady` | Your 20% reward is ready to apply. |
-| `rewardApplied` | Applied. Apple has accepted your 20% offer. |
+| `rewardReady` | Your 20% off is ready to apply. |
+| `rewardApplied` | Applied. Apple has accepted your 20% off, so your next month is discounted. |
 | `applyCta` | Apply my reward |
-| `applySubmitted` | Submitted to Apple. Your 20% discount applies to one billing period starting at your next billing date, once Apple confirms it. |
+| `applySubmitted` | Sent to Apple. Once Apple confirms it, your next month is 20% off. |
 
 `applySubmitted` is the rule-4 string and the most legally sensitive one here.
 It deliberately does **not** say the next charge is discounted, because at
@@ -172,7 +189,7 @@ acceptance, and it is shown only after Apple confirms it.
 | `ineligibleTrial` | Inviting unlocks after your first payment goes through. | `trial_not_paid` |
 | `ineligibleAutoRenewOff` | Turn your subscription renewal back on to invite a teammate. | `auto_renew_off` |
 | `ineligibleBilling` | We could not confirm your subscription with the App Store. | `billing_retry`, `billing_grace`, `apple_unavailable` |
-| `ineligibleSlotUsed` | You have already earned your reward for this billing period. You can invite again next period. | `give_slot_used` |
+| `ineligibleSlotUsed` | You have already earned your reward for this month. You can invite again next month. | `give_slot_used` |
 | `ineligibleUnavailable` | Inviting is temporarily unavailable. Please try again later. | `pool_unavailable`, `feature_disabled`, `unknown_cadence` |
 
 `ineligibleTrial` exists because a trial user *is* on an active plan, so
@@ -200,12 +217,13 @@ cards, schedule sheet, and the native review dialog.
 | Key | Draft |
 | --- | --- |
 | `popupTitle` | Train with a teammate |
-| `popupBody` | Invite a teammate. When their first payment goes through, you each get 20% off one billing period, then you both return to full price. |
+| `popupBody` | Invite a teammate. When their first payment goes through, you both get 20% off — your next month, and their first payment. |
 | `popupPrimary` | Invite a teammate |
 | `popupDismiss` | Not now |
 
-`popupBody` completes rule 2 with "then you both return to full price", which
-an earlier draft of this table omitted. `popupPrimary` is deliberately **not**
+`popupBody` names the reader's own period, taken from the eligibility state
+the Home trigger already fetches, so it costs no extra request.
+`popupPrimary` is deliberately **not**
 `shareCta` ("Get an invite code") even though both lead toward the same place:
 the popup only opens the referral screen, and the code is issued by a separate
 tap once there, so promising a code on this button would be a lie one screen
@@ -222,18 +240,36 @@ placeholder warnings. Until then the feature stays behind
 `referral_offer_enabled`, which is off.
 
 You do not have to review all 40-odd strings to unblock this. Five carry
-almost all of the risk, and the rest are labels:
+almost all of the risk, and the rest are labels. Where each one is seen:
 
-1. `applySubmitted` — the rule-4 string. Says the offer was submitted, not
-   that the next charge is discounted. The most legally sensitive string here.
-2. `howBody` — carries rules 1, 2 and 3 simultaneously.
-3. `redeemInstructions` — has to stay true when the code shown differs from
-   the code typed, which happens whenever the invitee picks the cadence the
-   sharer did not reserve.
-4. `shareMessage` — the only string that leaves the app, and it contains a
-   live Apple offer code in plain text.
-5. `capDisclosure` — PRD 10.5.7 requires the per-period limit be disclosed
-   before anyone invites, so this one is required, not optional.
+**1. `applySubmitted`** — an alert, fired the instant the sharer taps "Apply
+my reward" in Profile → Invite. The rule-4 string and the most legally
+sensitive one here: at that moment Apple has only *received* the offer, so it
+stays conditional ("once Apple confirms it"). `rewardApplied` is the only
+string allowed to say Apple accepted, and it appears later, after the renewal
+notification confirms it.
+
+**2. `howBody`** — the explainer card at the top of the referral screen
+(Profile → Invite). On screen before anyone invites. Carries rules 1 and 3
+together: "their first payment" for the teammate, whose plan is unknown, and
+"your next month/year" for the reader, whose plan the server reports.
+
+**3. `redeemInstructions`** — the last pane of the promo-code sheet, directly
+under the large code, after an invitee enters a code and picks a plan. Has to
+stay true when the code shown differs from the code typed, which happens
+whenever the invitee picks the cadence the sharer did not reserve — so it says
+"this code", never "your code". Names Apple's **Redeem Code** screen (the
+sheet's own title) but deliberately does not claim where the field sits on it;
+that varies by iOS version. Confirm on device in the sandbox pass.
+
+**4. `shareMessage`** — the body of the iOS share sheet when the sharer taps
+share. The only string that leaves the app, and it carries a live Apple offer
+code in plain text. Uses the sharer's own period, because the reserved code is
+for their plan; an invitee who switches plans gets a different code and sees
+the real price from Apple, so the worst case understates their discount.
+
+**5. `capDisclosure`** — small print immediately under `howBody`, so it is
+visible before anyone invites, which PRD 10.5.7 requires. Not optional.
 
 Still open and **not** a copy question: the refund/revoke clawback rule (what
 happens to an already-applied reward when the teammate refunds) is unspecified

@@ -381,8 +381,17 @@ code entry, because an active subscriber cannot use a new-subscriber offer code.
 Final strings are not locked here and must not be invented during implementation.
 Copy anchors on the teammate's first payment, never on trial completion, because
 previously-expired invitees receive no trial.
-Copy states that the discount covers one billing period and then returns to full
-price, and never says "this month" to a user who may be on annual.
+Copy states that the discount covers one period, and names the reader's actual
+period — "month" or "year" — rather than the phrase "billing period". It never
+says "this month" to a user who may be on annual; the eligibility response
+reports the sharer's cadence, and the invitee selects a plan before any
+discount copy is shown, so the correct period is always known. Where it is not
+known, the copy refers to the teammate's "first payment" instead.
+Copy is not required to state that the price returns to full afterward.
+"20% off your first month" carries that, and Apple's redemption and purchase
+confirmation screens disclose the real price and renewal terms before any
+charge is made. (Amended 2026-09-12; this rule previously required the copy to
+state the return to full price.)
 Copy never claims the sharer's next charge is discounted before Apple has
 accepted the promotional offer.
 "20% off" is only displayed where the configured App Store price point is at

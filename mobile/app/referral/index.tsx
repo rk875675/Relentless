@@ -40,11 +40,10 @@ const APP_STORE_URL = 'https://apps.apple.com/app/id6762413686';
 // sharer's cadence, and the invitee has chosen a plan before any of this is
 // shown. No string says "billing period".
 //
-// DEVIATION FROM RULE 2, pending a PRD amendment: rule 2 requires stating the
-// discount covers one period and then returns to full price. At the owner's
-// direction these strings instead say "20% off your first/next <period>",
-// which implies it without stating it. PRD 10.5.9 must be amended to match,
-// or these strings reverted — the repo should not disagree with itself.
+// These strings do NOT state that the price returns to full afterward. That
+// is deliberate and matches PRD 10.5.9 as amended 2026-09-12: "20% off your
+// first month" carries it, and Apple discloses the real price and renewal
+// terms on its own redemption and confirmation screens before any charge.
 //
 // "20% off" is permitted here because every configured point is at least 20%
 // below list (PRD 10.5.9 rule 5): $4.99→$3.99, $39.99→$31.99, $59.99→$47.99,

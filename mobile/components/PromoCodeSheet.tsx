@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -11,6 +12,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { copyText, isClipboardAvailable } from '@/lib/clipboard';
 import { useAuth } from '@/lib/auth-context';
 import { analytics } from '@/lib/analytics';
 import {
@@ -47,7 +50,8 @@ import { colors, spacing } from '@/lib/theme';
 // "20% off" is permitted because every configured point is at least 20% below
 // list: $4.99→$3.99, $39.99→$31.99, $59.99→$47.99, $7.99→$6.39 (20.03%).
 //
-// DEVIATION FROM RULE 2, pending a PRD amendment — see the matching note in
+// Per PRD 10.5.9 as amended 2026-09-12, the copy does not have to state that
+// the price returns to full afterward — see the note in
 // mobile/app/referral/index.tsx.
 // ---------------------------------------------------------------------------
 const COPY = {
@@ -74,8 +78,9 @@ const COPY = {
   // the field sits on it varies by iOS version and is not documented. Confirm
   // on device during the sandbox pass, then make this more specific if the
   // layout is reliable.
-  redeemInstructions: (cadence: ReferralCadence) =>
-    `Tap Continue to open Apple's Redeem Code screen, then enter this code to get 20% off your first ${cadence === 'annual' ? 'year' : 'month'}.`,
+  redeemInstructions: (cadence: ReferralCadence, canCopy: boolean) =>
+    `${canCopy ? 'Tap the code to copy it, then tap Continue' : 'Tap Continue'} to open Apple's Redeem Code screen and enter it there for 20% off your first ${cadence === 'annual' ? 'year' : 'month'}.`,
+  codeCopied: 'Copied',
   redeemOpen: 'Continue',
   redeemDone: 'Done',
   referralUnavailable: 'This offer is temporarily unavailable. Please try again later.',
@@ -143,6 +148,41 @@ export function PromoCodeSheet({
   // Kept so the redeem copy can name the actual period the invitee bought,
   // rather than a generic one.
   const [issuedCadence, setIssuedCadence] = useState<ReferralCadence>('monthly');
+
+  // Resolved once, not per render: an older binary has no clipboard module, in
+  // which case the copy must not promise a tap that does nothing.
+  const canCopyCode = useRef(isClipboardAvailable()).current;
+  const copiedOpacity = useRef(new Animated.Value(0)).current;
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    };
+  }, []);
+
+  const handleCopyCode = async () => {
+    if (!issuedCode) return;
+    if (!(await copyText(issuedCode))) return;
+
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Re-tapping restarts the badge rather than queueing a second fade.
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedOpacity.setValue(0);
+    Animated.timing(copiedOpacity, {
+      toValue: 1,
+      duration: 140,
+      useNativeDriver: true,
+    }).start();
+    copiedTimer.current = setTimeout(() => {
+      Animated.timing(copiedOpacity, {
+        toValue: 0,
+        duration: 260,
+        useNativeDriver: true,
+      }).start();
+    }, 1200);
+  };
 
   const reset = () => {
     setCode('');
@@ -349,13 +389,31 @@ export function PromoCodeSheet({
                 <Text style={styles.title}>{COPY.redeemTitle}</Text>
 
                 {/* Apple's redemption sheet cannot be pre-filled, so the code
-                    has to be readable and copyable here. */}
-                <Text style={styles.issuedCode} selectable>
-                  {issuedCode}
-                </Text>
+                    has to be readable and copyable here. Tapping copies it;
+                    the Text stays selectable so long-press still works, and
+                    so the code is still obtainable on an older binary that
+                    has no clipboard module. */}
+                <TouchableOpacity
+                  onPress={() => {
+                    void handleCopyCode();
+                  }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Copy code ${issuedCode}`}
+                >
+                  <Text style={styles.issuedCode} selectable>
+                    {issuedCode}
+                  </Text>
+                  <Animated.View
+                    style={[styles.copiedBadge, { opacity: copiedOpacity }]}
+                    pointerEvents="none"
+                  >
+                    <Text style={styles.copiedBadgeText}>{COPY.codeCopied}</Text>
+                  </Animated.View>
+                </TouchableOpacity>
 
                 <Text style={styles.instructions}>
-                  {COPY.redeemInstructions(issuedCadence)}
+                  {COPY.redeemInstructions(issuedCadence, canCopyCode)}
                 </Text>
 
                 <TouchableOpacity
@@ -499,6 +557,22 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
     textAlign: 'center',
     marginBottom: spacing.md,
+  },
+  // Floats over the gap under the code, so showing it cannot reflow the pane.
+  copiedBadge: {
+    position: 'absolute',
+    alignSelf: 'center',
+    bottom: -2,
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  copiedBadgeText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
   instructions: {
     color: colors.textMuted,
