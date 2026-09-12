@@ -34,9 +34,12 @@ const APP_STORE_URL = 'https://apps.apple.com/app/id6762413686';
 // FIRST PAYMENT rather than trial completion (a previously-expired invitee
 // gets no trial), must say the discount covers one billing period and then
 // returns to full price, and must never say "this month" to someone who may
-// be on annual. No discount percentage appears anywhere below on purpose —
-// "20% off" may only be shown once the configured App Store price points are
-// confirmed to be at least 20% below list.
+// be on annual.
+//
+// "20% off" is permitted here because every configured point is at least 20%
+// below list (PRD 10.5.9 rule 5): $4.99→$3.99, $39.99→$31.99, $59.99→$47.99,
+// and $7.99→$6.39 (20.03%). If any point is ever raised above 0.8 × list, the
+// percentage must come out of these strings or become per-SKU.
 //
 // PRD 10.5.6 additionally forbids stating that the sharer's next charge is
 // discounted before Apple has accepted the promotional offer.
@@ -46,13 +49,13 @@ const COPY = {
 
   howTitle: 'How it works',
   howBody:
-    'Send a teammate your invite code. When they subscribe and their first payment goes through, you each get one discounted billing period, then both return to full price.',
+    'Send a teammate your invite code. When they subscribe and their first payment goes through, you each get 20% off one billing period, then both return to full price.',
   capDisclosure:
     'You can earn one reward per billing period. Extra conversions in the same period do not add another.',
 
   shareCta: 'Get an invite code',
   shareMessage: (code: string) =>
-    `Join me on Relentless. Use code ${code} when you subscribe.\n\n${APP_STORE_URL}`,
+    `Join me on Relentless and get 20% off your first billing period. Use code ${code} when you subscribe, then it renews at full price.\n\n${APP_STORE_URL}`,
 
   invitesTitle: 'Your invites',
   invitesEmpty: 'You have not created an invite yet.',
@@ -63,11 +66,11 @@ const COPY = {
 
   rewardTitle: 'Your reward',
   rewardPending: 'Waiting on your teammate’s first payment.',
-  rewardReady: 'Your reward is ready to apply.',
-  rewardApplied: 'Applied. Apple has accepted your offer.',
+  rewardReady: 'Your 20% reward is ready to apply.',
+  rewardApplied: 'Applied. Apple has accepted your 20% offer.',
   applyCta: 'Apply my reward',
   applySubmitted:
-    'Submitted to Apple. Your discount takes effect at your next billing date once Apple confirms it.',
+    'Submitted to Apple. Your 20% discount applies to one billing period starting at your next billing date, once Apple confirms it.',
 
   ineligibleSubscription: 'Inviting is available to subscribers on an active plan.',
   // A trial user IS on an active plan, so the string above would mislead them.

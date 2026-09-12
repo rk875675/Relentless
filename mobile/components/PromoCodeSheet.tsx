@@ -64,7 +64,7 @@ const COPY = {
   cadenceBack: 'Back',
   redeemTitle: 'Redeem in the App Store',
   redeemInstructions:
-    'Enter this code on the next screen to start your subscription. Press and hold to copy it.',
+    'Enter this code on the next screen to start your subscription with 20% off your first billing period. Press and hold to copy it.',
   redeemOpen: 'Continue',
   redeemDone: 'Done',
   referralUnavailable: 'This offer is temporarily unavailable. Please try again later.',

@@ -12,12 +12,13 @@ import { colors } from '@/lib/theme';
  *   - says the discount covers ONE billing period, then returns to full price
  *   - never says "this month" (the reader may be on annual)
  *   - never implies the sharer's next charge is already discounted
- *   - states no percentage, because the $7.99 monthly price point has no exact
- *     20% step and a single shared string cannot be accurate across all SKUs
+ *   - may state 20% only while every configured point stays at or below
+ *     0.8 x list, which currently holds on all four SKUs (the $7.99 monthly
+ *     is configured at $6.39, or 20.03% off)
  */
 const COPY = {
   title: 'Train with a teammate',
-  body: 'Invite a teammate. When their first payment goes through, you each get one discounted billing period, then you both return to full price.',
+  body: 'Invite a teammate. When their first payment goes through, you each get 20% off one billing period, then you both return to full price.',
   primary: 'Invite a teammate',
   dismiss: 'Not now',
 } as const;

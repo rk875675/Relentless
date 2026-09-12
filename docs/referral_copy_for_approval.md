@@ -24,50 +24,50 @@ From PRD 10.5.9:
 5. "20% off" may only appear where the configured App Store price point is at
    least 20% below list.
 
-Rule 5 is the one that needs a decision before any of this can say a number.
-See [The 20% question](#the-20-question).
+Rule 5 is now satisfied on all four SKUs, so the strings state 20%. See
+[The 20% question](#the-20-question) for the arithmetic and the one pricing
+condition it depends on.
 
 ---
 
-## Decision needed first: the 20% question
+## The 20% question
 
-One string is shown to users on four different SKUs, and rule 5 binds it to
-the **worst** of them. Three have an exact 20% point:
+**Resolved: the copy says "20% off", with no per-SKU branching.**
 
-| SKU | List | 0.8 × list | Point | Actual discount |
+One string is shown on four SKUs, so rule 5 binds it to the worst of them.
+With the $7.99 monthly confirmed at $6.39, all four clear the bar:
+
+| SKU | List | Cap (0.8 × list) | Point | Actual discount |
 | --- | --- | --- | --- | --- |
-| `com.relentless.monthly` | $4.99 | $3.992 | $3.99 | 20.0% ✓ |
-| `com.relentless.annual` | $39.99 | $31.992 | $31.99 | 20.0% ✓ |
-| `com.relentless.annual.b` | $59.99 | $47.992 | $47.99 | 20.0% ✓ |
-| `com.relentless.monthly.b` | $7.99 | $6.392 | **?** | **decision** |
+| `com.relentless.monthly` | $4.99 | $3.992 | $3.99 | 20.04% ✓ |
+| `com.relentless.annual` | $39.99 | $31.992 | $31.99 | 20.01% ✓ |
+| `com.relentless.annual.b` | $59.99 | $47.992 | $47.99 | 20.00% ✓ |
+| `com.relentless.monthly.b` | $7.99 | $6.392 | $6.39 | 20.03% ✓ |
 
-The $7.99 monthly SKU has **no exact 20% point**. Rule 5 caps it at $6.39, so
-the choice is:
+$6.39 satisfies rule 5 both ways: it is at least 20% below list, and it is at
+or below the $6.392 cap, so "20% off" very slightly understates rather than
+overstates. Every point is within 0.04% of an exact fifth, so no string needs
+to hedge.
 
-| Point | Discount | May say "20% off"? | Cost to you |
-| --- | --- | --- | --- |
-| $6.49 | 18.8% | **No** — overstates | cheapest |
-| $6.39 | 20.0% | Yes, exactly | on the line |
-| $5.99 | 25.0% | Yes (understates, which rule 5 permits) | 5 points of extra margin |
+An earlier version of this doc recommended dropping the percentage. That was
+based on not knowing the configured point and assumed the $7.99 SKU would land
+at $6.49 (18.8%), which would have overstated. It does not, so the
+recommendation no longer applies and the drafts below state 20%.
 
-$6.39 is the only one that is both compliant and not expensive, **if Apple
-offers it** — it is not a classic tier, so it may only exist in the extended
-price list. Worth checking before committing to a number in copy.
+### The one condition attached to this
 
-**My recommendation: keep the percentage out of the shared strings entirely**
-and say "a discount on one billing period". That is accurate on all four SKUs
-whatever you pick, needs no per-SKU copy branching, and cannot drift out of
-compliance if pricing changes later. The drafts below are written that way.
+The 20% claim is only true while the price points stay where they are. It is
+worth treating as a pricing constraint rather than a copy choice:
 
-The cost of that choice is real: "20% off" is a stronger hook than "a
-discount", and this popup gets at most two showings a month to make its case.
-The alternative that keeps the number is to branch copy per SKU, which means
-every surface below gains a conditional and the 20% claim has to be re-checked
-against ASC on every future price change. That is the trade I would not make
-for one SKU, but it is your call.
-
-**Needed from you:** the configured price point for `SHARER20_MONTHLY_B` and
-`TEAMMATE20_MONTHLY_B`, and whether you want the percentage stated at all.
+- Raising any offer point above 0.8 × list silently makes shipped copy
+  overstate the discount. $6.49 on the $7.99 SKU is the specific trap, since
+  it is the nearest common tier above $6.39.
+- The four remaining offers should be confirmed at the points in the table
+  before the flag is turned on: `SHARER20_MONTHLY`, `SHARER20_ANNUAL`,
+  `SHARER20_MONTHLY_B`, `SHARER20_ANNUAL_B`. `TEAMMATE20_MONTHLY_B` at $6.39
+  is confirmed; `TEAMMATE20_ANNUAL_B` should be $47.99.
+- Each code file carries this list in a comment next to its strings, so
+  whoever changes pricing later sees what depends on it.
 
 ---
 
@@ -83,11 +83,11 @@ there and is the string I'd most want you to rewrite.
 | Key | Draft | Notes |
 | --- | --- | --- |
 | `cadenceTitle` | Choose your plan | Shown after a referral code is recognized. |
-| `cadenceMonthly` | Monthly | Price intentionally absent — see the 20% question. |
+| `cadenceMonthly` | Monthly | No price shown; Apple displays the discounted price in its own redemption sheet. |
 | `cadenceAnnual` | Annual | |
 | `cadenceBack` | Back | |
 | `redeemTitle` | Redeem in the App Store | |
-| `redeemInstructions` | Enter this code on the next screen to start your subscription. Press and hold to copy it. | Must work even when the code shown differs from the one typed. |
+| `redeemInstructions` | Enter this code on the next screen to start your subscription with 20% off your first billing period. Press and hold to copy it. | Must work even when the code shown differs from the one typed. |
 | `redeemOpen` | Continue | Opens Apple's sheet. |
 | `redeemDone` | Done | Dismisses without redeeming; the code stays bound to them. |
 | `referralUnavailable` | This offer is temporarily unavailable. Please try again later. | Pool empty or feature mid-rollout. |
@@ -112,11 +112,11 @@ entry, because an active subscriber cannot use a new-subscriber offer code.
 | --- | --- |
 | `title` | Invite a teammate |
 | `howTitle` | How it works |
-| `howBody` | Send a teammate your invite code. When they subscribe and their first payment goes through, you each get one discounted billing period, then both return to full price. |
+| `howBody` | Send a teammate your invite code. When they subscribe and their first payment goes through, you each get 20% off one billing period, then both return to full price. |
 | `capDisclosure` | You can earn one reward per billing period. Extra conversions in the same period do not add another. |
 
 `howBody` carries rules 1, 2 and 3 at once: "their first payment goes
-through" (not trial), "one discounted billing period", "both return to full
+through" (not trial), "20% off one billing period", "both return to full
 price", and no "this month". `capDisclosure` satisfies PRD 10.5.7's
 requirement that the per-period limit is disclosed **before** the user
 invites anyone.
@@ -126,7 +126,7 @@ invites anyone.
 | Key | Draft |
 | --- | --- |
 | `shareCta` | Get an invite code |
-| `shareMessage` | Join me on Relentless. Use code {CODE} when you subscribe.\n\n{APP_STORE_LINK} |
+| `shareMessage` | Join me on Relentless and get 20% off your first billing period. Use code {CODE} when you subscribe, then it renews at full price.\n\n{APP_STORE_LINK} |
 
 The message carries the App Store link plus the code as text, per PRD 10.5.4.
 Apple redeem URLs are deliberately not distributed. **Worth your attention:**
@@ -153,10 +153,10 @@ sharer has earned nothing until the first charge actually succeeds.
 | --- | --- |
 | `rewardTitle` | Your reward |
 | `rewardPending` | Waiting on your teammate's first payment. |
-| `rewardReady` | Your reward is ready to apply. |
-| `rewardApplied` | Applied. Apple has accepted your offer. |
+| `rewardReady` | Your 20% reward is ready to apply. |
+| `rewardApplied` | Applied. Apple has accepted your 20% offer. |
 | `applyCta` | Apply my reward |
-| `applySubmitted` | Submitted to Apple. Your discount takes effect at your next billing date once Apple confirms it. |
+| `applySubmitted` | Submitted to Apple. Your 20% discount applies to one billing period starting at your next billing date, once Apple confirms it. |
 
 `applySubmitted` is the rule-4 string and the most legally sensitive one here.
 It deliberately does **not** say the next charge is discounted, because at
@@ -200,7 +200,7 @@ cards, schedule sheet, and the native review dialog.
 | Key | Draft |
 | --- | --- |
 | `popupTitle` | Train with a teammate |
-| `popupBody` | Invite a teammate. When their first payment goes through, you each get one discounted billing period, then you both return to full price. |
+| `popupBody` | Invite a teammate. When their first payment goes through, you each get 20% off one billing period, then you both return to full price. |
 | `popupPrimary` | Invite a teammate |
 | `popupDismiss` | Not now |
 
