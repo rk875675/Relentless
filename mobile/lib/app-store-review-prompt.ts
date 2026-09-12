@@ -50,28 +50,65 @@ export async function incrementLessonsCompleted(): Promise<void> {
 }
 
 /**
- * Whether we asked Apple for a review within the last `windowMs`.
+ * Number of review evaluations currently running.
  *
- * Exists so a lower-priority prompt can yield to the review dialog (PRD
- * 10.5.8). The lesson screen requests a review immediately before
- * `router.back()`, so the dialog can be on screen as Home mounts.
- *
- * This reports that the request was MADE, not that the dialog appeared — Apple
- * decides the latter and tells us nothing. Yielding to the request is still
- * correct, because Apple consumes the attempt either way.
+ * Incremented synchronously on entry, so a caller can tell that a review
+ * decision is in progress before the decision has been made. That matters
+ * because the gates below include a remote flag fetch, and the stored
+ * timestamp is not written until after it — a lower-priority prompt checking
+ * only the timestamp could slip in while the dialog was still being requested.
  */
-export async function reviewRequestedWithinMs(windowMs: number): Promise<boolean> {
+let evaluationsInFlight = 0;
+let lastEvaluationStartedAt = 0;
+
+/** Whether we asked Apple for a review within the last `windowMs`. */
+async function reviewRequestedWithinMs(windowMs: number): Promise<boolean> {
   try {
     const lastRequestAt = await AsyncStorage.getItem(KEYS.LAST_REVIEW_REQUEST_AT);
     if (!lastRequestAt) return false;
     const elapsed = Date.now() - new Date(lastRequestAt).getTime();
-    return elapsed >= 0 && elapsed <= windowMs;
+    if (Number.isNaN(elapsed)) return false;
+    // Symmetric window: a clock change can date the record slightly in the
+    // future, and the conservative reading of that is "just now". Bounded by
+    // the window so a far-future value cannot block forever.
+    return Math.abs(elapsed) <= windowMs;
   } catch {
     return false;
   }
 }
 
+/**
+ * Whether the native review dialog may be on screen, or about to be.
+ *
+ * Exists so a lower-priority prompt can yield to it (PRD 10.5.8). The lesson
+ * screen requests a review immediately before `router.back()` and does not
+ * await it, so the dialog can be arriving as Home mounts.
+ *
+ * True while any evaluation is still deciding, and for `windowMs` after a
+ * request was made. Note this reports that the request was MADE, not that the
+ * dialog appeared — Apple decides the latter and tells us nothing. Yielding is
+ * still correct, because Apple consumes the attempt either way.
+ */
+export async function reviewPromptMayBeOnScreen(windowMs: number): Promise<boolean> {
+  // Age-bounded: an evaluation that somehow never settles (a request that
+  // neither resolves nor rejects) must not block the caller forever.
+  if (evaluationsInFlight > 0 && Date.now() - lastEvaluationStartedAt <= windowMs) {
+    return true;
+  }
+  return reviewRequestedWithinMs(windowMs);
+}
+
 export async function maybeRequestAppStoreReview(): Promise<void> {
+  evaluationsInFlight += 1;
+  lastEvaluationStartedAt = Date.now();
+  try {
+    await runReviewEvaluation();
+  } finally {
+    evaluationsInFlight -= 1;
+  }
+}
+
+async function runReviewEvaluation(): Promise<void> {
   // Gate A: build-time flag baked into the binary — cannot be changed after install
   const buildEnabled =
     Constants.expoConfig?.extra?.enableAppStoreReviewPrompt === true;

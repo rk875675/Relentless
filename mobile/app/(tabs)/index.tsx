@@ -35,7 +35,7 @@ import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { coachAvatarSource } from '@/lib/coach-photo';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
-import { maybeRequestAppStoreReview, reviewRequestedWithinMs } from '@/lib/app-store-review-prompt';
+import { maybeRequestAppStoreReview, reviewPromptMayBeOnScreen } from '@/lib/app-store-review-prompt';
 import ReferralPopup from '@/components/ReferralPopup';
 import { isReferralEnabled, fetchReferralState } from '@/lib/referral';
 import {
@@ -655,15 +655,18 @@ export default function HomeScreen() {
           if (cancelled) return;
           if (!(await canShowReferralPopup(currentUserId))) return;
           if (cancelled) return;
-          if (await reviewRequestedWithinMs(REFERRAL_POPUP_REVIEW_WINDOW_MS)) return;
+          if (await reviewPromptMayBeOnScreen(REFERRAL_POPUP_REVIEW_WINDOW_MS)) return;
           if (cancelled) return;
 
           const state = await fetchReferralState();
           if (cancelled || !state?.enabled || !state.eligible) return;
 
-          // Checked last, because the eligibility request above takes time and
-          // the popup must never present alongside another prompt.
+          // Final gate, re-checked because the eligibility request above takes
+          // time: the popup must never present alongside another prompt, and
+          // both of these can change while it is in flight.
           if (otherPromptVisibleRef.current) return;
+          if (await reviewPromptMayBeOnScreen(REFERRAL_POPUP_REVIEW_WINDOW_MS)) return;
+          if (cancelled || otherPromptVisibleRef.current) return;
 
           // Shown first, then recorded: a slot must never be spent on a popup
           // the user did not actually see.

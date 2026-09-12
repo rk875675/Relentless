@@ -9,6 +9,7 @@ import { getEmailConfirmRedirectUrl, getOAuthRedirectUrl, parseOAuthCallbackUrl 
 import { openAuthSessionWithTimeout } from './oauth-open-auth-session';
 import { bustCache } from './api-cache';
 import { clearPendingGainDeltas } from './pending-deltas';
+import { clearLessonCompletedForReferral } from './referral-popup-state';
 import { setApiToken } from './api';
 import { clearOnboardingProgress } from './onboarding-local-state';
 import { flushPendingGrantJournal } from './pending-grant-journal';
@@ -370,6 +371,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setDevPremiumBypass(false);
           setSuppressDevPremium(false);
           clearPendingGainDeltas();
+          clearLessonCompletedForReferral();
         }
       },
     );
@@ -740,6 +742,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsTrackAthlete(false);
     bustCache();
     clearPendingGainDeltas();
+    clearLessonCompletedForReferral();
     // Local-scope sign out clears persisted session synchronously and fires
     // onAuthStateChange immediately. The default scope ('global') waits on a
     // network round-trip to revoke the refresh token, which is the lag the
