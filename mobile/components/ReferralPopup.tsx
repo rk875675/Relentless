@@ -1,6 +1,7 @@
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/lib/theme';
+import type { ReferralCadence } from '@/lib/referral';
 
 /*
  * HUMAN INPUT NEEDED — copy not approved.
@@ -9,27 +10,35 @@ import { colors } from '@/lib/theme';
  * They are written to satisfy the PRD 10.5.9 constraints, which any
  * replacement must also satisfy:
  *   - anchors on the teammate's first PAYMENT, never on trial completion
- *   - says the discount covers ONE billing period, then returns to full price
- *   - never says "this month" (the reader may be on annual)
+ *   - names the reader's own period rather than saying "billing period", and
+ *     never says "this month" to someone who may be on annual
  *   - never implies the sharer's next charge is already discounted
+ *   - DEVIATION FROM RULE 2, pending a PRD amendment — see the matching note
+ *     in mobile/app/referral/index.tsx
  *   - may state 20% only while every configured point stays at or below
  *     0.8 x list, which currently holds on all four SKUs (the $7.99 monthly
  *     is configured at $6.39, or 20.03% off)
  */
 const COPY = {
   title: 'Train with a teammate',
-  body: 'Invite a teammate. When their first payment goes through, you each get 20% off one billing period, then you both return to full price.',
+  // Names the reader's own period (they are a subscriber, so the server knows
+  // it) and leaves the teammate's side as "their first payment", since the
+  // teammate has not chosen a plan yet.
+  body: (cadence: ReferralCadence | null) =>
+    `Invite a teammate. When their first payment goes through, you both get 20% off — your next ${cadence === 'annual' ? 'year' : 'month'}, and their first payment.`,
   primary: 'Invite a teammate',
   dismiss: 'Not now',
 } as const;
 
 type Props = {
   visible: boolean;
+  /** The viewer's own billing cadence, for naming their period in the body. */
+  cadence: ReferralCadence | null;
   onInvite: () => void;
   onDismiss: () => void;
 };
 
-export default function ReferralPopup({ visible, onInvite, onDismiss }: Props) {
+export default function ReferralPopup({ visible, cadence, onInvite, onDismiss }: Props) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
       <View style={styles.overlay}>
@@ -38,7 +47,7 @@ export default function ReferralPopup({ visible, onInvite, onDismiss }: Props) {
             <Ionicons name="people-outline" size={36} color={colors.accent} />
           </View>
           <Text style={styles.title}>{COPY.title}</Text>
-          <Text style={styles.body}>{COPY.body}</Text>
+          <Text style={styles.body}>{COPY.body(cadence)}</Text>
           <TouchableOpacity style={styles.primaryBtn} onPress={onInvite}>
             <Text style={styles.primaryText}>{COPY.primary}</Text>
           </TouchableOpacity>

@@ -40,12 +40,15 @@ import { colors, spacing } from '@/lib/theme';
 // promo-code sheet lives in this one block; review/replace before release.
 //
 // The referral strings below are additionally constrained by PRD 10.5.9: they
-// must anchor on the teammate's first payment rather than trial completion,
-// must say the discount covers one billing period and then returns to full
-// price, and must never say "this month" to someone who may be on annual.
-// No discount percentage is stated anywhere here on purpose — "20% off" may
-// only be shown once the configured App Store price points are confirmed to
-// be at least 20% below list.
+// must anchor on the teammate's first payment rather than trial completion.
+// Rule 3 is satisfied by naming the invitee's real period — they have already
+// chosen monthly or annual before the redeem pane appears.
+//
+// "20% off" is permitted because every configured point is at least 20% below
+// list: $4.99→$3.99, $39.99→$31.99, $59.99→$47.99, $7.99→$6.39 (20.03%).
+//
+// DEVIATION FROM RULE 2, pending a PRD amendment — see the matching note in
+// mobile/app/referral/index.tsx.
 // ---------------------------------------------------------------------------
 const COPY = {
   title: 'Enter your code',
@@ -63,8 +66,16 @@ const COPY = {
   cadenceAnnual: 'Annual',
   cadenceBack: 'Back',
   redeemTitle: 'Redeem in the App Store',
-  redeemInstructions:
-    'Enter this code on the next screen to start your subscription with 20% off your first billing period. Press and hold to copy it.',
+  // Cadence-aware: the invitee has already chosen their plan by this point, so
+  // the copy names the real period instead of saying "billing period".
+  //
+  // HUMAN INPUT NEEDED — the location of Apple's code field is NOT asserted
+  // here. "Redeem Code" is the sheet's own title, which is stable, but where
+  // the field sits on it varies by iOS version and is not documented. Confirm
+  // on device during the sandbox pass, then make this more specific if the
+  // layout is reliable.
+  redeemInstructions: (cadence: ReferralCadence) =>
+    `Tap Continue to open Apple's Redeem Code screen, then enter this code to get 20% off your first ${cadence === 'annual' ? 'year' : 'month'}.`,
   redeemOpen: 'Continue',
   redeemDone: 'Done',
   referralUnavailable: 'This offer is temporarily unavailable. Please try again later.',
@@ -129,6 +140,9 @@ export function PromoCodeSheet({
   const [error, setError] = useState('');
   const [step, setStep] = useState<Step>('entry');
   const [issuedCode, setIssuedCode] = useState('');
+  // Kept so the redeem copy can name the actual period the invitee bought,
+  // rather than a generic one.
+  const [issuedCadence, setIssuedCadence] = useState<ReferralCadence>('monthly');
 
   const reset = () => {
     setCode('');
@@ -271,6 +285,7 @@ export function PromoCodeSheet({
     // issues the code for that plan instead, so the redeem pane has to show
     // whatever the server actually bound.
     setIssuedCode(claimed.code);
+    setIssuedCadence(cadence);
     setStep('redeem');
   };
 
@@ -339,7 +354,9 @@ export function PromoCodeSheet({
                   {issuedCode}
                 </Text>
 
-                <Text style={styles.instructions}>{COPY.redeemInstructions}</Text>
+                <Text style={styles.instructions}>
+                  {COPY.redeemInstructions(issuedCadence)}
+                </Text>
 
                 <TouchableOpacity
                   style={[styles.button, busy && styles.buttonDisabled]}

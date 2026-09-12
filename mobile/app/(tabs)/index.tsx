@@ -37,7 +37,7 @@ import { coachAvatarSource } from '@/lib/coach-photo';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import { maybeRequestAppStoreReview, reviewPromptMayBeOnScreen } from '@/lib/app-store-review-prompt';
 import ReferralPopup from '@/components/ReferralPopup';
-import { isReferralEnabled, fetchReferralState } from '@/lib/referral';
+import { isReferralEnabled, fetchReferralState, type ReferralCadence } from '@/lib/referral';
 import {
   canShowReferralPopup,
   recordReferralPopupShown,
@@ -626,6 +626,7 @@ export default function HomeScreen() {
   // popup gets another chance next lesson, so it always loses that contest.
   const referralPopupShownRef = useRef(false);
   const [showReferralPopup, setShowReferralPopup] = useState(false);
+  const [referralCadence, setReferralCadence] = useState<ReferralCadence | null>(null);
 
   // Read through a ref, not the closure: the checks below run after a delay,
   // and any of these can flip in the meantime (the freebie is set during
@@ -671,6 +672,7 @@ export default function HomeScreen() {
           // Shown first, then recorded: a slot must never be spent on a popup
           // the user did not actually see.
           referralPopupShownRef.current = true;
+          setReferralCadence(state.cadence);
           setShowReferralPopup(true);
           void recordReferralPopupShown(currentUserId);
         })();
@@ -1368,6 +1370,7 @@ export default function HomeScreen() {
 
     <ReferralPopup
       visible={showReferralPopup}
+      cadence={referralCadence}
       onInvite={() => {
         setShowReferralPopup(false);
         router.push('/referral' as any);

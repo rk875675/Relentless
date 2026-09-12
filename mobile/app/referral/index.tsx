@@ -18,6 +18,7 @@ import {
   applySharerReward,
   createReferralInvite,
   fetchReferralState,
+  type ReferralCadence,
   type ReferralInvite,
   type ReferralState,
 } from '@/lib/referral';
@@ -32,9 +33,18 @@ const APP_STORE_URL = 'https://apps.apple.com/app/id6762413686';
 //
 // PRD 10.5.9 constrains these strings: they must anchor on the teammate's
 // FIRST PAYMENT rather than trial completion (a previously-expired invitee
-// gets no trial), must say the discount covers one billing period and then
-// returns to full price, and must never say "this month" to someone who may
-// be on annual.
+// gets no trial).
+//
+// Rule 3 ("never say 'this month' to someone who may be on annual") is
+// satisfied by naming the reader's ACTUAL period: the server reports the
+// sharer's cadence, and the invitee has chosen a plan before any of this is
+// shown. No string says "billing period".
+//
+// DEVIATION FROM RULE 2, pending a PRD amendment: rule 2 requires stating the
+// discount covers one period and then returns to full price. At the owner's
+// direction these strings instead say "20% off your first/next <period>",
+// which implies it without stating it. PRD 10.5.9 must be amended to match,
+// or these strings reverted — the repo should not disagree with itself.
 //
 // "20% off" is permitted here because every configured point is at least 20%
 // below list (PRD 10.5.9 rule 5): $4.99→$3.99, $39.99→$31.99, $59.99→$47.99,
@@ -44,18 +54,38 @@ const APP_STORE_URL = 'https://apps.apple.com/app/id6762413686';
 // PRD 10.5.6 additionally forbids stating that the sharer's next charge is
 // discounted before Apple has accepted the promotional offer.
 // ---------------------------------------------------------------------------
+/**
+ * The period noun for a cadence, so no user-facing string says "billing
+ * period".
+ *
+ * Falls back to "month" when the server could not determine a cadence, which
+ * happens when the viewer has no Apple subscription at all — so they are not
+ * an annual subscriber being told the wrong word, and monthly is the current
+ * default purchase.
+ */
+function period(cadence: ReferralCadence | null): string {
+  return cadence === 'annual' ? 'year' : 'month';
+}
+
 const COPY = {
   title: 'Invite a teammate',
 
   howTitle: 'How it works',
-  howBody:
-    'Send a teammate your invite code. When they subscribe and their first payment goes through, you each get 20% off one billing period, then both return to full price.',
-  capDisclosure:
-    'You can earn one reward per billing period. Extra conversions in the same period do not add another.',
+  // Cadence-aware so no string has to say "billing period". The sharer's own
+  // period comes from the server (ReferralState.cadence); the teammate has not
+  // chosen a plan yet, so their side stays "their first payment" — which is
+  // also the rule-1 anchor.
+  howBody: (cadence: ReferralCadence | null) =>
+    `Send a teammate your invite code. When their first payment goes through, you both get 20% off — your next ${period(cadence)}, and their first payment.`,
+  capDisclosure: (cadence: ReferralCadence | null) =>
+    `You can earn one reward per ${period(cadence)}. Extra teammates in the same ${period(cadence)} do not add another.`,
 
   shareCta: 'Get an invite code',
-  shareMessage: (code: string) =>
-    `Join me on Relentless and get 20% off your first billing period. Use code ${code} when you subscribe, then it renews at full price.\n\n${APP_STORE_URL}`,
+  // The reserved code is for the sharer's own cadence, so this names that
+  // period. An invitee who switches plans gets a different code and Apple
+  // shows them the real price, so the worst case understates their discount.
+  shareMessage: (code: string, cadence: ReferralCadence | null) =>
+    `Join me on Relentless and get 20% off your first ${period(cadence)}. Use code ${code} when you subscribe.\n\n${APP_STORE_URL}`,
 
   invitesTitle: 'Your invites',
   invitesEmpty: 'You have not created an invite yet.',
@@ -66,11 +96,15 @@ const COPY = {
 
   rewardTitle: 'Your reward',
   rewardPending: 'Waiting on your teammate’s first payment.',
-  rewardReady: 'Your 20% reward is ready to apply.',
-  rewardApplied: 'Applied. Apple has accepted your 20% offer.',
+  rewardReady: 'Your 20% off is ready to apply.',
+  rewardApplied: (cadence: ReferralCadence | null) =>
+    `Applied. Apple has accepted your 20% off, so your next ${period(cadence)} is discounted.`,
   applyCta: 'Apply my reward',
-  applySubmitted:
-    'Submitted to Apple. Your 20% discount applies to one billing period starting at your next billing date, once Apple confirms it.',
+  // Rule 4: this fires the moment Apple RECEIVES the offer, so it must stay
+  // conditional. Acceptance arrives later on the renewal notification, and
+  // rewardApplied above is the only string allowed to state it as done.
+  applySubmitted: (cadence: ReferralCadence | null) =>
+    `Sent to Apple. Once Apple confirms it, your next ${period(cadence)} is 20% off.`,
 
   ineligibleSubscription: 'Inviting is available to subscribers on an active plan.',
   // A trial user IS on an active plan, so the string above would mislead them.
@@ -79,8 +113,8 @@ const COPY = {
   ineligibleAutoRenewOff:
     'Turn your subscription renewal back on to invite a teammate.',
   ineligibleBilling: 'We could not confirm your subscription with the App Store.',
-  ineligibleSlotUsed:
-    'You have already earned your reward for this billing period. You can invite again next period.',
+  ineligibleSlotUsed: (cadence: ReferralCadence | null) =>
+    `You have already earned your reward for this ${period(cadence)}. You can invite again next ${period(cadence)}.`,
   ineligibleUnavailable: 'Inviting is temporarily unavailable. Please try again later.',
 
   errorLoad: 'Could not load your invites. Pull down to try again.',
@@ -92,14 +126,14 @@ const COPY = {
 
 // Covers every Reason the eligibility endpoint can return; the default is the
 // set of states that all mean "not a paying subscriber right now".
-function ineligibleCopy(reason: string | null): string {
+function ineligibleCopy(reason: string | null, cadence: ReferralCadence | null): string {
   switch (reason) {
     case 'trial_not_paid':
       return COPY.ineligibleTrial;
     case 'auto_renew_off':
       return COPY.ineligibleAutoRenewOff;
     case 'give_slot_used':
-      return COPY.ineligibleSlotUsed;
+      return COPY.ineligibleSlotUsed(cadence);
     case 'billing_retry':
     case 'billing_grace':
     case 'apple_unavailable':
@@ -167,7 +201,7 @@ export default function ReferralScreen() {
       // The message carries the App Store link plus the code as text. Apple
       // redeem URLs are deliberately not distributed: redemption outside the
       // app destroys attribution and bypasses onboarding (PRD 10.5.4).
-      await Share.share({ message: COPY.shareMessage(code) });
+      await Share.share({ message: COPY.shareMessage(code, state?.cadence ?? null) });
     } catch {
       // A dismissed share sheet is not an error.
     }
@@ -202,7 +236,7 @@ export default function ReferralScreen() {
     if (applied.ok) {
       // Deliberately does not claim the next charge is discounted: that is
       // true only once Apple confirms the offer on the renewal (PRD 10.5.6).
-      Alert.alert('', COPY.applySubmitted);
+      Alert.alert('', COPY.applySubmitted(state?.cadence ?? null));
       await load();
       void refreshUserState();
       return;
@@ -260,8 +294,8 @@ export default function ReferralScreen() {
                 user invites anyone (PRD 10.5.7). */}
             <Text style={styles.sectionLabel}>{COPY.howTitle.toUpperCase()}</Text>
             <View style={styles.card}>
-              <Text style={styles.body}>{COPY.howBody}</Text>
-              <Text style={styles.footnote}>{COPY.capDisclosure}</Text>
+              <Text style={styles.body}>{COPY.howBody(state?.cadence ?? null)}</Text>
+              <Text style={styles.footnote}>{COPY.capDisclosure(state?.cadence ?? null)}</Text>
             </View>
 
             {reward ? (
@@ -272,7 +306,7 @@ export default function ReferralScreen() {
                     {reward.status === 'ready'
                       ? COPY.rewardReady
                       : reward.status === 'applied'
-                        ? COPY.rewardApplied
+                        ? COPY.rewardApplied(state?.cadence ?? null)
                         : COPY.rewardPending}
                   </Text>
 
@@ -360,7 +394,9 @@ export default function ReferralScreen() {
                 )}
               </TouchableOpacity>
             ) : state && !state.eligible ? (
-              <Text style={styles.footnoteCentered}>{ineligibleCopy(state.reason)}</Text>
+              <Text style={styles.footnoteCentered}>
+                {ineligibleCopy(state.reason, state.cadence)}
+              </Text>
             ) : null}
           </ScrollView>
         )}
