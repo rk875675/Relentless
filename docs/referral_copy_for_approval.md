@@ -7,8 +7,8 @@ final until you mark it approved.
 
 The code currently carries these same drafts inside blocks marked
 `HUMAN INPUT NEEDED`, one per surface, so replacing approved copy is a
-find-and-paste into two files plus (later) the popup — never a hunt through
-components.
+find-and-paste into three files — never a hunt through components. All three
+surfaces are now built, so this table and the code are the same strings.
 
 ## The five rules every string below has to satisfy
 
@@ -31,22 +31,40 @@ See [The 20% question](#the-20-question).
 
 ## Decision needed first: the 20% question
 
-A single string is shown to users on four different SKUs. Three of them have
-an exact 20% point (PRD 10.5.12): $4.99 → $3.99, $39.99 → $31.99, and
-$59.99 → $47.99. The **$7.99 monthly SKU has no exact 20% point**, and rule 5
-caps it at **$6.39** — a $6.49 point would be 18.8% off, so copy saying "20%
-off" next to it would overstate the discount.
+One string is shown to users on four different SKUs, and rule 5 binds it to
+the **worst** of them. Three have an exact 20% point:
+
+| SKU | List | 0.8 × list | Point | Actual discount |
+| --- | --- | --- | --- | --- |
+| `com.relentless.monthly` | $4.99 | $3.992 | $3.99 | 20.0% ✓ |
+| `com.relentless.annual` | $39.99 | $31.992 | $31.99 | 20.0% ✓ |
+| `com.relentless.annual.b` | $59.99 | $47.992 | $47.99 | 20.0% ✓ |
+| `com.relentless.monthly.b` | $7.99 | $6.392 | **?** | **decision** |
+
+The $7.99 monthly SKU has **no exact 20% point**. Rule 5 caps it at $6.39, so
+the choice is:
+
+| Point | Discount | May say "20% off"? | Cost to you |
+| --- | --- | --- | --- |
+| $6.49 | 18.8% | **No** — overstates | cheapest |
+| $6.39 | 20.0% | Yes, exactly | on the line |
+| $5.99 | 25.0% | Yes (understates, which rule 5 permits) | 5 points of extra margin |
+
+$6.39 is the only one that is both compliant and not expensive, **if Apple
+offers it** — it is not a classic tier, so it may only exist in the extended
+price list. Worth checking before committing to a number in copy.
 
 **My recommendation: keep the percentage out of the shared strings entirely**
 and say "a discount on one billing period". That is accurate on all four SKUs
-regardless of what you pick from the extended price list, needs no per-SKU
-copy branching, and cannot drift out of compliance if pricing changes later.
-The drafts below are written that way.
+whatever you pick, needs no per-SKU copy branching, and cannot drift out of
+compliance if pricing changes later. The drafts below are written that way.
 
-If you want "20% off" in the copy for its pull, then either the $7.99 SKU's
-offer must be configured at $6.39 or below, or the copy has to branch per SKU
-— which is real extra work in every surface, so it's worth deciding now
-rather than after approval.
+The cost of that choice is real: "20% off" is a stronger hook than "a
+discount", and this popup gets at most two showings a month to make its case.
+The alternative that keeps the number is to branch copy per SKU, which means
+every surface below gains a conditional and the 20% claim has to be re-checked
+against ASC on every future price change. That is the trade I would not make
+for one SKU, but it is your call.
 
 **Needed from you:** the configured price point for `SHARER20_MONTHLY_B` and
 `TEAMMATE20_MONTHLY_B`, and whether you want the percentage stated at all.
@@ -171,20 +189,28 @@ above, so no state falls through to a wrong message.
 | `errorApply` | Could not apply your reward. Please try again. |
 | `errorApplyOfferActive` | You already have an offer on your next renewal. Apple allows only one at a time. |
 
-## Surface 3 — Home popup (not built yet)
-
-PRD 10.5.12 lists popup copy among the required inputs, so it is drafted here
-to approve alongside the rest. The popup itself is the one remaining surface;
-it also needs a modal-priority decision from you, which is separate from copy.
+## Surface 3 — Home popup (`mobile/components/ReferralPopup.tsx`)
 
 Shown after a lesson, at most twice per calendar month, only when eligible.
+Built and carrying these drafts. The modal-priority question that used to sit
+here is decided and is not a copy matter: the popup is the lowest-priority
+prompt on Home and yields to the streak freebie, push prompt, miss-reflection
+cards, schedule sheet, and the native review dialog.
 
 | Key | Draft |
 | --- | --- |
 | `popupTitle` | Train with a teammate |
-| `popupBody` | Invite a teammate. When their first payment goes through, you each get one discounted billing period. |
-| `popupPrimary` | Get an invite code |
+| `popupBody` | Invite a teammate. When their first payment goes through, you each get one discounted billing period, then you both return to full price. |
+| `popupPrimary` | Invite a teammate |
 | `popupDismiss` | Not now |
+
+`popupBody` completes rule 2 with "then you both return to full price", which
+an earlier draft of this table omitted. `popupPrimary` is deliberately **not**
+`shareCta` ("Get an invite code") even though both lead toward the same place:
+the popup only opens the referral screen, and the code is issued by a separate
+tap once there, so promising a code on this button would be a lie one screen
+early. It does repeat the title's wording, which is the weakest thing on this
+surface and a good candidate for your rewrite.
 
 ---
 
@@ -194,6 +220,20 @@ Mark each string keep / reword / replace and hand it back. I'll drop the
 approved strings into the `HUMAN INPUT NEEDED` blocks and remove the
 placeholder warnings. Until then the feature stays behind
 `referral_offer_enabled`, which is off.
+
+You do not have to review all 40-odd strings to unblock this. Five carry
+almost all of the risk, and the rest are labels:
+
+1. `applySubmitted` — the rule-4 string. Says the offer was submitted, not
+   that the next charge is discounted. The most legally sensitive string here.
+2. `howBody` — carries rules 1, 2 and 3 simultaneously.
+3. `redeemInstructions` — has to stay true when the code shown differs from
+   the code typed, which happens whenever the invitee picks the cadence the
+   sharer did not reserve.
+4. `shareMessage` — the only string that leaves the app, and it contains a
+   live Apple offer code in plain text.
+5. `capDisclosure` — PRD 10.5.7 requires the per-period limit be disclosed
+   before anyone invites, so this one is required, not optional.
 
 Still open and **not** a copy question: the refund/revoke clawback rule (what
 happens to an already-applied reward when the teammate refunds) is unspecified

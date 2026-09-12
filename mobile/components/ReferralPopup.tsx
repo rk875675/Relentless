@@ -17,7 +17,7 @@ import { colors } from '@/lib/theme';
  */
 const COPY = {
   title: 'Train with a teammate',
-  body: 'Invite someone to train with you. When their first payment goes through, you both get a discount on one billing period, then it returns to full price.',
+  body: 'Invite a teammate. When their first payment goes through, you each get one discounted billing period, then you both return to full price.',
   primary: 'Invite a teammate',
   dismiss: 'Not now',
 } as const;
