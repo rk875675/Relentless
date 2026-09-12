@@ -49,6 +49,28 @@ export async function incrementLessonsCompleted(): Promise<void> {
   }
 }
 
+/**
+ * Whether we asked Apple for a review within the last `windowMs`.
+ *
+ * Exists so a lower-priority prompt can yield to the review dialog (PRD
+ * 10.5.8). The lesson screen requests a review immediately before
+ * `router.back()`, so the dialog can be on screen as Home mounts.
+ *
+ * This reports that the request was MADE, not that the dialog appeared — Apple
+ * decides the latter and tells us nothing. Yielding to the request is still
+ * correct, because Apple consumes the attempt either way.
+ */
+export async function reviewRequestedWithinMs(windowMs: number): Promise<boolean> {
+  try {
+    const lastRequestAt = await AsyncStorage.getItem(KEYS.LAST_REVIEW_REQUEST_AT);
+    if (!lastRequestAt) return false;
+    const elapsed = Date.now() - new Date(lastRequestAt).getTime();
+    return elapsed >= 0 && elapsed <= windowMs;
+  } catch {
+    return false;
+  }
+}
+
 export async function maybeRequestAppStoreReview(): Promise<void> {
   // Gate A: build-time flag baked into the binary — cannot be changed after install
   const buildEnabled =

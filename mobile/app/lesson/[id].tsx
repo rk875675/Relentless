@@ -28,6 +28,7 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { apiFetch } from '@/lib/api';
 import { bustCache } from '@/lib/api-cache';
 import { setPendingGainDeltas } from '@/lib/pending-deltas';
+import { markLessonCompletedForReferral } from '@/lib/referral-popup-state';
 import { colors, spacing } from '@/lib/theme';
 import { approxLessonMinutes } from '@/lib/approx-lesson-minutes';
 import { trackLessonViewed, trackLessonStarted, trackLessonCompleted, trackReflectionSaved, trackPartnerReferralCtaClicked, trackLessonAbandoned, trackExerciseBlockStarted, trackExerciseBlockCompleted, trackLessonBackgrounded, trackJournalPromptCompleted, trackStreakExtended, getTimeOfDayHour } from '@/lib/core-analytics';
@@ -1012,6 +1013,9 @@ export default function LessonPlayerScreen() {
           : null,
       });
       incrementLessonsCompleted();
+      // Lets Home tell a post-lesson return from a plain tab switch, since
+      // leaving a lesson is a bare router.back() with no params.
+      markLessonCompletedForReferral();
       // First pack-complete: feedback + rating first. Trophy / streak come after.
       setPhase(completeData?.pack_completed ? 'pack_complete' : 'done');
     }

@@ -35,7 +35,14 @@ import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { coachAvatarSource } from '@/lib/coach-photo';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
-import { maybeRequestAppStoreReview } from '@/lib/app-store-review-prompt';
+import { maybeRequestAppStoreReview, reviewRequestedWithinMs } from '@/lib/app-store-review-prompt';
+import ReferralPopup from '@/components/ReferralPopup';
+import { isReferralEnabled, fetchReferralState } from '@/lib/referral';
+import {
+  canShowReferralPopup,
+  recordReferralPopupShown,
+  takeLessonCompletedForReferral,
+} from '@/lib/referral-popup-state';
 import {
   trackWodViewed,
   trackWodStarted,
@@ -219,6 +226,13 @@ function pushPromptShownKey(userId: string): string {
 }
 
 const MISS_REFLECTION_JOURNAL_PATH = '/journal?entry_type=miss_reflection&limit=1';
+
+// Let the return to Home settle before the referral popup evaluates: the MAC
+// ring delta animation plays on arrival, and the push prompt has its own 1.5s
+// timer that must be allowed to claim priority first.
+const REFERRAL_POPUP_DELAY_MS = 2500;
+// How recently a review request counts as "the dialog may be on screen".
+const REFERRAL_POPUP_REVIEW_WINDOW_MS = 60_000;
 
 type MissReflectionJournalListResponse = {
   items: { created_at: string; entry_type: string }[];
@@ -598,6 +612,73 @@ export default function HomeScreen() {
       }
       void maybeRequestAppStoreReview();
     }, []),
+  );
+
+  // Post-lesson referral popup (PRD 10.5.8). Deliberately the LOWEST-priority
+  // prompt on this screen: it yields to the streak freebie, the push prompt,
+  // the miss-reflection cards, the schedule sheet, and the native review
+  // dialog. Yielding costs nothing — the monthly allowance is only spent when
+  // the popup actually appears, so it simply retries after a later lesson.
+  //
+  // The review dialog is the one that genuinely competes: the lesson screen
+  // requests it immediately before router.back(), so it can be on screen as
+  // Home mounts. A review attempt is unrecoverable for 90 days, while this
+  // popup gets another chance next lesson, so it always loses that contest.
+  const referralPopupShownRef = useRef(false);
+  const [showReferralPopup, setShowReferralPopup] = useState(false);
+
+  // Read through a ref, not the closure: the checks below run after a delay,
+  // and any of these can flip in the meantime (the freebie is set during
+  // fetchData, the push prompt on its own 1.5s timer).
+  const otherPromptVisibleRef = useRef(false);
+  useEffect(() => {
+    otherPromptVisibleRef.current =
+      showFreebieModal || showPushPrompt || showMissReflection || schedulePickerVisible;
+  }, [showFreebieModal, showPushPrompt, showMissReflection, schedulePickerVisible]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // Guards before the read: this effect re-runs when currentUserId
+      // arrives, and consuming the signal while it is still null would spend
+      // it on a pass that can never show the popup.
+      if (referralPopupShownRef.current || !currentUserId) return;
+      // Spends the signal for this return whether or not we end up showing.
+      if (!takeLessonCompletedForReferral()) return;
+
+      let cancelled = false;
+      const timer = setTimeout(() => {
+        void (async () => {
+          // Cheap local gates first, so the eligibility request only happens
+          // when the popup could actually be shown.
+          if (cancelled) return;
+          if (!(await isReferralEnabled())) return;
+          if (cancelled) return;
+          if (!(await canShowReferralPopup(currentUserId))) return;
+          if (cancelled) return;
+          if (await reviewRequestedWithinMs(REFERRAL_POPUP_REVIEW_WINDOW_MS)) return;
+          if (cancelled) return;
+
+          const state = await fetchReferralState();
+          if (cancelled || !state?.enabled || !state.eligible) return;
+
+          // Checked last, because the eligibility request above takes time and
+          // the popup must never present alongside another prompt.
+          if (otherPromptVisibleRef.current) return;
+
+          // Shown first, then recorded: a slot must never be spent on a popup
+          // the user did not actually see.
+          referralPopupShownRef.current = true;
+          setShowReferralPopup(true);
+          void recordReferralPopupShown(currentUserId);
+        })();
+      }, REFERRAL_POPUP_DELAY_MS);
+
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUserId]),
   );
 
   const refreshPrograms = useCallback(async () => {
@@ -1281,6 +1362,15 @@ export default function HomeScreen() {
         </View>
       </View>
     </Modal>
+
+    <ReferralPopup
+      visible={showReferralPopup}
+      onInvite={() => {
+        setShowReferralPopup(false);
+        router.push('/referral' as any);
+      }}
+      onDismiss={() => setShowReferralPopup(false)}
+    />
 
     {schedulePickerVisible && (
       <Modal visible transparent animationType="fade" onRequestClose={() => setSchedulePickerVisible(false)}>
