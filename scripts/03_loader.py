@@ -81,9 +81,11 @@ POSTHOG_PERSONAL_API_KEY = os.environ.get("POSTHOG_PERSONAL_API_KEY", "").strip(
 POSTHOG_HOST = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip().rstrip("/")
 POSTHOG_PROJECT_ID = os.environ.get("POSTHOG_PROJECT_ID", "400227").strip()
 POSTHOG_DASHBOARD_ID = int(os.environ.get("POSTHOG_DASHBOARD_ID", "1517002"))
+# Lesson Pack Info dashboard — receives one completion-by-day tile per loaded pack.
+POSTHOG_PACK_DASHBOARD_ID = int(os.environ.get("POSTHOG_PACK_DASHBOARD_ID", "2104819"))
 POSTHOG_CTA_DATE_FROM = "2026-05-16T00:00:00"
 
-GAP_THRESHOLD = 1.2   # seconds of silence -> force a new caption cue
+GAP_THRESHOLD = 1.2   # seconds of silence; see _GAP_BREAK_REQUIRES_CLAUSE
 MAX_CHARS = 75        # caption display limit
 UUID_NS = uuid.uuid5(uuid.NAMESPACE_URL, "relentless.app/lessons")
 
@@ -107,19 +109,26 @@ _STORAGE_JWT = None
 
 
 def _resolve_storage_jwt():
-    """Get a JWT that Storage accepts. If KEY is already a JWT, use it.
-    Otherwise fetch the legacy service_role JWT from `npx supabase projects api-keys`."""
+    """Get a token that Storage accepts.
+
+    Prefer the already-configured KEY (legacy JWT or sb_secret — both work on
+    this project). Only fall back to a CLI-fetched legacy JWT if KEY is unset.
+    `npx supabase` has no win32-x64 binary in some environments; try `supabase`
+    on PATH first."""
     global _STORAGE_JWT
     if _STORAGE_JWT:
         return _STORAGE_JWT
-    if KEY.startswith("ey") and KEY.count(".") == 2:
+    if KEY:
         _STORAGE_JWT = KEY
         return _STORAGE_JWT
     try:
-        result = subprocess.run(
-            ["npx", "supabase", "projects", "api-keys", "--project-ref", PROJECT_REF],
-            capture_output=True, text=True, timeout=60, shell=True
-        )
+        cmd = ["supabase", "projects", "api-keys", "--project-ref", PROJECT_REF]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if result.returncode != 0:
+            result = subprocess.run(
+                ["npx", "supabase", "projects", "api-keys", "--project-ref", PROJECT_REF],
+                capture_output=True, text=True, timeout=60, shell=True
+            )
         keys = json.loads(result.stdout).get("keys", [])
         for k in keys:
             if k.get("id") == "service_role" and k.get("type") == "legacy":
@@ -127,8 +136,8 @@ def _resolve_storage_jwt():
                 return _STORAGE_JWT
     except Exception:
         pass
-    sys.exit("ERROR: cannot resolve a JWT for Storage uploads. Set SUPABASE_SERVICE_ROLE_KEY "
-             "to the legacy JWT, or ensure `npx supabase` is logged in.")
+    sys.exit("ERROR: cannot resolve a token for Storage uploads. Set SUPABASE_SERVICE_ROLE_KEY "
+             "to the project service-role key, or ensure the Supabase CLI is logged in.")
 
 
 def _cli_query(sql):
@@ -372,6 +381,28 @@ def strip_ambient(block):
     return {k: v for k, v in block.items() if k != "ambient_audio"}
 
 
+# The Coach Portal sometimes emits an unused *optional* string field as ""
+# instead of omitting the key (seen on multi_field_entry.summary_header, and
+# the same schema shape exists nested one level down on e.g.
+# multi_field_entry.fields[].placeholder and timed_exercise.pattern[].label).
+# The shared Zod schema uses z.string().min(1).optional() for these, so a
+# present-but-empty "" fails validation -> the server nulls out the WHOLE
+# lesson's content_blocks (silent fallback) -> the lesson renders with no
+# content ("just a timer"), even though every other block was fine.
+# Dropping an empty string is always safe, at any nesting depth: every schema
+# already treats an omitted optional key identically to (or more leniently
+# than) "" — either a default fills in "" anyway, or the field was going to
+# fail validation either way. Never changes a required (non-optional) field's
+# pass/fail outcome. Recurses through nested dicts/lists (fields[], pattern[],
+# steps[], ...) so the fix isn't limited to whichever field bit us first.
+def drop_empty_optional_strings(value):
+    if isinstance(value, dict):
+        return {k: drop_empty_optional_strings(v) for k, v in value.items() if v != ""}
+    if isinstance(value, list):
+        return [drop_empty_optional_strings(v) for v in value]
+    return value
+
+
 # Coach Portal 2026-07-01 breathing changes (manifest schema still "2.0"):
 #   - visual_cues was removed from breathing blocks (drop it if an older pack
 #     still carries it — the app no longer needs it for flexible breathing).
@@ -420,6 +451,14 @@ _ATTACH_LEFT_PREFIXES = (",", ".", ";", ":", "!", "?", ")", "]", "}", "'", "\u20
 # Word-final punctuation that marks a natural clause boundary we may break after.
 _CLAUSE_END = (",", ";", ":", "\u2014", "\u2013")
 
+# 2026-09-07 caption grouping (reversible).
+# True  = a 1.2s pause starts a new cue ONLY if the last word ended a clause
+#         (comma / dash / etc). Stops mid-sentence chops like "Race brings."
+# False = OLD behavior: any 1.2s pause starts a new cue.
+# Flip to False if the next pack's captions look worse (over-merged lines).
+# Does not change live lessons until that pack is loaded.
+_GAP_BREAK_REQUIRES_CLAUSE = True
+
 # Known Whisper homophone slips to correct in generated captions. The AUDIO is
 # correct; the transcript mishears it (e.g. "day two" -> "today too"). Exact,
 # case-sensitive substring replacements applied to every generated cue so a
@@ -427,6 +466,8 @@ _CLAUSE_END = (",", ";", ":", "\u2014", "\u2013")
 _CAPTION_TEXT_FIXES = (
     ("welcome today too", "welcome to day two"),
     ("Welcome today too", "Welcome to day two"),
+    ("What does it taught you?", "What has it taught you?"),
+    ("challenges is simple", "challenge is simple"),
 )
 
 
@@ -494,11 +535,20 @@ def _split_long(words, warnings=None):
     return [{"start_s": round(c[0]["start"], 2), "text": _cap(_text_of(c))} for c in cues]
 
 
+def _ends_clause(w):
+    return w.rstrip().endswith(_CLAUSE_END)
+
+
 def _words_to_cues(words, warnings=None):
     groups, buf = [], []
     for i, w in enumerate(words):
         buf.append(w)
-        if _ends_sentence(w["word"]) or (i + 1 < len(words) and (words[i + 1]["start"] - w["end"]) >= GAP_THRESHOLD):
+        gap_break = (
+            i + 1 < len(words)
+            and (words[i + 1]["start"] - w["end"]) >= GAP_THRESHOLD
+            and (not _GAP_BREAK_REQUIRES_CLAUSE or _ends_clause(w["word"]))
+        )
+        if _ends_sentence(w["word"]) or gap_break:
             groups.append(buf); buf = []
     if buf:
         groups.append(buf)
@@ -754,6 +804,120 @@ def ensure_posthog_coach_cta_tile(coach_key, full_name, warnings):
 
 
 # ---------------------------------------------------------------------------
+# PostHog — per-pack completion tile on Lesson Pack Info dashboard (idempotent)
+# ---------------------------------------------------------------------------
+def pack_tile_name(program_title, coach_full_name):
+    """Dashboard-visible title for the per-pack completion tile."""
+    return f"Pack: {program_title} ({coach_full_name}) \u2014 Completions by Day"
+
+
+def _pack_completion_insight_query(program_key):
+    return {
+        "kind": "InsightVizNode",
+        "source": {
+            "kind": "TrendsQuery",
+            "version": 3,
+            "interval": "week",
+            "dateRange": {"date_from": "-180d", "date_to": None, "explicitDate": False},
+            "filterTestAccounts": True,
+            "properties": [],
+            "series": [{
+                "kind": "EventsNode",
+                "event": "lesson_completed",
+                "name": "Completions",
+                "math": "total",
+                "properties": [{
+                    "key": "program_key",
+                    "type": "event",
+                    "operator": "exact",
+                    "value": [program_key],
+                }],
+            }],
+            "breakdownFilter": {"breakdown": "program_day", "breakdown_type": "event"},
+            "trendsFilter": {
+                "display": "ActionsBar",
+                "showLegend": True,
+                "aggregationAxisFormat": "numeric",
+                "legendPosition": "bottom",
+                "smoothingIntervals": 1,
+                "yAxisScaleType": "linear",
+                "metricShowChange": True,
+                "metricSummary": "total",
+                "excludeBoxPlotOutliers": True,
+                "showAnnotations": True,
+                "showAlertThresholdLines": False,
+                "showMultipleYAxes": False,
+                "showPercentStackView": False,
+                "stackBreakdownValues": False,
+                "hideWeekends": False,
+            },
+        },
+    }
+
+
+def ensure_posthog_pack_tile(coach_key, program_key, program_title, coach_full_name, warnings):
+    """Create (or no-op if present) a per-pack completion tile on the Lesson Pack Info
+    dashboard. Shows weekly lesson_completed counts broken down by program_day for this
+    specific pack, making it easy to see where users drop off within the program sequence.
+    Requires POSTHOG_PERSONAL_API_KEY with insight:write — never hardcode it."""
+    if not POSTHOG_PERSONAL_API_KEY:
+        warnings.append(
+            "PostHog pack tile skipped: set POSTHOG_PERSONAL_API_KEY "
+            f"to auto-create pack tile for {program_key!r} on Lesson Pack Info"
+        )
+        return None
+
+    tile_name = pack_tile_name(program_title, coach_full_name)
+    description = (
+        f"Weekly lesson completions by program_day for pack '{program_title}' "
+        f"(program_key={program_key}, coach={coach_key})."
+    )
+    base = f"{POSTHOG_HOST}/api/projects/{POSTHOG_PROJECT_ID}/insights/"
+
+    # Idempotent lookup by exact title (search is fuzzy; we exact-match locally).
+    search_url = f"{base}?limit=50&search={quote(program_title)}"
+    req = Request(search_url, headers=_posthog_headers())
+    payload = json.loads(_posthog_open(req).read().decode("utf-8"))
+    results = payload.get("results") if isinstance(payload, dict) else payload
+    existing = next((r for r in (results or []) if r.get("name") == tile_name), None)
+
+    if existing:
+        dashboards = list(existing.get("dashboards") or [])
+        insight_id = existing["id"]
+        if POSTHOG_PACK_DASHBOARD_ID not in dashboards:
+            dashboards.append(POSTHOG_PACK_DASHBOARD_ID)
+            patch = Request(
+                f"{base}{insight_id}/",
+                data=json.dumps({"dashboards": dashboards}).encode("utf-8"),
+                method="PATCH",
+                headers=_posthog_headers(),
+            )
+            _posthog_open(patch).read()
+            print(f"posthog: attached pack tile to Lesson Pack Info — {tile_name}")
+        else:
+            print(f"posthog: pack tile already present — {tile_name}")
+        return insight_id
+
+    body = {
+        "name": tile_name,
+        "description": description,
+        "saved": True,
+        "favorited": False,
+        "dashboards": [POSTHOG_PACK_DASHBOARD_ID],
+        "query": _pack_completion_insight_query(program_key),
+    }
+    create = Request(
+        base,
+        data=json.dumps(body).encode("utf-8"),
+        method="POST",
+        headers=_posthog_headers(),
+    )
+    created = json.loads(_posthog_open(create).read().decode("utf-8"))
+    print(f"posthog: created pack tile — {tile_name} (id={created.get('id')})")
+    return created.get("id")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
@@ -897,6 +1061,16 @@ def main():
         except Exception as e:
             warnings.append(f"PostHog CTA tile failed for {coach_full_name!r}: {e}")
 
+    # --- PostHog: ensure per-pack completion tile on Lesson Pack Info dashboard ---
+    pack_title = (program.get("title") or pk).strip() or pk
+    if args.dry_run:
+        print(f"posthog: would ensure pack tile — {pack_tile_name(pack_title, coach_full_name)}")
+    else:
+        try:
+            ensure_posthog_pack_tile(ck, pk, pack_title, coach_full_name, warnings)
+        except Exception as e:
+            warnings.append(f"PostHog pack tile failed for {pack_title!r}: {e}")
+
     # --- Upsert program (by coach_id + program_key) -> program_id ---
     # cover_image is intentionally NOT written: the Coach Portal no longer emits
     # it, and omitting the key leaves any existing DB value untouched on re-load.
@@ -928,8 +1102,12 @@ def main():
                 out_blocks.append(build_voiceover(b, pack_dir, args.dry_run, warnings))
             elif b["type"] in PASSTHROUGH_TYPES:
                 # Already schema-shaped; strip ambient_audio (no ambient in these
-                # lessons) and normalize breathing (visual_cues / mid_overlays).
-                out_blocks.append(normalize_breathing(strip_ambient(b)))
+                # lessons), drop any "" the portal left on an optional field
+                # (see drop_empty_optional_strings), and normalize breathing
+                # (visual_cues / mid_overlays).
+                out_blocks.append(
+                    normalize_breathing(drop_empty_optional_strings(strip_ambient(b)))
+                )
             else:
                 raise ValueError(f"lesson {seq}: unknown block type {b['type']!r}")
 
