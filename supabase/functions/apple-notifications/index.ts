@@ -1,5 +1,18 @@
 import { createServiceClient } from "../_shared/supabase.ts";
 import { verifyAppleJws, type AppleJwsResult } from "../_shared/apple_jws.ts";
+import { capturePostHogEvent, entitlementPersonSet } from "../_shared/posthog.ts";
+import {
+  countRenewalNumber,
+  lookupSubscriptionAttribution,
+  resolveUserByAppAccountToken,
+  transactionAnalyticsProperties,
+  type AppleTransactionInfo,
+} from "../_shared/subscription_analytics.ts";
+import {
+  emitReferralRewardRelease,
+  emitSharerRewardApplied,
+  isSandboxEnvironment,
+} from "../_shared/referral_analytics.ts";
 
 // ---------------------------------------------------------------------------
 // Apple App Store Server Notifications v2 — PostHog proxy
@@ -51,31 +64,66 @@ function decodeJwtPayload<T>(jwt: string): T | null {
 }
 
 // ---------------------------------------------------------------------------
-// PostHog server-side capture
+// PostHog: every Apple notification, with Apple's decoded transaction fields.
+// Analytics failures are swallowed by capturePostHogEvent.
 // ---------------------------------------------------------------------------
 
-async function capturePostHogEvent(
-  distinctId: string,
-  event: string,
-  properties: Record<string, unknown>,
-): Promise<void> {
-  const apiKey = Deno.env.get("POSTHOG_API_KEY") ?? "";
-  const host = (Deno.env.get("POSTHOG_HOST") ?? "https://us.i.posthog.com").replace(/\/$/, "");
-  if (!apiKey) return;
-  try {
-    await fetch(`${host}/capture/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        api_key: apiKey,
-        event,
-        distinct_id: distinctId,
-        properties: { ...properties, $lib: "supabase-edge-function" },
-      }),
-    });
-  } catch {
-    // Analytics must never crash the webhook handler.
+async function emitSubscriptionStateSynced(args: {
+  supabase: ReturnType<typeof createServiceClient>;
+  distinctId: string;
+  processPerson: boolean;
+  notificationType: string | undefined;
+  subtype: string;
+  environment: string | null;
+  previousStatus: string | null;
+  newStatus: string | null;
+  txInfo: AppleTransactionInfo | null;
+  originalTransactionId: string | null;
+  productId: string | null;
+  insertId?: string;
+}): Promise<void> {
+  const txProps = transactionAnalyticsProperties(args.txInfo);
+  const attribution = args.processPerson
+    ? await lookupSubscriptionAttribution(
+      args.supabase,
+      args.distinctId,
+      args.originalTransactionId,
+    )
+    : { attribution_code: null, attribution_creator: null, attribution_source: null };
+  const renewalNumber = args.originalTransactionId
+    ? await countRenewalNumber(
+      args.supabase,
+      args.originalTransactionId,
+      args.txInfo?.transactionId ?? null,
+    )
+    : null;
+
+  const properties: Record<string, unknown> = {
+    notification_type: args.notificationType ?? null,
+    subtype: args.subtype || null,
+    previous_status: args.previousStatus,
+    new_status: args.newStatus,
+    environment: args.environment,
+    is_sandbox: isSandboxEnvironment(args.environment),
+    renewal_number: renewalNumber,
+    ...txProps,
+    product_id: txProps.product_id ?? args.productId,
+    original_transaction_id: txProps.original_transaction_id ?? args.originalTransactionId,
+    ...attribution,
+  };
+
+  if (!args.processPerson) {
+    properties.$process_person_profile = false;
+  } else if (args.newStatus) {
+    properties.$set = entitlementPersonSet(args.newStatus);
   }
+
+  await capturePostHogEvent(
+    args.distinctId,
+    "subscription_state_synced",
+    properties,
+    args.insertId ? { insertId: args.insertId } : undefined,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -136,22 +184,7 @@ type RenewalInfo = {
   offerDiscountType?: string;
 };
 
-type TransactionInfo = {
-  originalTransactionId?: string;
-  bundleId?: string;
-  productId?: string;
-  isTrialPeriod?: boolean;
-  is_trial_period?: boolean;
-  offerDiscountType?: string;
-  // offerType 1 = introductory, 2 = promotional, 3 = offer code, 4 = win-back.
-  // The identifier is the App Store Connect reference name, which is shared by
-  // every code in a batch — Apple never discloses the individual code redeemed.
-  offerIdentifier?: string;
-  offerType?: number;
-  offerPeriod?: string;
-  expiresDate?: number;
-  revocationDate?: number;
-};
+type TransactionInfo = AppleTransactionInfo;
 
 // ---------------------------------------------------------------------------
 // Entitlement status mapping (mirrors purchases/index.ts semantics:
@@ -384,7 +417,24 @@ Deno.serve(async (req) => {
     txInfo?.originalTransactionId ?? renewalInfo?.originalTransactionId ?? null;
 
   if (!originalTransactionId || (txInfo?.bundleId && txInfo.bundleId !== BUNDLE_ID)) {
-    // Nothing we can act on (e.g. TEST notification) — forward only.
+    // TEST / malformed inner payload: Superwall already got the raw body.
+    // Still record the type in PostHog so we are not maintaining an allowlist.
+    pendingWork.push(
+      capturePostHogEvent(
+        `apple:${notification.notificationUUID ?? "unknown"}`,
+        "subscription_state_synced",
+        {
+          notification_type: notificationType ?? null,
+          subtype: subtype || null,
+          environment: data?.environment ?? null,
+          is_sandbox: isSandboxEnvironment(data?.environment ?? null),
+          $process_person_profile: false,
+        },
+        notification.notificationUUID
+          ? { insertId: `subscription_state_synced:${notification.notificationUUID}` }
+          : undefined,
+      ),
+    );
     await Promise.allSettled(pendingWork);
     return new Response("OK", { status: 200 });
   }
@@ -402,6 +452,7 @@ Deno.serve(async (req) => {
     original_transaction_id: originalTransactionId,
     product_id:
       txInfo?.productId ?? renewalInfo?.productId ?? renewalInfo?.autoRenewProductId ?? null,
+    transaction_id: txInfo?.transactionId ?? null,
     environment: data?.environment ?? null,
     signed_date: notification.signedDate
       ? new Date(notification.signedDate).toISOString()
@@ -419,12 +470,19 @@ Deno.serve(async (req) => {
     .from("entitlements")
     .select("user_id, status, expires_at")
     .eq("original_transaction_id", originalTransactionId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
+
+  const tokenUserId = entRow?.user_id
+    ? null
+    : await resolveUserByAppAccountToken(supabase, txInfo?.appAccountToken);
 
   if (!entRow?.user_id) {
     console.warn(
       "[apple-notifications] No entitlement row for originalTransactionId",
       originalTransactionId,
+      tokenUserId ? `(appAccountToken matched ${tokenUserId})` : "",
       "— saving to pending_apple_notifications for reconciliation by purchases/restore",
     );
     // Persist so purchases/restore can reconcile once the user's row exists.
@@ -449,6 +507,27 @@ Deno.serve(async (req) => {
       // a second copy of the same notification.
       pendingWork.push(markNotificationProcessed(supabase, notificationUuid));
     }
+    const pendingStatus = txInfo && notificationType
+      ? computeSyncedEntitlement(notificationType, txInfo, renewalInfo).status
+      : null;
+    pendingWork.push(
+      emitSubscriptionStateSynced({
+        supabase,
+        distinctId: tokenUserId ?? `otid:${originalTransactionId}`,
+        processPerson: Boolean(tokenUserId),
+        notificationType,
+        subtype,
+        environment: data?.environment ?? null,
+        previousStatus: null,
+        newStatus: pendingStatus,
+        txInfo,
+        originalTransactionId,
+        productId: txInfo?.productId ?? renewalInfo?.productId ?? renewalInfo?.autoRenewProductId ?? null,
+        insertId: notificationUuid
+          ? `subscription_state_synced:${notificationUuid}`
+          : undefined,
+      }),
+    );
     await Promise.allSettled(pendingWork);
     return new Response("OK", { status: 200 });
   }
@@ -536,28 +615,32 @@ Deno.serve(async (req) => {
       );
 
       pendingWork.push(markNotificationProcessed(supabase, notificationUuid));
-
-      // Keep the PostHog person record accurate on every real state change so
-      // dashboards segment on live subscription state, not launch-time state.
-      if (synced.status !== entRow.status) {
-        pendingWork.push(
-          capturePostHogEvent(entRow.user_id, "subscription_state_synced", {
-            notification_type: notificationType,
-            subtype: subtype || null,
-            previous_status: entRow.status,
-            new_status: synced.status,
-            product_id: productId,
-            original_transaction_id: originalTransactionId,
-            environment: data?.environment ?? null,
-            $set: {
-              entitlement_status: synced.status,
-              premium: synced.status === "trial" || synced.status === "active",
-            },
-          }),
-        );
-      }
     }
   }
+
+  // Forward every Apple notification type to PostHog (no allowlist). Person
+  // entitlement_status is rewritten on every event so it cannot go stale.
+  const syncedForAnalytics = txInfo && notificationType
+    ? computeSyncedEntitlement(notificationType, txInfo, renewalInfo)
+    : null;
+  pendingWork.push(
+    emitSubscriptionStateSynced({
+      supabase,
+      distinctId: entRow.user_id,
+      processPerson: true,
+      notificationType,
+      subtype,
+      environment: data?.environment ?? null,
+      previousStatus: entRow.status,
+      newStatus: syncedForAnalytics?.status ?? entRow.status,
+      txInfo,
+      originalTransactionId,
+      productId: txInfo?.productId ?? renewalInfo?.productId ?? renewalInfo?.autoRenewProductId ?? null,
+      insertId: notificationUuid
+        ? `subscription_state_synced:${notificationUuid}`
+        : undefined,
+    }),
+  );
 
   // -------------------------------------------------------------------------
   // Referral reward release (PRD 10.5.5)
@@ -602,12 +685,22 @@ Deno.serve(async (req) => {
             notificationType,
             error: error.message,
           });
-          return;
+        } else {
+          console.log("[apple-notifications] Referral reward release", {
+            originalTransactionId,
+            notificationType,
+            result: data,
+          });
         }
-        console.log("[apple-notifications] Referral reward release", {
+        await emitReferralRewardRelease({
+          distinctId: entRow.user_id,
+          rpc: error ? null : (data as { result?: string } | null),
+          rpcError: error?.message ?? null,
+          source: "apple_notification",
           originalTransactionId,
-          notificationType,
-          result: data,
+          offerIdentifier,
+          productId: rewardProductId,
+          environment: data?.environment ?? null,
         });
       } catch (err) {
         console.error("[apple-notifications] Referral reward release threw", err);
@@ -643,13 +736,22 @@ Deno.serve(async (req) => {
             originalTransactionId,
             error: error.message,
           });
-          return;
+        } else {
+          // no_reward is the normal case for any non-referral promotional offer.
+          console.log("[apple-notifications] Sharer offer confirm", {
+            originalTransactionId,
+            offerIdentifier: sharerOffer,
+            result: data,
+          });
         }
-        // no_reward is the normal case for any non-referral promotional offer.
-        console.log("[apple-notifications] Sharer offer confirm", {
+        await emitSharerRewardApplied({
+          distinctId: entRow.user_id,
+          rpc: error ? null : (data as { result?: string } | null),
+          rpcError: error?.message ?? null,
+          source: "apple_notification",
           originalTransactionId,
           offerIdentifier: sharerOffer,
-          result: data,
+          environment: data?.environment ?? null,
         });
       } catch (err) {
         console.error("[apple-notifications] Sharer offer confirm threw", err);

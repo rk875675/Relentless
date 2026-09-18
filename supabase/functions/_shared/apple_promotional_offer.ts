@@ -38,7 +38,7 @@ export type PromotionalOfferSignature = {
   signature: string;
   /**
    * The value folded into the signature. The app MUST pass exactly this as
-   * its app account token, which today means not setting one at all.
+   * its StoreKit appAccountToken — our internal user id (UUID).
    */
   appAccountToken: string;
 };
@@ -102,8 +102,9 @@ function toBase64(bytes: Uint8Array): string {
  * @param productId       The subscription the offer applies to. Must be the
  *                        product that will actually renew.
  * @param offerIdentifier The App Store Connect promotional offer reference name.
- * @param appAccountToken Must equal what the app sends at purchase; "" when
- *                        the app sets no token.
+ * @param appAccountToken Must equal what the app sends at purchase. Pass the
+ *                        Relentless user id (UUID) so Apple echoes it on the
+ *                        transaction; "" only when the app sets no token.
  */
 export async function signPromotionalOffer(
   bundleId: string,

@@ -13,6 +13,14 @@ import {
   storeIdempotencyKey,
 } from "../_shared/idempotency.ts";
 import { verifyAppleJws } from "../_shared/apple_jws.ts";
+import { otidClaimedByOtherUser } from "../_shared/otid_guard.ts";
+import { capturePostHogEvent, entitlementPersonSet } from "../_shared/posthog.ts";
+import {
+  lookupSubscriptionAttribution,
+  transactionAnalyticsProperties,
+  type AppleTransactionInfo,
+} from "../_shared/subscription_analytics.ts";
+import { emitReferralRewardRelease } from "../_shared/referral_analytics.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -258,7 +266,7 @@ Deno.serve(async (req) => {
   // subscription (below), and source/expires_at guard a live promo grant.
   const { data: existingEnt } = await supabase
     .from("entitlements")
-    .select("status, source, expires_at")
+    .select("status, source, expires_at, product_id, original_transaction_id")
     .eq("user_id", auth.userId)
     .maybeSingle();
   const previousStatus: string | null = existingEnt?.status ?? null;
@@ -274,13 +282,38 @@ Deno.serve(async (req) => {
     (existingEnt.status === "trial" || existingEnt.status === "active") &&
     (existingEnt.expires_at === null ||
       new Date(existingEnt.expires_at).getTime() > Date.now());
+  const lifetimePromo = existingEnt?.source === "promo" &&
+    existingEnt.status === "active" &&
+    existingEnt.expires_at === null;
   const appleGrantsAccess = entitlementStatus === "trial" ||
     entitlementStatus === "active";
+  // Paid Apple (status active) is a real conversion and may overwrite promo.
+  // A leftover Apple trial must not evict a lifetime grant — that is not an upgrade.
+  const appleIsPaidActive = entitlementStatus === "active";
 
-  if (promoStillLive && !appleGrantsAccess) {
+  if (
+    existingEnt?.original_transaction_id !== originalTransactionId &&
+    await otidClaimedByOtherUser(supabase, originalTransactionId, auth.userId)
+  ) {
     console.warn(
-      "[purchases/restore] Kept live promo entitlement; Apple reported no active subscription",
-      { requestId, appleStatus: entitlementStatus },
+      "[purchases/restore] Refusing to attach an Apple subscription already bound to another account",
+      { requestId },
+    );
+    const keptBody = {
+      entitlement_status: existingEnt?.status ?? "none",
+      product_id: existingEnt?.product_id ?? null,
+    };
+    await storeIdempotencyKey(supabase, idempotencyKey, auth.userId, 200, keptBody);
+    return successResponse(keptBody, requestId);
+  }
+
+  if (
+    (promoStillLive && !appleGrantsAccess) ||
+    (lifetimePromo && !appleIsPaidActive)
+  ) {
+    console.warn(
+      "[purchases/restore] Kept live promo entitlement; Apple result was not a paid upgrade",
+      { requestId, appleStatus: entitlementStatus, lifetimePromo },
     );
     const promoResponseBody = {
       entitlement_status: existingEnt!.status,
@@ -358,22 +391,103 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Referral reward release on the restore path (PRD 10.5.5).
+  //
+  // apple-notifications fires release_referral_reward when an offer-code
+  // SUBSCRIBED/DID_RENEW arrives, but only when there is already an entitlement
+  // row indexed to that OTID. For INITIAL_BUY the race is common: the first
+  // notification arrives before /purchases/restore has run, so the handler
+  // saves it to pending and no reward is released.
+  //
+  // We close the gap here: after the entitlement is authoritative, check
+  // apple_notification_log for the earliest offerType=3 event on this OTID
+  // (the actual SUBSCRIBED INITIAL_BUY) and call the same reward function.
+  // The function is idempotent (ON CONFLICT DO NOTHING), so a redelivered
+  // notification or a second restore never double-pays.
+  // ---------------------------------------------------------------------------
+  try {
+    if (entitlementStatus === "active") {
+    const { data: offerLog } = await supabase
+      .from("apple_notification_log")
+      .select("offer_identifier, offer_type, product_id")
+      .eq("original_transaction_id", originalTransactionId)
+      .eq("offer_type", 3)
+      .not("offer_identifier", "is", null)
+      .order("signed_date", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (offerLog?.offer_identifier) {
+      const { data: rewardResult, error: rewardErr } = await supabase.rpc(
+        "release_referral_reward",
+        {
+          p_invitee_user_id: auth.userId,
+          p_original_transaction_id: originalTransactionId,
+          p_offer_identifier: offerLog.offer_identifier,
+          p_product_id: offerLog.product_id ?? productId ?? null,
+        },
+      );
+      if (rewardErr) {
+        console.error("[purchases/restore] Referral reward release failed", {
+          originalTransactionId,
+          offerIdentifier: offerLog.offer_identifier,
+          error: rewardErr.message,
+          requestId,
+        });
+      } else {
+        console.log("[purchases/restore] Referral reward release", {
+          originalTransactionId,
+          offerIdentifier: offerLog.offer_identifier,
+          result: rewardResult,
+          requestId,
+        });
+      }
+      await emitReferralRewardRelease({
+        distinctId: auth.userId,
+        rpc: rewardErr ? null : (rewardResult as { result?: string } | null),
+        rpcError: rewardErr?.message ?? null,
+        source: "purchases_restore",
+        originalTransactionId,
+        offerIdentifier: offerLog.offer_identifier,
+        productId: offerLog.product_id ?? productId ?? null,
+        environment: isSandbox ? "Sandbox" : "Production",
+      });
+    }
+    }
+  } catch (rewardEx) {
+    // A referral problem must never break the restore response.
+    console.error("[purchases/restore] Referral reward release threw", rewardEx, { requestId });
+  }
+
   // Fire trial_started exactly once: only when transitioning from a non-active
   // state into trial or active. Re-syncs (e.g. app restarts) will see the DB
-  // already at trial/active and skip the event.
+  // already at trial/active and skip the event. Person entitlement_status is
+  // rewritten on every restore so a later expiry cannot leave it stuck on active.
   const isNewSubscription =
     previousStatus === null || previousStatus === "none" || previousStatus === "expired";
+  const decodedTx = clientSignedTx
+    ? decodeJwtPayload<AppleTransactionInfo>(clientSignedTx)
+    : null;
+  const attribution = await lookupSubscriptionAttribution(
+    supabase,
+    auth.userId,
+    originalTransactionId,
+  );
+  const analyticsProps = {
+    ...transactionAnalyticsProperties(decodedTx),
+    product_id: productId ?? decodedTx?.productId ?? null,
+    original_transaction_id: originalTransactionId,
+    is_sandbox: isSandbox,
+    is_trial: entitlementStatus === "trial",
+    ...attribution,
+    $set: entitlementPersonSet(entitlementStatus),
+  };
   if (isNewSubscription && (entitlementStatus === "trial" || entitlementStatus === "active")) {
-    await capturePostHogEvent(auth.userId, "trial_started", {
-      product_id: productId ?? null,
-      is_trial: entitlementStatus === "trial",
-      original_transaction_id: originalTransactionId,
-      is_sandbox: isSandbox,
-      // $set keeps the PostHog person record in sync without waiting for the next app open.
-      $set: {
-        entitlement_status: entitlementStatus,
-        premium: true,
-      },
+    await capturePostHogEvent(auth.userId, "trial_started", analyticsProps);
+  } else {
+    await capturePostHogEvent(auth.userId, "$set", {
+      $set: entitlementPersonSet(entitlementStatus),
     });
   }
 
@@ -634,14 +748,7 @@ function resolveEntitlement(data: AppleSubscriptionResponse): ResolvedEntitlemen
   };
 }
 
-type AppleTransactionPayload = {
-  bundleId?: string;
-  productId?: string;
-  expiresDate?: number;
-  offerDiscountType?: string;
-  isTrialPeriod?: boolean;
-  is_trial_period?: boolean;
-};
+type AppleTransactionPayload = AppleTransactionInfo;
 
 /**
  * Apple-authenticated path for the client-provided StoreKit JWS fallback.
@@ -694,34 +801,6 @@ function isFreeTrialTransaction(signedTransactionInfo?: string): boolean {
     payload.is_trial_period === true ||
     payload.offerDiscountType?.toUpperCase() === "FREE_TRIAL"
   );
-}
-
-// ---------------------------------------------------------------------------
-// PostHog server-side capture
-// ---------------------------------------------------------------------------
-
-async function capturePostHogEvent(
-  distinctId: string,
-  event: string,
-  properties: Record<string, unknown>,
-): Promise<void> {
-  const apiKey = Deno.env.get("POSTHOG_API_KEY") ?? "";
-  const host = (Deno.env.get("POSTHOG_HOST") ?? "https://us.i.posthog.com").replace(/\/$/, "");
-  if (!apiKey) return;
-  try {
-    await fetch(`${host}/capture/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        api_key: apiKey,
-        event,
-        distinct_id: distinctId,
-        properties: { ...properties, $lib: "supabase-edge-function" },
-      }),
-    });
-  } catch {
-    // Analytics must never break the purchase flow.
-  }
 }
 
 function decodeJwtPayload<T>(jwt: string): T | null {

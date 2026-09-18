@@ -428,6 +428,12 @@ verify_jwt = false
 [functions.referral]
 verify_jwt = false
 
+[functions.reconcile-entitlements]
+verify_jwt = false
+
+[functions.backfill-posthog-entitlements]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

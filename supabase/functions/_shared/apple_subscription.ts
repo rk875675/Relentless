@@ -32,6 +32,20 @@ export const APPLE_SUBSCRIPTION_STATUS = {
   REVOKED: 5,
 } as const;
 
+/** https://developer.apple.com/documentation/appstoreserverapi/offertype */
+export const APPLE_OFFER_TYPE = {
+  INTRODUCTORY: 1,
+  PROMOTIONAL: 2,
+  OFFER_CODE: 3,
+  WIN_BACK: 4,
+} as const;
+
+/** Apple offer-code or promotional free period — card is on file. */
+export function isAppleCodeOrPromoOffer(offerType: number | null): boolean {
+  return offerType === APPLE_OFFER_TYPE.PROMOTIONAL ||
+    offerType === APPLE_OFFER_TYPE.OFFER_CODE;
+}
+
 export type AppleEnvironment = "production" | "sandbox";
 
 export type AppleSubscriptionState = {
@@ -46,6 +60,10 @@ export type AppleSubscriptionState = {
   /** Offer already attached to the upcoming renewal, if any. */
   renewalOfferIdentifier: string | null;
   renewalOfferType: number | null;
+  /** Offer on the current period, if any (1 intro / 2 promo / 3 code / 4 win-back). */
+  transactionOfferType: number | null;
+  /** True when the current transaction is still a free trial period. */
+  isTrialPeriod: boolean;
 };
 
 export type AppleSubscriptionResult =
@@ -69,6 +87,9 @@ type TransactionPayload = {
   productId?: string;
   expiresDate?: number;
   originalTransactionId?: string;
+  isTrialPeriod?: boolean;
+  offerDiscountType?: string;
+  offerType?: number;
 };
 
 type RenewalPayload = {
@@ -200,6 +221,8 @@ export async function readAppleSubscription(
 
   let productId: string | null = null;
   let expiresAt: string | null = null;
+  let isTrialPeriod = false;
+  let transactionOfferType: number | null = null;
   if (tx.signedTransactionInfo) {
     const verified = await verifyAppleJws<TransactionPayload>(tx.signedTransactionInfo);
     if (!verified.ok) return { ok: false, reason: "untrusted" };
@@ -211,6 +234,12 @@ export async function readAppleSubscription(
     expiresAt = verified.payload.expiresDate
       ? new Date(verified.payload.expiresDate).toISOString()
       : null;
+    transactionOfferType = typeof verified.payload.offerType === "number"
+      ? verified.payload.offerType
+      : null;
+    isTrialPeriod =
+      verified.payload.isTrialPeriod === true ||
+      verified.payload.offerDiscountType?.toUpperCase() === "FREE_TRIAL";
   }
 
   let autoRenewStatus: number | null = null;
@@ -241,6 +270,8 @@ export async function readAppleSubscription(
       autoRenewProductId,
       renewalOfferIdentifier,
       renewalOfferType,
+      transactionOfferType,
+      isTrialPeriod,
     },
   };
 }

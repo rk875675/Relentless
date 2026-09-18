@@ -156,8 +156,14 @@ function resolveReminderType(
     }
   }
 
-  // evening_nudge: today's WOD not yet completed
-  if (candidate.last_wod_completion_local_date !== localDate) {
+  // evening_nudge: no lesson of any type completed today.
+  // last_activity_date is set by complete_lesson for every new completion
+  // (active-pack day, other packs, library). last_wod is the narrower
+  // current-day-pack flag and is kept as a fallback.
+  const completedAnyLessonToday =
+    candidate.last_activity_date === localDate ||
+    candidate.last_wod_completion_local_date === localDate;
+  if (!completedAnyLessonToday) {
     return { type: "evening_nudge", days: 0 };
   }
 

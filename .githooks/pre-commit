@@ -12,7 +12,9 @@ added="$(printf '%s\n' "$diff" | grep -E '^\+[^+]')"
 
 # Patterns for real secret VALUES. Deliberately excludes sb_publishable_/pk_/phc_
 # (those are public-by-design keys) and bare var names like SUPABASE_SERVICE_ROLE_KEY.
-pattern='sb_secret_[A-Za-z0-9_-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|(eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})'
+# PEM: header plus key material. A JS string that only names the header
+# (e.g. .replace(/-----BEGIN PRIVATE KEY-----/, "")) is not a secret.
+pattern='sb_secret_[A-Za-z0-9_-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----[A-Za-z0-9+/=\r\n ]{20,}|AKIA[0-9A-Z]{16}|(eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})'
 
 hits="$(printf '%s\n' "$added" | grep -E "$pattern")"
 if [ -n "$hits" ]; then

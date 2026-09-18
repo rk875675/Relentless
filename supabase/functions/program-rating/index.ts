@@ -8,6 +8,7 @@ import {
 } from "../_shared/response.ts";
 import { getUser } from "../_shared/auth.ts";
 import { checkRateLimit } from "../_shared/ratelimit.ts";
+import { capturePostHogEvent } from "../_shared/posthog.ts";
 
 // Star rating submitted from the pack-complete screen.
 // rating   : 1–5 integer
@@ -105,6 +106,30 @@ Deno.serve(async (req) => {
   if (dbError) {
     return errorResponse(500, "INTERNAL_ERROR", "Failed to save rating", requestId);
   }
+
+  let programKey: string | null = null;
+  if (program_id) {
+    const { data: prog } = await supabase
+      .from("programs")
+      .select("program_key")
+      .eq("id", program_id)
+      .maybeSingle();
+    programKey = (prog?.program_key as string | null) ?? null;
+  }
+
+  // Fire-and-forget analytics — never block the response on this.
+  capturePostHogEvent(
+    auth.userId,
+    "pack_rated",
+    {
+      rating,
+      program_id: program_id ?? null,
+      program_key: programKey,
+      program_name: program_name ?? null,
+      app_build: app_build ?? null,
+    },
+    program_id ? { insertId: `pack-rated-${auth.userId}-${program_id}` } : undefined,
+  ).catch(() => { /* analytics must not crash the rating path */ });
 
   return successResponse({ saved: true }, requestId);
 });

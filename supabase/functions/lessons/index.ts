@@ -17,6 +17,7 @@ import { calendarDaysInclusiveYmd } from "../_shared/library.ts";
 import { parseProgramAnchor, resolveLocalTodayYmd } from "../_shared/client_day.ts";
 import { ensureProgramStartIfHome } from "../_shared/program_start.ts";
 import { ContentBlocksSchema } from "../_shared/content_blocks.ts";
+import { emitPackCompleted } from "../_shared/pack_analytics.ts";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
@@ -758,14 +759,69 @@ function nextLessonResponse(
   repeatLesson: Record<string, unknown> | null,
   requestId: string,
   programComplete = false,
+  packCoverImage: string | null = null,
 ): Response {
   const body: Record<string, unknown> = { data, request_id: requestId };
   if (repeatLesson) body.repeat_lesson = repeatLesson;
   if (programComplete) body.program_complete = true;
+  if (packCoverImage) body.pack_cover_image = packCoverImage;
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
+}
+
+async function resolvePackCoverUrl(
+  supabase: ReturnType<typeof createServiceClient>,
+  cover: string | null | undefined,
+): Promise<string | null> {
+  if (!cover) return null;
+  if (/^https?:\/\//i.test(cover)) return cover;
+  const signed = await getSignedUrls(supabase, [cover]);
+  return signed.get(cover) ?? null;
+}
+
+async function packCompleteCover(
+  supabase: ReturnType<typeof createServiceClient>,
+  programId: string | null,
+  programComplete: boolean,
+): Promise<string | null> {
+  if (!programComplete || !programId) return null;
+  try {
+    const { data: prog } = await supabase
+      .from("programs")
+      .select("cover_image")
+      .eq("id", programId)
+      .maybeSingle();
+    return resolvePackCoverUrl(supabase, (prog?.cover_image as string | null) ?? null);
+  } catch (e) {
+    console.error("[next] pack cover lookup failed:", e);
+    return null;
+  }
+}
+
+/** True once the active pack's final lesson has been completed at least once. */
+async function isActivePackFinished(
+  supabase: ReturnType<typeof createServiceClient>,
+  userId: string,
+  totalDays: number,
+  effectiveDay: number,
+  lastLessonId: string | null,
+): Promise<boolean> {
+  if (!(totalDays > 0 && effectiveDay >= totalDays && lastLessonId)) return false;
+  try {
+    const { data } = await supabase
+      .from("user_lesson_completions")
+      .select("lesson_id")
+      .eq("user_id", userId)
+      .eq("lesson_id", lastLessonId)
+      .limit(1)
+      .maybeSingle();
+    return !!data;
+  } catch (e) {
+    console.error("[next] pack-complete check failed:", e);
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -860,7 +916,25 @@ async function handleNext(
   };
 
   const repeatLesson = (rpc.repeat_lesson as Record<string, unknown> | null) ?? null;
-  return nextLessonResponse(lessonData, repeatLesson, requestId);
+  const programComplete = await isActivePackFinished(
+    supabase,
+    userId,
+    totalDays,
+    effectiveDay,
+    typeof lessonData.id === "string" ? lessonData.id : null,
+  );
+  const packCoverImage = await packCompleteCover(
+    supabase,
+    typeof rpc.program_id === "string" ? rpc.program_id : null,
+    programComplete,
+  );
+  return nextLessonResponse(
+    lessonData,
+    repeatLesson,
+    requestId,
+    programComplete,
+    packCoverImage,
+  );
 }
 
 // Legacy sequential path — kept as fallback if RPC hasn't been deployed yet.
@@ -958,7 +1032,25 @@ async function handleNextLegacy(
       ? await lookupRepeatLesson(supabase, completedDay, activeProgramId)
       : null;
 
-  return nextLessonResponse(lessonData, repeatLesson, requestId);
+  const programComplete = await isActivePackFinished(
+    supabase,
+    userId,
+    totalDays,
+    effectiveDay,
+    typeof lessonData.id === "string" ? lessonData.id : null,
+  );
+  const packCoverImage = await packCompleteCover(
+    supabase,
+    activeProgramId,
+    programComplete,
+  );
+  return nextLessonResponse(
+    lessonData,
+    repeatLesson,
+    requestId,
+    programComplete,
+    packCoverImage,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1077,6 +1169,7 @@ async function handleComplete(
   // false and the completion response is unaffected.
   let packCompleted = false;
   let packTitle: string | null = null;
+  let packCoverImage: string | null = null;
   try {
     const lessonProgramId = (lessonRow as { program_id?: string | null }).program_id ?? null;
     const lessonSequence = (lessonRow as { sequence?: number | null }).sequence ?? null;
@@ -1115,10 +1208,34 @@ async function handleComplete(
             packCompleted = true;
             const { data: prog } = await supabase
               .from("programs")
-              .select("title")
+              .select("title, program_key, coach_id, cover_image")
               .eq("id", lessonProgramId)
               .maybeSingle();
             packTitle = (prog?.title as string | null) ?? null;
+            packCoverImage = await resolvePackCoverUrl(
+              supabase,
+              (prog?.cover_image as string | null) ?? null,
+            );
+            let coachKey: string | null = null;
+            let coachName: string | null = null;
+            const coachId = (prog?.coach_id as string | null) ?? null;
+            if (coachId) {
+              const { data: coach } = await supabase
+                .from("coaches")
+                .select("coach_key, name")
+                .eq("id", coachId)
+                .maybeSingle();
+              coachKey = (coach?.coach_key as string | null) ?? null;
+              coachName = (coach?.name as string | null) ?? null;
+            }
+            emitPackCompleted(userId, {
+              program_id: lessonProgramId,
+              program_key: (prog?.program_key as string | null) ?? null,
+              program_title: packTitle,
+              coach_key: coachKey,
+              coach_name: coachName,
+              total_days: maxRow.sequence,
+            });
           }
         }
       }
@@ -1140,6 +1257,7 @@ async function handleComplete(
       streak: rpc.streak,
       pack_completed: packCompleted,
       pack_title: packTitle,
+      pack_cover_image: packCoverImage,
     },
     request_id: requestId,
   };

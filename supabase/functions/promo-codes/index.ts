@@ -8,6 +8,7 @@ import {
 } from "../_shared/response.ts";
 import { getUser } from "../_shared/auth.ts";
 import { checkRateLimit } from "../_shared/ratelimit.ts";
+import { capturePostHogEvent } from "../_shared/posthog.ts";
 
 // ---------------------------------------------------------------------------
 // Promo codes (custom in-app codes, server-granted entitlements — no Apple
@@ -218,6 +219,9 @@ async function handleRedeem(req: Request, requestId: string): Promise<Response> 
           promo_code_type: result.type ?? null,
           promo_months: result.months ?? null,
           entitlement_expires_at: result.expires_at ?? null,
+          attribution_code: result.code ?? null,
+          attribution_creator: result.creator_slug ?? null,
+          attribution_source: "promo",
           $set: {
             promo_code: result.code ?? null,
             promo_creator: result.creator_slug ?? null,
@@ -225,6 +229,10 @@ async function handleRedeem(req: Request, requestId: string): Promise<Response> 
             entitlement_status: "active",
             premium: true,
           },
+        }, {
+          // Stable business key so an HTTP retry of the same redemption
+          // cannot double-count the event.
+          insertId: `promo_code_redeemed:${auth.userId}:${result.code ?? ""}`,
         });
       }
 
@@ -248,30 +256,3 @@ async function handleRedeem(req: Request, requestId: string): Promise<Response> 
   }
 }
 
-// ---------------------------------------------------------------------------
-// PostHog server-side capture (same pattern as purchases/index.ts)
-// ---------------------------------------------------------------------------
-
-async function capturePostHogEvent(
-  distinctId: string,
-  event: string,
-  properties: Record<string, unknown>,
-): Promise<void> {
-  const apiKey = Deno.env.get("POSTHOG_API_KEY") ?? "";
-  const host = (Deno.env.get("POSTHOG_HOST") ?? "https://us.i.posthog.com").replace(/\/$/, "");
-  if (!apiKey) return;
-  try {
-    await fetch(`${host}/capture/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        api_key: apiKey,
-        event,
-        distinct_id: distinctId,
-        properties: { ...properties, $lib: "supabase-edge-function" },
-      }),
-    });
-  } catch {
-    // Analytics must never break the redemption flow.
-  }
-}

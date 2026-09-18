@@ -10,6 +10,7 @@ import { getUser } from "../_shared/auth.ts";
 import { requireEntitlement } from "../_shared/entitlement.ts";
 import { checkRateLimit } from "../_shared/ratelimit.ts";
 import { resolveLocalTodayYmd } from "../_shared/client_day.ts";
+import { emitPackActivated } from "../_shared/pack_analytics.ts";
 
 // The original live program. Used only as the default active program when a
 // profile has no active_program_id set (legacy rows backfilled by migration).
@@ -183,7 +184,7 @@ async function handleList(
   // lessons has no final lesson id and is therefore never "completed".
   const totalDaysByProgram = new Map<string, number>();
   const finalLessonByProgram = new Map<string, string>();
-  if (includeActive && programIds.length > 0) {
+  if (programIds.length > 0) {
     const maxSeqByProgram = new Map<string, number>();
     const { data: lessonRows } = await supabase
       .from("lessons")
@@ -200,12 +201,14 @@ async function handleList(
       }
     }
     if (programIds.includes(SPRINT_PROGRAM_ID)) {
-      const { count: scheduleCount } = await supabase
-        .from("program_schedule")
-        .select("day_number", { count: "exact", head: true })
-        .eq("program_version", PROGRAM_VERSION);
-      if (typeof scheduleCount === "number" && scheduleCount > 0) {
-        totalDaysByProgram.set(SPRINT_PROGRAM_ID, scheduleCount);
+      if (includeActive) {
+        const { count: scheduleCount } = await supabase
+          .from("program_schedule")
+          .select("day_number", { count: "exact", head: true })
+          .eq("program_version", PROGRAM_VERSION);
+        if (typeof scheduleCount === "number" && scheduleCount > 0) {
+          totalDaysByProgram.set(SPRINT_PROGRAM_ID, scheduleCount);
+        }
       }
       // The Sprint's final lesson is defined by its schedule (max day_number),
       // not lessons.sequence — override whatever the pass above found.
@@ -224,18 +227,26 @@ async function handleList(
 
   // Completed = the user has a completion row for the pack's final lesson.
   const completedByProgram = new Map<string, boolean>();
-  if (includeActive && finalLessonByProgram.size > 0) {
+  const completedAtByProgram = new Map<string, string>();
+  if (finalLessonByProgram.size > 0) {
     const finalLessonIds = [...new Set(finalLessonByProgram.values())];
     const { data: finalCompletions } = await supabase
       .from("user_lesson_completions")
-      .select("lesson_id")
+      .select("lesson_id, completed_at")
       .eq("user_id", userId)
       .in("lesson_id", finalLessonIds);
-    const completedLessonIds = new Set(
-      (finalCompletions ?? []).map((c: { lesson_id: string }) => c.lesson_id),
-    );
+    const latestAtByLesson = new Map<string, string>();
+    for (const row of finalCompletions ?? []) {
+      const lessonId = row.lesson_id as string;
+      const at = row.completed_at as string | null;
+      if (!at) continue;
+      const prev = latestAtByLesson.get(lessonId);
+      if (!prev || at > prev) latestAtByLesson.set(lessonId, at);
+    }
     for (const [pid, lessonId] of finalLessonByProgram) {
-      completedByProgram.set(pid, completedLessonIds.has(lessonId));
+      const at = latestAtByLesson.get(lessonId);
+      completedByProgram.set(pid, at != null);
+      if (at) completedAtByProgram.set(pid, at);
     }
   }
 
@@ -266,6 +277,14 @@ async function handleList(
         avatarUrl = signed?.signedUrl ?? null;
       }
 
+      let coverUrl = (p.cover_image as string | null) ?? null;
+      if (coverUrl && !/^https?:\/\//i.test(coverUrl)) {
+        const { data: signedCover } = await supabase.storage
+          .from(IMAGE_BUCKET)
+          .createSignedUrl(coverUrl, SIGNED_URL_TTL);
+        coverUrl = signedCover?.signedUrl ?? null;
+      }
+
       const state = stateByProgram.get(p.id as string);
       const isActiveProgram = includeActive && p.id === activeProgramId;
 
@@ -286,6 +305,7 @@ async function handleList(
       // redone (is_active && current_day < total_days).
       const packTotal = totalDaysByProgram.get(p.id as string) ?? null;
       const completed = completedByProgram.get(p.id as string) ?? false;
+      const completedAt = completedAtByProgram.get(p.id as string) ?? null;
 
       return {
         id: p.id,
@@ -296,12 +316,13 @@ async function handleList(
         day1_lesson_id: day1ByProgram.get(p.id as string) ?? null,
         started,
         current_day: currentDay,
+        completed,
+        completed_at: completedAt,
+        cover_image: coverUrl,
         ...(includeActive
           ? {
             is_active: isActiveProgram,
             total_days: packTotal,
-            cover_image: (p.cover_image as string | null) ?? null,
-            completed,
           }
           : {}),
       };
@@ -519,7 +540,7 @@ async function handleSelect(
   // Validate the target program is servable to this user.
   const { data: program } = await supabase
     .from("programs")
-    .select("id, published, production_ready")
+    .select("id, published, production_ready, title, program_key, coach_id")
     .eq("id", program_id)
     .maybeSingle();
 
@@ -532,16 +553,19 @@ async function handleSelect(
 
   const localToday = resolveLocalTodayYmd(req);
 
-  // Resolve the day to resume at.
+  // Resolve the day to resume at. Also used to detect first activation
+  // (no prior started=true row) so pack_activated fires once per user/pack.
+  const { data: priorState } = await supabase
+    .from("user_program_state")
+    .select("current_day, started")
+    .eq("user_id", userId)
+    .eq("program_id", program_id)
+    .maybeSingle();
+  const isFirstActivation = priorState?.started !== true;
+
   let resumeDay = 1;
   if (mode === "continue") {
-    const { data: state } = await supabase
-      .from("user_program_state")
-      .select("current_day")
-      .eq("user_id", userId)
-      .eq("program_id", program_id)
-      .maybeSingle();
-    resumeDay = Math.max((state?.current_day as number | null) ?? 1, 1);
+    resumeDay = Math.max((priorState?.current_day as number | null) ?? 1, 1);
   }
 
   // Guard: don't switch into a pack with no startable lesson at the resume day
@@ -595,6 +619,29 @@ async function handleSelect(
 
   if (stateErr) {
     return errorResponse(500, "INTERNAL_ERROR", "Failed to record program state", requestId);
+  }
+
+  if (isFirstActivation) {
+    let coachKey: string | null = null;
+    let coachName: string | null = null;
+    const coachId = (program.coach_id as string | null) ?? null;
+    if (coachId) {
+      const { data: coach } = await supabase
+        .from("coaches")
+        .select("coach_key, name")
+        .eq("id", coachId)
+        .maybeSingle();
+      coachKey = (coach?.coach_key as string | null) ?? null;
+      coachName = (coach?.name as string | null) ?? null;
+    }
+    emitPackActivated(userId, {
+      program_id,
+      program_key: (program.program_key as string | null) ?? null,
+      program_title: (program.title as string | null) ?? null,
+      coach_key: coachKey,
+      coach_name: coachName,
+      source: "program_select",
+    });
   }
 
   return successResponse(
