@@ -3,9 +3,8 @@ import { CommonActions } from '@react-navigation/native';
 type StackRoute = { name: string; params?: Record<string, string> };
 
 /**
- * Rebuilds the (onboarding) stack as the main linear funnel ending on competition-date,
+ * Rebuilds the (onboarding) stack as the main linear funnel ending on sport-selection,
  * so the user stays one step from the paywall but can pop back through earlier screens.
- * `mac-detail` uses tag `M` only for synthetic history (back rarely lands there first).
  */
 export function resetOnboardingStackNearPaywall(
   navigation: { dispatch: (action: ReturnType<typeof CommonActions.reset>) => void },
@@ -16,16 +15,16 @@ export function resetOnboardingStackNearPaywall(
 
   const routes: StackRoute[] = [
     { name: 'welcome' },
-    { name: 'relentless-intro' },
     { name: 'onboarding-intake' },
     { name: 'unlocked-potential' },
-    { name: 'mac-framework' },
+    { name: 'mac-teaser' },
     { name: 'mac-question' },
-    { name: 'mac-detail', params: { tag: 'M' } },
     { name: 'we-can-train' },
+    { name: 'lesson-structure' },
+    { name: 'grant-intro' },
+    { name: 'onboarding-trophy' },
     { name: 'tutorial' },
     { name: 'sport-selection', ...(sportParams ? { params: sportParams } : {}) },
-    { name: 'competition-date', ...(sportParams ? { params: sportParams } : {}) },
   ];
 
   navigation.dispatch(

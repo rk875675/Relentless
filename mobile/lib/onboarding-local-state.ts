@@ -45,6 +45,12 @@ export async function clearOnboardingProgress(): Promise<void> {
   await AsyncStorage.multiRemove([KEY, SCREEN_KEY, ANSWERS_KEY]).catch(() => {});
 }
 
+/** Clears only the paywall-resume flag so a reload doesn't bounce back to the
+ *  paywall. Preserves saved answers and the screen-resume bookmark. */
+export async function clearPaywallResumeFlag(): Promise<void> {
+  await AsyncStorage.removeItem(KEY).catch(() => {});
+}
+
 export async function saveOnboardingAnswers(patch: Partial<OnboardingAnswers>): Promise<void> {
   try {
     const raw = await AsyncStorage.getItem(ANSWERS_KEY);

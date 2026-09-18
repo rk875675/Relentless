@@ -3,13 +3,14 @@ import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 import { trackOnboardingButtonClicked } from '@/lib/onboarding-analytics';
 
-export default function MacTeaserScreen() {
+export default function LessonStructureScreen() {
   const router = useRouter();
   const fade = useRef(new Animated.Value(0)).current;
   const cardFade = useRef(new Animated.Value(0)).current;
@@ -30,7 +31,7 @@ export default function MacTeaserScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ProgressBar
-        step={ONBOARDING_PROGRESS.macTeaser}
+        step={ONBOARDING_PROGRESS.lessonStructure}
         total={ONBOARDING_TOTAL_STEPS}
         onBack={onPop}
       />
@@ -39,35 +40,50 @@ export default function MacTeaserScreen() {
 
           <View style={styles.topSpacer} />
 
-          <View style={styles.content}>
-            <Text style={styles.headline}>Here's how{'\n'}we tap into it.</Text>
-            <Text style={styles.sub}>
-              We use a framework called MAC — backed by sports psychology and used by elite athletes to unlock consistent mental performance.
-            </Text>
+          <View style={styles.contentGroup}>
+            <View style={styles.headlineCluster}>
+              <Text style={styles.headline}>Here is how our{'\n'}lessons are structured.</Text>
+              <Text style={styles.subheadline}>
+                With real mental performance coaches.
+              </Text>
+            </View>
 
             <Animated.View
               style={[styles.card, { opacity: cardFade, transform: [{ scale: cardScale }] }]}
             >
-              <View style={styles.pillarsRow}>
-                {[
-                  { letter: 'M', label: 'Mindfulness', color: colors.ringMindfulness },
-                  { letter: 'A', label: 'Acceptance', color: colors.ringAcceptance },
-                  { letter: 'C', label: 'Commitment', color: colors.ringCommitment },
-                ].map((p) => (
-                  <View key={p.letter} style={styles.pillarItem}>
-                    <View style={[styles.badge, { borderColor: p.color, backgroundColor: p.color + '18' }]}>
-                      <Text style={[styles.badgeLetter, { color: p.color }]}>{p.letter}</Text>
-                    </View>
-                    <Text style={styles.pillarLabel}>{p.label}</Text>
-                  </View>
-                ))}
+              <View style={styles.featureRow}>
+                <View style={[styles.iconCircle, { backgroundColor: colors.accent + '18', borderColor: colors.accent }]}>
+                  <Ionicons name="headset" size={20} color={colors.accent} />
+                </View>
+                <View style={styles.featureText}>
+                  <Text style={styles.featureTitle}>Coach-led audio</Text>
+                  <Text style={styles.featureBody}>Lessons recorded by real mental performance coaches</Text>
+                </View>
               </View>
 
               <View style={styles.cardDivider} />
 
-              <Text style={styles.cardHint}>
-                You'll discover what each pillar means — and why it matters to your game — as you train.
-              </Text>
+              <View style={styles.featureRow}>
+                <View style={[styles.iconCircle, { backgroundColor: colors.ringMindfulness + '18', borderColor: colors.ringMindfulness }]}>
+                  <Ionicons name="fitness" size={20} color={colors.ringMindfulness} />
+                </View>
+                <View style={styles.featureText}>
+                  <Text style={styles.featureTitle}>Interactive exercises</Text>
+                  <Text style={styles.featureBody}>Hands-on mental skills practice, not just theory</Text>
+                </View>
+              </View>
+
+              <View style={styles.cardDivider} />
+
+              <View style={styles.featureRow}>
+                <View style={[styles.iconCircle, { backgroundColor: colors.ringCommitment + '18', borderColor: colors.ringCommitment }]}>
+                  <Ionicons name="journal" size={20} color={colors.ringCommitment} />
+                </View>
+                <View style={styles.featureText}>
+                  <Text style={styles.featureTitle}>Personal journal</Text>
+                  <Text style={styles.featureBody}>Guided by real coach prompts</Text>
+                </View>
+              </View>
             </Animated.View>
           </View>
 
@@ -77,14 +93,14 @@ export default function MacTeaserScreen() {
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 trackOnboardingButtonClicked({
-                  step_key: 'mac_teaser',
-                  step_index: ONBOARDING_PROGRESS.macTeaser,
-                  button_key: 'lets_go',
+                  step_key: 'lesson_structure',
+                  step_index: ONBOARDING_PROGRESS.lessonStructure,
+                  button_key: 'continue',
                 });
-                router.push('/(onboarding)/mac-question' as any);
+                router.push('/(onboarding)/grant-intro' as any);
               }}
             >
-              <Text style={styles.buttonText}>Let's Go</Text>
+              <Text style={styles.buttonText}>Continue</Text>
             </TouchableOpacity>
           </View>
 
@@ -106,20 +122,25 @@ const styles = StyleSheet.create({
   },
 
   topSpacer: { flex: 1 },
-  content: { flex: 6 },
+  contentGroup: { flex: 6 },
 
-  headline: {
-    fontSize: 34,
-    fontWeight: '900',
-    color: colors.white,
-    lineHeight: 42,
-    marginBottom: spacing.lg,
-  },
-  sub: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    lineHeight: 24,
+  headlineCluster: {
+    alignItems: 'center',
     marginBottom: spacing.xl,
+  },
+  headline: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: colors.white,
+    lineHeight: 40,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  subheadline: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    lineHeight: 22,
+    textAlign: 'center',
   },
 
   card: {
@@ -128,47 +149,41 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.xl,
+    gap: 0,
   },
-  pillarsRow: {
+  featureRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-  },
-  pillarItem: {
     alignItems: 'center',
-    gap: 8,
-    flex: 1,
+    gap: spacing.lg,
+    paddingVertical: spacing.sm,
   },
-  badge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  badgeLetter: {
-    fontSize: 20,
-    fontWeight: '900',
+  featureText: {
+    flex: 1,
   },
-  pillarLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textMuted,
-    letterSpacing: 0.3,
-    textAlign: 'center',
+  featureTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.white,
+    marginBottom: 3,
+  },
+  featureBody: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
   },
   cardDivider: {
     height: 1,
     backgroundColor: colors.border,
-    marginBottom: spacing.lg,
-  },
-  cardHint: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    textAlign: 'center',
-    fontStyle: 'italic',
+    marginVertical: spacing.sm,
   },
 
   bottom: { paddingTop: spacing.xl },

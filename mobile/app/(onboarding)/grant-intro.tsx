@@ -19,8 +19,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { setAudioModeAsync } from 'expo-audio';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Asset } from 'expo-asset';
-import { saveOnboardingAnswers } from '@/lib/onboarding-local-state';
+import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
 import {
+  trackOnboardingButtonClicked,
   trackOnboardingGrantVideoStarted,
   trackOnboardingGrantJournalSubmitted,
   trackOnboardingGrantVideoCompleted,
@@ -132,6 +133,12 @@ export default function GrantIntroScreen() {
   const didCompleteRef = useRef(false);
 
   const volumeToast = useVolumeToast();
+
+  useEffect(() => {
+    loadOnboardingAnswers().then((saved) => {
+      if (saved.grantJournalAnswer) setJournalText(saved.grantJournalAnswer);
+    });
+  }, []);
 
   // Pre-download both segments to local files. In dev builds, require()'d
   // assets are streamed from the Metro server, which can stall mid-playback;
@@ -273,6 +280,11 @@ export default function GrantIntroScreen() {
 
   const handleBegin = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    trackOnboardingButtonClicked({
+      step_key: 'grant_intro',
+      step_index: ONBOARDING_PROGRESS.grantIntro,
+      button_key: 'begin_video',
+    });
     trackOnboardingGrantVideoStarted({
       step_key: 'grant_intro',
       step_index: ONBOARDING_PROGRESS.grantIntro,
@@ -284,6 +296,11 @@ export default function GrantIntroScreen() {
 
   const handleIntroContinue = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    trackOnboardingButtonClicked({
+      step_key: 'grant_intro',
+      step_index: ONBOARDING_PROGRESS.grantIntro,
+      button_key: 'intro_continue',
+    });
     setPhase('journal');
   }, []);
 
@@ -300,6 +317,11 @@ export default function GrantIntroScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     const trimmed = journalText.trim();
+    trackOnboardingButtonClicked({
+      step_key: 'grant_intro',
+      step_index: ONBOARDING_PROGRESS.grantIntro,
+      button_key: trimmed ? 'journal_done' : 'journal_skip',
+    });
     trackOnboardingGrantJournalSubmitted({
       step_key: 'grant_intro',
       step_index: ONBOARDING_PROGRESS.grantIntro,
@@ -319,6 +341,11 @@ export default function GrantIntroScreen() {
     if (didCompleteRef.current) return;
     didCompleteRef.current = true;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    trackOnboardingButtonClicked({
+      step_key: 'grant_intro',
+      step_index: ONBOARDING_PROGRESS.grantIntro,
+      button_key: 'outro_continue',
+    });
     trackOnboardingGrantVideoCompleted({
       step_key: 'grant_intro',
       step_index: ONBOARDING_PROGRESS.grantIntro,

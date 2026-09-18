@@ -35,6 +35,10 @@ export default function OnboardingLayout() {
       <Stack.Screen name="mac-teaser" options={EARLY_SCREEN_TRANSITION} />
       <Stack.Screen name="mac-question" options={EARLY_SCREEN_TRANSITION} />
       <Stack.Screen name="we-can-train" options={EARLY_SCREEN_TRANSITION} />
+      <Stack.Screen name="lesson-structure" options={EARLY_SCREEN_TRANSITION} />
+      <Stack.Screen name="grant-intro" options={EARLY_SCREEN_TRANSITION} />
+      <Stack.Screen name="onboarding-trophy" options={EARLY_SCREEN_TRANSITION} />
+      <Stack.Screen name="sport-selection" options={EARLY_SCREEN_TRANSITION} />
       {/* Wizard screens use beforeRemove for internal steps, which conflicts
           with native-stack gestures. Keep gestures off; their custom
           PanResponder handles swipe-back (including popping on first step). */}

@@ -23,6 +23,10 @@ import {
   GRANT_CHIASSON_TAGLINE,
 } from '@/lib/grant-attribution';
 import { colors, spacing } from '@/lib/theme';
+import {
+  trackOnboardingButtonClicked,
+  trackOnboardingWizardStepChanged,
+} from '@/lib/onboarding-analytics';
 const SCREEN_W = Dimensions.get('window').width;
 
 // Tooltip visual constants — distinct from the mock UI surfaces
@@ -522,6 +526,7 @@ export default function TutorialScreen() {
   const navigation = useNavigation();
   const [stepIdx, setStepIdx] = useState(0);
   const [step0Phase, setStep0Phase] = useState<'delta' | 'filled'>('delta');
+  const wizardClockRef = useRef<ReturnType<typeof trackOnboardingWizardStepChanged>>(null);
 
   // Auto-play the +20 → filled ring animation on step 0
   useEffect(() => {
@@ -629,7 +634,34 @@ export default function TutorialScreen() {
     })
   ).current;
 
+  const TUTORIAL_STEP_KEYS = ['tutorial_rings', 'tutorial_wod', 'tutorial_library'] as const;
+
+  useEffect(() => {
+    const stepDef = STEPS[stepIdx];
+    wizardClockRef.current = trackOnboardingWizardStepChanged({
+      previous: wizardClockRef.current,
+      next: {
+        step_key: TUTORIAL_STEP_KEYS[stepIdx] ?? 'tutorial',
+        step_index: stepDef.progressStep,
+      },
+    });
+  }, [stepIdx]);
+
+  useEffect(() => {
+    return () => {
+      wizardClockRef.current = trackOnboardingWizardStepChanged({
+        previous: wizardClockRef.current,
+        next: null,
+      });
+    };
+  }, []);
+
   const handleNext = () => {
+    trackOnboardingButtonClicked({
+      step_key: TUTORIAL_STEP_KEYS[stepIdx] ?? 'tutorial',
+      step_index: STEPS[stepIdx].progressStep,
+      button_key: stepIdx >= STEPS.length - 1 ? 'continue' : 'next',
+    });
     if (stepIdx >= STEPS.length - 1) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.push('/(onboarding)/sport-selection' as any);

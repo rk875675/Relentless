@@ -5,7 +5,12 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
-import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+import { ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+
+/** Legacy: this screen is no longer in the active onboarding flow but stays
+ *  in the tree so live users who saved it as their resume screen don't crash.
+ *  The old progress index was 19 out of 19. */
+const LEGACY_STEP_INDEX = 14;
 import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
 import { trackOnboardingCompetitionDateAdded, trackOnboardingButtonClicked } from '@/lib/onboarding-analytics';
 import { colors, spacing } from '@/lib/theme';
@@ -69,7 +74,7 @@ export default function CompetitionDateScreen() {
     if (date) {
       trackOnboardingCompetitionDateAdded({
         step_key: 'competition_date',
-        step_index: ONBOARDING_PROGRESS.competitionDate,
+        step_index: LEGACY_STEP_INDEX,
         button_key: 'save_continue',
       });
     }
@@ -80,7 +85,7 @@ export default function CompetitionDateScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     trackOnboardingButtonClicked({
       step_key: 'competition_date',
-      step_index: ONBOARDING_PROGRESS.competitionDate,
+      step_index: LEGACY_STEP_INDEX,
       button_key: 'skip',
     });
     goToPaywall();
@@ -89,7 +94,7 @@ export default function CompetitionDateScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ProgressBar
-        step={ONBOARDING_PROGRESS.competitionDate}
+        step={LEGACY_STEP_INDEX}
         total={ONBOARDING_TOTAL_STEPS}
         onBack={onPop}
       />

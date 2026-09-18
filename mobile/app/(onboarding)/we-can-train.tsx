@@ -1,18 +1,33 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { getMacPillarForTag } from '@/lib/mac-pillar-onboarding';
+import { loadOnboardingAnswers } from '@/lib/onboarding-local-state';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
+import { trackOnboardingButtonClicked } from '@/lib/onboarding-analytics';
 
 export default function WeCanTrainScreen() {
   const router = useRouter();
-  const { tag } = useLocalSearchParams<{ tag?: string }>();
+  const { tag: tagParam } = useLocalSearchParams<{ tag?: string }>();
+  const [tag, setTag] = useState(tagParam);
   const content = getMacPillarForTag(tag);
+
+  useEffect(() => {
+    if (tagParam === 'M' || tagParam === 'A' || tagParam === 'C') {
+      setTag(tagParam);
+      return;
+    }
+    loadOnboardingAnswers().then((saved) => {
+      if (saved.macTag === 'M' || saved.macTag === 'A' || saved.macTag === 'C') {
+        setTag(saved.macTag);
+      }
+    });
+  }, [tagParam]);
 
   const fade = useRef(new Animated.Value(0)).current;
   const cardScale = useRef(new Animated.Value(0.94)).current;
@@ -92,7 +107,12 @@ export default function WeCanTrainScreen() {
               style={styles.button}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push('/(onboarding)/grant-intro' as any);
+                trackOnboardingButtonClicked({
+                  step_key: 'we_can_train',
+                  step_index: ONBOARDING_PROGRESS.weCanTrain,
+                  button_key: 'see_how_it_works',
+                });
+                router.push('/(onboarding)/lesson-structure' as any);
               }}
             >
               <Text style={styles.buttonText}>See How It Works</Text>

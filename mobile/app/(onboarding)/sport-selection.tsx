@@ -19,6 +19,7 @@ import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-l
 import { MAX_SPORT_LEN, OTHER_SENTINEL, PRESET_SPORTS } from '@/lib/sport-presets';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
+import { trackOnboardingButtonClicked, trackOnboardingOptionSelected } from '@/lib/onboarding-analytics';
 
 export default function SportSelectionScreen() {
   const router = useRouter();
@@ -29,7 +30,7 @@ export default function SportSelectionScreen() {
 
   useEffect(() => {
     fade.setValue(0);
-    Animated.timing(fade, { toValue: 1, duration: 350, useNativeDriver: true }).start();
+    Animated.timing(fade, { toValue: 1, duration: 380, useNativeDriver: true }).start();
     loadOnboardingAnswers().then((saved) => {
       if (saved.sport) {
         const isPreset = PRESET_SPORTS.includes(saved.sport as any);
@@ -49,6 +50,11 @@ export default function SportSelectionScreen() {
   const pick = (opt: string) => {
     Haptics.selectionAsync();
     setSelected(opt);
+    trackOnboardingOptionSelected({
+      step_key: 'sport_selection',
+      step_index: ONBOARDING_PROGRESS.sportSelection,
+      selected_option_key: opt,
+    });
     if (opt !== OTHER_SENTINEL) {
       setOtherText('');
       saveOnboardingAnswers({ sport: opt.trim() });
@@ -58,9 +64,15 @@ export default function SportSelectionScreen() {
   const handleContinue = () => {
     if (!canContinue) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    trackOnboardingButtonClicked({
+      step_key: 'sport_selection',
+      step_index: ONBOARDING_PROGRESS.sportSelection,
+      button_key: 'continue',
+      selected_option_key: resolvedSport.slice(0, MAX_SPORT_LEN),
+    });
     saveOnboardingAnswers({ sport: resolvedSport.slice(0, MAX_SPORT_LEN) });
     router.push({
-      pathname: '/(onboarding)/competition-date' as any,
+      pathname: '/(onboarding)/paywall' as any,
       params: { sport: resolvedSport.slice(0, MAX_SPORT_LEN) },
     });
   };
@@ -115,7 +127,13 @@ export default function SportSelectionScreen() {
                   placeholder="Type your sport"
                   placeholderTextColor={colors.textMuted}
                   value={otherText}
-                  onChangeText={setOtherText}
+                  onChangeText={(t) => {
+                    setOtherText(t);
+                    const trimmed = t.trim();
+                    if (trimmed.length >= 2) {
+                      saveOnboardingAnswers({ sport: trimmed.slice(0, MAX_SPORT_LEN) });
+                    }
+                  }}
                   maxLength={MAX_SPORT_LEN}
                   autoCapitalize="words"
                   autoCorrect

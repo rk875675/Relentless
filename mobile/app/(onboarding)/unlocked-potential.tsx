@@ -18,6 +18,7 @@ import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-pr
 import { ONBOARDING_TESTIMONIALS, ONBOARDING_TRUST_HEADLINE } from '@/lib/onboarding-testimonials';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
+import { trackOnboardingButtonClicked } from '@/lib/onboarding-analytics';
 
 const AUTO_SWIPE_MS = 4000;
 const CARD_WIDTH = Dimensions.get('window').width - spacing.xl * 2;
@@ -37,10 +38,19 @@ export default function UnlockedPotentialScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const fade = useRef(new Animated.Value(0)).current;
+  const cardFade = useRef(new Animated.Value(0)).current;
+  const cardScale = useRef(new Animated.Value(0.94)).current;
   const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade({ swipeFromEdgeOnly: true });
 
   useEffect(() => {
-    Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    Animated.timing(fade, { toValue: 1, duration: 380, useNativeDriver: true }).start();
+    const delay = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(cardFade, { toValue: 1, duration: 340, useNativeDriver: true }),
+        Animated.spring(cardScale, { toValue: 1, friction: 7, tension: 80, useNativeDriver: true }),
+      ]).start();
+    }, 160);
+    return () => clearTimeout(delay);
   }, []);
 
   useEffect(() => {
@@ -73,7 +83,9 @@ export default function UnlockedPotentialScreen() {
             <Text style={styles.body}>This is exactly why we built Relentless.</Text>
           </View>
 
-          <View style={styles.bottomHalf}>
+          <Animated.View
+            style={[styles.bottomHalf, { opacity: cardFade, transform: [{ scale: cardScale }] }]}
+          >
             <Text style={styles.reviewHeading}>{ONBOARDING_TRUST_HEADLINE}</Text>
             <ScrollView
               ref={scrollRef}
@@ -108,13 +120,18 @@ export default function UnlockedPotentialScreen() {
                 <View key={i} style={[styles.dot, i === activeIdx && styles.dotActive]} />
               ))}
             </View>
-          </View>
+          </Animated.View>
 
           <View style={styles.btnArea}>
             <TouchableOpacity
               style={styles.button}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                trackOnboardingButtonClicked({
+                  step_key: 'unlocked_potential',
+                  step_index: ONBOARDING_PROGRESS.unlockedPotential,
+                  button_key: 'continue',
+                });
                 router.push('/(onboarding)/mac-teaser' as any);
               }}
             >

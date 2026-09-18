@@ -6,6 +6,8 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { MAC_ORDER, MAC_COLORS, type MacCategory } from '@/lib/mac-categories';
 import { colors, spacing } from '@/lib/theme';
+import { trackOnboardingButtonClicked } from '@/lib/onboarding-analytics';
+import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
 
 const INITIAL_SCORE = 20;
 
@@ -122,6 +124,11 @@ export default function OnboardingTrophyScreen() {
             style={styles.primaryBtn}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              trackOnboardingButtonClicked({
+                step_key: 'onboarding_trophy',
+                step_index: ONBOARDING_PROGRESS.onboardingTrophy,
+                button_key: 'continue',
+              });
               router.push('/(onboarding)/tutorial' as any);
             }}
           >

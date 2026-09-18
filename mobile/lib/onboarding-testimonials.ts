@@ -6,9 +6,10 @@ export const ONBOARDING_TRUST_HEADLINE = 'Trusted by Elite Athletes';
 /**
  * Onboarding social proof. Avatars are bundled under `assets/images/testimonials/`:
  * Instagram profile JPEGs for most athletes, except Svenya Stoyanoff (official LSU
- * roster jersey image) and Carlos Lanzagorta (PNG supplied directly by the athlete).
- * Re-export from IG when profile pics change; refresh Svenya from lsusports if they
- * issue a new headshot. Keep `require()` paths in sync.
+ * roster jersey image), Fuad Omer (athlete-supplied running photo, square-cropped
+ * for the circular avatar), and Carlos Lanzagorta (PNG supplied directly by the
+ * athlete). Re-export from IG when profile pics change; refresh Svenya from
+ * lsusports if they issue a new headshot. Keep `require()` paths in sync.
  */
 export type OnboardingTestimonial = {
   quote: string;
@@ -29,7 +30,7 @@ export const ONBOARDING_TESTIMONIALS: OnboardingTestimonial[] = [
     quote:
       "Building brick by brick. I feel like I'm actually getting mentally stronger and excited to see how this plays out.",
     name: 'Carlos Lanzagorta',
-    detail: 'D1 Runner at South Carolina',
+    detail: 'D1 1500m runner at South Carolina',
     avatar: require('@/assets/images/testimonials/carlos-lanzagorta.png'),
   },
   {
@@ -43,14 +44,14 @@ export const ONBOARDING_TESTIMONIALS: OnboardingTestimonial[] = [
     quote:
       "Mentality is something I've always struggled with, especially going into races. Relentless has helped me feel more confident going into races to perform better.",
     name: 'Svenya Stoyanoff',
-    detail: 'D1 Runner at LSU',
+    detail: 'D1 1500m runner at LSU',
     avatar: require('@/assets/images/testimonials/svenya-stoyanoff.jpg'),
   },
   {
     quote:
-      "In a sport like pole vault, the greatest limiting factor is the athlete's mind. Mental training is a necessity at all levels and can even affect the best vaulters.",
-    name: 'Beau Domingue',
-    detail: 'D1 Pole Vaulter',
-    avatar: require('@/assets/images/testimonials/beau-domingue.jpg'),
+      'I used this app before a competitive practice to simulate a hard effort race day and it was great! This app is great for helping you identify the problem and tackle it.',
+    name: 'Fuad Omer',
+    detail: 'D1 400m runner at Oregon',
+    avatar: require('@/assets/images/testimonials/fuad-omer.jpg'),
   },
 ];

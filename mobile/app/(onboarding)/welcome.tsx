@@ -5,13 +5,13 @@ import { useRouter } from 'expo-router';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth } from '@/lib/auth-context';
 import { clearOnboardingProgress, loadOnboardingScreen } from '@/lib/onboarding-local-state';
-import { trackOnboardingStarted } from '@/lib/onboarding-analytics';
+import { trackOnboardingButtonClicked, trackOnboardingStarted } from '@/lib/onboarding-analytics';
 import { colors, spacing } from '@/lib/theme';
 
 const VALID_ONBOARDING_SCREENS = new Set([
   'relentless-intro', 'onboarding-intake', 'unlocked-potential',
   'mac-teaser', 'mac-framework', 'mac-question', 'mac-detail', 'mac-setup',
-  'we-can-train', 'grant-intro', 'onboarding-trophy',
+  'we-can-train', 'lesson-structure', 'grant-intro', 'onboarding-trophy',
   'tutorial', 'tutorial-home', 'tutorial-home-detail',
   'tutorial-library', 'tutorial-library-detail', 'tutorial-profile',
   'sport-selection', 'competition-date', 'paywall', 'signup',
@@ -30,10 +30,6 @@ export default function WelcomeScreen() {
   const fadeCta = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // When signed in, let RouteGuard handle all navigation. Don't auto-push
-    // a saved screen — setSession() fires before fetchUserState() finishes,
-    // so this effect re-runs with session=true + onboardingComplete=false,
-    // which would push a stale onboarding screen on top of the login view.
     if (session) {
       setShowUI(true);
       return;
@@ -90,7 +86,12 @@ export default function WelcomeScreen() {
               if (!savedScreen) {
                 trackOnboardingStarted({ step_key: 'welcome', step_index: 0 });
               }
-              const target = savedScreen || 'relentless-intro';
+              trackOnboardingButtonClicked({
+                step_key: 'welcome',
+                step_index: 0,
+                button_key: savedScreen ? 'continue' : 'get_started',
+              });
+              const target = savedScreen || 'onboarding-intake';
               router.push(`/(onboarding)/${target}` as any);
             }}
           >
@@ -99,6 +100,11 @@ export default function WelcomeScreen() {
           <TouchableOpacity
             style={styles.signInLink}
             onPress={() => {
+              trackOnboardingButtonClicked({
+                step_key: 'welcome',
+                step_index: 0,
+                button_key: 'sign_in',
+              });
               markInAppAuthHubEntry();
               router.push({ pathname: '/(auth)' as any, params: { from: 'signin' } });
             }}

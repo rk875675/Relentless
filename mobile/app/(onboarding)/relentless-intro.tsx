@@ -4,7 +4,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
-import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+import { ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
+
+/** Legacy: this screen is no longer in the active onboarding flow but stays
+ *  in the tree so live users who saved it as their resume screen don't crash. */
+const LEGACY_STEP_INDEX = 1;
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
@@ -55,7 +59,7 @@ export default function RelentlessIntroScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ProgressBar
-        step={ONBOARDING_PROGRESS.relentlessIntro}
+        step={LEGACY_STEP_INDEX}
         total={ONBOARDING_TOTAL_STEPS}
         onBack={onPop}
       />

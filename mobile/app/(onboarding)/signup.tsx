@@ -20,16 +20,13 @@ import { AuthSocialSignInButtons } from '@/components/auth/AuthSocialSignInButto
 import { friendlySignUpError, passwordMeetsComplexity } from '@/app/(auth)/signup';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth, type SocialSignInResult } from '@/lib/auth-context';
-import { trackSignupStarted, trackSignupCompleted } from '@/lib/lifecycle-analytics';
-import { trackOnboardingCompleted } from '@/lib/onboarding-analytics';
+import { trackSignupStarted } from '@/lib/lifecycle-analytics';
 import { bustCache } from '@/lib/api-cache';
 import { fetchJwsForTransaction, restorePurchasesViaStoreKit } from '@/lib/iap-restore';
-import { clearOnboardingProgress, loadOnboardingAnswers } from '@/lib/onboarding-local-state';
-import { postGrantJournalWithRetry } from '@/lib/pending-grant-journal';
+import { clearOnboardingProgress } from '@/lib/onboarding-local-state';
 import { redeemPromoCode } from '@/lib/promo-codes';
 import { clearPendingPromoCode, loadPendingPromoCode } from '@/lib/promo-code-state';
 import { loadPendingReferralClaim } from '@/lib/referral-claim-state';
-import { ONBOARDING_PROGRESS } from '@/lib/onboarding-progress';
 import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
 import { supabase } from '@/lib/supabase';
 import { LEGAL_PRIVACY_POLICY_URL, LEGAL_TERMS_OF_USE_URL } from '@/lib/legal-urls';
@@ -414,21 +411,16 @@ export default function OnboardingSignupScreen() {
 
       // Seed initial MAC ring scores (20/20/20) for all new onboarding accounts.
       // ON CONFLICT DO NOTHING in the RPC means existing users are never overwritten.
-      loadOnboardingAnswers().then(async (answers) => {
-        try {
-          await supabase.rpc('initialize_mac_scores', {
-            p_mindfulness: 20,
-            p_acceptance: 20,
-            p_commitment: 20,
-          });
-        } catch {}
-        const journalAnswer = answers.grantJournalAnswer?.trim();
-        if (journalAnswer) {
-          // Fire-and-forget with its own retry/backoff — never await here, so a
-          // slow or failing POST can't delay the signup → app navigation below.
-          void postGrantJournalWithRetry(journalAnswer);
-        }
-      }).catch(() => {});
+      // MAC seed + Grant journal + completion analytics run inside
+      // completeOnboarding so referral invitees (who never reach this block)
+      // get the same extras. A second seed here is ON CONFLICT DO NOTHING.
+      try {
+        await supabase.rpc('initialize_mac_scores', {
+          p_mindfulness: 20,
+          p_acceptance: 20,
+          p_commitment: 20,
+        });
+      } catch {}
 
       clearTimeout(forceNavigateTimer);
       if (!forceNavigated) {
@@ -441,17 +433,7 @@ export default function OnboardingSignupScreen() {
       if (sportTrim) updateSport(sportTrim).catch(() => {});
       refreshUserState().catch(() => {});
       clearOnboardingProgress().catch(() => {});
-
-      if (!onboardingCompletedFiredRef.current) {
-        onboardingCompletedFiredRef.current = true;
-        trackSignupCompleted({ post_paywall: true });
-        trackOnboardingCompleted({
-          step_key: 'signup',
-          step_index: ONBOARDING_PROGRESS.competitionDate + 2,
-          source_route: '/signup',
-          post_paywall: true,
-        });
-      }
+      onboardingCompletedFiredRef.current = true;
     } catch (e) {
       clearTimeout(forceNavigateTimer);
       if (forceNavigated) return; // Already in /(tabs); don't surface the error.

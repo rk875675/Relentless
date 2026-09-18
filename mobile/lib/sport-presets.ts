@@ -1,12 +1,12 @@
 /** Preset sports — keep in sync with profile picker and onboarding sport screen. */
 export const PRESET_SPORTS = [
   'Track & Field',
+  'Baseball',
   'Football',
-  'Basketball',
+  'Cross Country',
   'Soccer',
   'Wrestling',
-  'Swimming',
-  'Volleyball',
+  'Golf',
   'Other',
 ] as const;
 

@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
-import { trackOnboardingOptionSelected } from '@/lib/onboarding-analytics';
+import { trackOnboardingButtonClicked, trackOnboardingOptionSelected } from '@/lib/onboarding-analytics';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 
@@ -23,7 +23,7 @@ export default function MacQuestionScreen() {
   const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
 
   useEffect(() => {
-    Animated.timing(fade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+    Animated.timing(fade, { toValue: 1, duration: 380, useNativeDriver: true }).start();
     loadOnboardingAnswers().then((saved) => {
       if (saved.macTag) setSelected(saved.macTag);
     });
@@ -82,6 +82,12 @@ export default function MacQuestionScreen() {
             disabled={!selected}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              trackOnboardingButtonClicked({
+                step_key: 'mac_question',
+                step_index: ONBOARDING_PROGRESS.macQuestion,
+                button_key: 'continue',
+                selected_option_key: selected ?? undefined,
+              });
               router.push({
                 pathname: '/(onboarding)/we-can-train' as any,
                 params: { tag: selected! },

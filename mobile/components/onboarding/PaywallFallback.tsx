@@ -8,7 +8,7 @@ import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth } from '@/lib/auth-context';
 import { colors, spacing } from '@/lib/theme';
 import { SubscriptionLegalDisclosure } from '@/components/onboarding/SubscriptionLegalDisclosure';
-import { clearOnboardingProgress, saveOnboardingProgress } from '@/lib/onboarding-local-state';
+import { clearPaywallResumeFlag, saveOnboardingProgress } from '@/lib/onboarding-local-state';
 
 const isExpoGo = Constants.appOwnership === 'expo';
 
@@ -45,15 +45,15 @@ export function PaywallFallback({ sport, competitionDate }: PaywallFallbackProps
     router.push({ pathname: '/(auth)' as any, params: { from: 'app' } });
   };
 
-  /** X always returns the user to competition-date. See PaywallSuperwall.handleClose. */
+  /** X returns to sport-selection. See PaywallSuperwall.handleClose. */
   const handleClose = () => {
-    void clearOnboardingProgress();
+    void clearPaywallResumeFlag();
     if (router.canGoBack()) {
       router.back();
       return;
     }
     router.replace({
-      pathname: '/(onboarding)/competition-date' as any,
+      pathname: '/(onboarding)/sport-selection' as any,
       params: sport ? { sport } : {},
     });
   };
