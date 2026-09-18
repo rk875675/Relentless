@@ -2,7 +2,7 @@
   "expo": {
     "name": "Relentless",
     "slug": "relentless",
-    "version": "2.1.2",
+    "version": "2.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "relentless",
@@ -13,7 +13,7 @@
       "backgroundColor": "#2d2c2c"
     },
     "ios": {
-      "buildNumber": "32",
+      "buildNumber": "33",
       "supportsTablet": false,
       "usesAppleSignIn": true,
       "bundleIdentifier": "com.relentlessmentaltoughness.relentless",
@@ -89,7 +89,8 @@
             "NSUserNotificationUsageDescription": "Relentless sends one evening reminder on days you haven't completed your workout."
           }
         }
-      ]
+      ],
+      "./plugins/withOpenIapAlreadyOwnedFix.js"
     ],
     "experiments": {
       "typedRoutes": true
@@ -102,7 +103,7 @@
       "enableAppStoreReviewPrompt": true
     },
     "android": {
-      "versionCode": 32,
+      "versionCode": 33,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"

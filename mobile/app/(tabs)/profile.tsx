@@ -29,6 +29,7 @@ import { MAX_SPORT_LEN, OTHER_SENTINEL, PRESET_SPORTS, isPresetSport } from '@/l
 import { SUPERWALL_ENABLED } from '@/lib/superwall-config';
 import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { isReferralEnabled } from '@/lib/referral';
+import { trackReferralProfileCtaTapped } from '@/lib/referral-analytics';
 import { supabase } from '@/lib/supabase';
 import { LEGAL_PRIVACY_POLICY_URL, LEGAL_TERMS_OF_USE_URL } from '@/lib/legal-urls';
 import { registerForPushNotifications, disablePushReminders } from '@/lib/push-notifications';
@@ -81,6 +82,7 @@ export default function ProfileScreen() {
     revokePremiumForTesting,
     isDevAccount,
     hasPremiumAccess,
+    entitlementStatus,
   } = useAuth();
   const router = useRouter();
   const [streak, setStreak] = useState<Streak | null>(null);
@@ -524,6 +526,46 @@ export default function ProfileScreen() {
         </View>
       )}
 
+      {/* Community — visually distinct accent card so it stands out from settings */}
+      {referralVisible && hasPremiumAccess && (
+        <TouchableOpacity
+          style={[styles.communityCard, entitlementStatus === 'trial' && styles.communityCardLocked]}
+          activeOpacity={entitlementStatus === 'trial' ? 1 : 0.85}
+          disabled={entitlementStatus === 'trial'}
+          onPress={() => {
+            if (entitlementStatus === 'trial') return;
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            trackReferralProfileCtaTapped({ entitlement_status: entitlementStatus });
+            router.push('/referral' as any);
+          }}
+        >
+          <View style={styles.communityLeft}>
+            <View style={[styles.communityIconWrap, entitlementStatus === 'trial' && styles.communityIconWrapLocked]}>
+              <Ionicons
+                name="people"
+                size={20}
+                color={entitlementStatus === 'trial' ? colors.textMuted : colors.accent}
+              />
+            </View>
+            <View style={styles.communityText}>
+              <Text style={[styles.communityTitle, entitlementStatus === 'trial' && styles.communityTitleLocked]}>
+                Invite a teammate
+              </Text>
+              <Text style={[styles.communitySubtitle, entitlementStatus === 'trial' && styles.communitySubtitleLocked]}>
+                {entitlementStatus === 'trial' ? 'Unlocks after your first payment' : 'You both get 20% OFF'}
+              </Text>
+            </View>
+          </View>
+          {entitlementStatus === 'trial' ? (
+            <Ionicons name="lock-closed" size={14} color={colors.textMuted} />
+          ) : (
+            <View style={styles.communityBadge}>
+              <Text style={styles.communityBadgeText}>20% OFF</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      )}
+
       {/* Settings Section */}
       <Text style={styles.sectionLabel}>SETTINGS</Text>
       <View style={styles.rowsContainer}>
@@ -603,27 +645,6 @@ export default function ProfileScreen() {
           last
         />
       </View>
-
-      {/* Referral — share-only. Code entry deliberately lives on the paywall
-          instead: an active subscriber cannot use a new-subscriber offer code
-          (PRD 10.5.8). */}
-      {referralVisible && hasPremiumAccess && (
-        <>
-          <Text style={styles.sectionLabel}>INVITE</Text>
-          <View style={styles.rowsContainer}>
-            <ProfileRow
-              icon="gift-outline"
-              label="Invite a teammate"
-              chevron
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push('/referral' as any);
-              }}
-              last
-            />
-          </View>
-        </>
-      )}
 
       {/* Legal */}
       <Text style={styles.sectionLabel}>LEGAL</Text>
@@ -1418,6 +1439,73 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: colors.white,
+  },
+
+  // Community card — visually distinct from settings rows
+  communityCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(139, 92, 246, 0.08)',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: 'rgba(139, 92, 246, 0.30)',
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  communityCardLocked: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    opacity: 0.72,
+  },
+  communityLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 14,
+  },
+  communityIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  communityText: { flex: 1 },
+  communityTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  communitySubtitle: {
+    fontSize: 13,
+    color: colors.accentLight,
+    fontWeight: '600',
+  },
+  communityIconWrapLocked: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  communityTitleLocked: {
+    color: colors.textSecondary,
+  },
+  communitySubtitleLocked: {
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  communityBadge: {
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  communityBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.white,
+    letterSpacing: 0.4,
   },
 
   // Sign out — same chrome as settings rows, muted label

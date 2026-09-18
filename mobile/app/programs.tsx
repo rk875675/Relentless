@@ -11,7 +11,7 @@ import {
   View,
   type ImageSourcePropType,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -53,6 +53,13 @@ function coachLine(item: RecommendedProgram): string {
   return `${item.coach_name}${item.coach_sport ? ` (${item.coach_sport})` : ''}`;
 }
 
+function withPinnedLast(items: RecommendedProgram[], pinId?: string): RecommendedProgram[] {
+  if (!pinId) return items;
+  const pinned = items.filter((p) => p.id === pinId);
+  if (pinned.length === 0) return items;
+  return [...items.filter((p) => p.id !== pinId), ...pinned];
+}
+
 /**
  * Full-screen list of coach WOD programs ("Explore the full library" on Home).
  * Each pack can be made the active program (drives the daily WOD), or you can
@@ -61,6 +68,9 @@ function coachLine(item: RecommendedProgram): string {
  */
 export default function ProgramsScreen() {
   const router = useRouter();
+  const { pin } = useLocalSearchParams<{ pin?: string }>();
+  const pinId = typeof pin === 'string' && pin.length > 0 ? pin : undefined;
+  const listPath = pinId ? '/programs?include_active=1' : '/programs';
   const { width: windowWidth } = useWindowDimensions();
   const [programs, setPrograms] = useState<RecommendedProgram[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,22 +88,22 @@ export default function ProgramsScreen() {
     if (isPull) {
       setRefreshing(true);
     } else {
-      const cached = getCached<ProgramsResponse>('/programs');
+      const cached = getCached<ProgramsResponse>(listPath);
       if (cached) {
-        setPrograms(cached.items);
+        setPrograms(withPinnedLast(cached.items, pinId));
         setLoading(false);
       }
     }
-    const { data, error: err } = await apiFetch<ProgramsResponse>('/programs');
+    const { data, error: err } = await apiFetch<ProgramsResponse>(listPath);
     if (err) {
       setError(err);
     } else if (data) {
-      setPrograms(data.items ?? []);
-      setCached('/programs', data);
+      setCached(listPath, data);
+      setPrograms(withPinnedLast(data.items ?? [], pinId));
     }
     setLoading(false);
     setRefreshing(false);
-  }, []);
+  }, [listPath, pinId]);
 
   useFocusEffect(
     useCallback(() => {

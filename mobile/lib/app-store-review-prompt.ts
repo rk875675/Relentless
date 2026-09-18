@@ -31,6 +31,20 @@ const KEYS = {
 const MIN_LESSONS = 1;
 const MIN_DAYS_SINCE_LAST_REQUEST = 90;
 
+/**
+ * Review evaluation runs on every qualifying app session, so gate-skip events
+ * (cooldown, threshold, flag_off, …) previously fired 16×+ per user. Track
+ * each skip reason once per JS session — the signal is "this user is gated",
+ * not "how many sessions were gated".
+ */
+const skippedReasonsThisSession = new Set<string>();
+
+function trackSkippedOncePerSession(reason: string): void {
+  if (skippedReasonsThisSession.has(reason)) return;
+  skippedReasonsThisSession.add(reason);
+  trackAppStoreReviewPromptSkipped({ reason });
+}
+
 function daysSince(isoString: string | null): number {
   if (!isoString) return Infinity;
   const diff = Date.now() - new Date(isoString).getTime();
@@ -115,25 +129,25 @@ async function runReviewEvaluation(): Promise<void> {
 
   // In DEV allow only when build gate is explicitly true (QA override)
   if (__DEV__ && !buildEnabled) {
-    trackAppStoreReviewPromptSkipped({ reason: 'dev' });
+    trackSkippedOncePerSession('dev');
     return;
   }
 
   if (!buildEnabled) {
-    trackAppStoreReviewPromptSkipped({ reason: 'build_gate_off' });
+    trackSkippedOncePerSession('build_gate_off');
     return;
   }
 
   // iOS only
   if (Platform.OS !== 'ios') {
-    trackAppStoreReviewPromptSkipped({ reason: 'not_ios' });
+    trackSkippedOncePerSession('not_ios');
     return;
   }
 
   // Gate B: remote kill switch
   const flagEnabled = await isFeatureFlagEnabled('app_store_review_prompt');
   if (!flagEnabled) {
-    trackAppStoreReviewPromptSkipped({ reason: 'flag_off' });
+    trackSkippedOncePerSession('flag_off');
     return;
   }
 
@@ -145,12 +159,12 @@ async function runReviewEvaluation(): Promise<void> {
 
   const count = rawCount ? parseInt(rawCount, 10) : 0;
   if (isNaN(count) || count < MIN_LESSONS) {
-    trackAppStoreReviewPromptSkipped({ reason: 'threshold' });
+    trackSkippedOncePerSession('threshold');
     return;
   }
 
   if (lastRequestAt && daysSince(lastRequestAt) < MIN_DAYS_SINCE_LAST_REQUEST) {
-    trackAppStoreReviewPromptSkipped({ reason: 'cooldown' });
+    trackSkippedOncePerSession('cooldown');
     return;
   }
 
@@ -158,13 +172,13 @@ async function runReviewEvaluation(): Promise<void> {
 
   const StoreReview = getStoreReview();
   if (!StoreReview) {
-    trackAppStoreReviewPromptSkipped({ reason: 'unavailable' });
+    trackSkippedOncePerSession('unavailable');
     return;
   }
 
   const available = await StoreReview.isAvailableAsync();
   if (!available) {
-    trackAppStoreReviewPromptSkipped({ reason: 'unavailable' });
+    trackSkippedOncePerSession('unavailable');
     return;
   }
 

@@ -37,7 +37,13 @@ import { coachAvatarSource } from '@/lib/coach-photo';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import { maybeRequestAppStoreReview, reviewPromptMayBeOnScreen } from '@/lib/app-store-review-prompt';
 import ReferralPopup from '@/components/ReferralPopup';
-import { isReferralEnabled, fetchReferralState, type ReferralCadence } from '@/lib/referral';
+import {
+  isReferralEnabled,
+  fetchReferralState,
+  deriveReferralHomeBadge,
+  type ReferralCadence,
+  type ReferralHomeBadgeText,
+} from '@/lib/referral';
 import {
   canShowReferralPopup,
   recordReferralPopupShown,
@@ -54,8 +60,10 @@ import {
   trackPushPermissionDenied,
   trackStreakBroken,
   trackJournalPromptCompleted,
+  trackPackCtaClicked,
   getTimeOfDayHour,
 } from '@/lib/core-analytics';
+import { selectProgram } from '@/lib/switch-program';
 import {
   disablePushReminders,
   registerForPushNotifications,
@@ -173,7 +181,41 @@ type RecommendedProgram = {
   started?: boolean;
   /** Stored day to resume from on Continue. */
   current_day?: number | null;
+  completed?: boolean;
+  completed_at?: string | null;
+  cover_image?: string | null;
 };
+
+function sportKey(value?: string | null): string {
+  return (value ?? '').trim().toLowerCase();
+}
+
+function packMatchesSport(pack: RecommendedProgram, userSport: string | null): boolean {
+  const user = sportKey(userSport);
+  const packSport = sportKey(pack.coach_sport);
+  if (!user || !packSport || user === 'other') return false;
+  return packSport === user || packSport.includes(user) || user.includes(packSport);
+}
+
+/** Next pack after finish: unfinished + closest sport, else least-recently completed. */
+function pickSuggestedPack(
+  items: RecommendedProgram[],
+  currentId: string | null | undefined,
+  userSport: string | null,
+): RecommendedProgram | null {
+  const others = items.filter((p) => p.id !== currentId);
+  if (others.length === 0) return null;
+  const unfinished = others.filter((p) => p.completed !== true);
+  if (unfinished.length > 0) {
+    return unfinished.find((p) => packMatchesSport(p, userSport)) ?? unfinished[0];
+  }
+  return [...others].sort((a, b) => {
+    const aAt = a.completed_at ?? '';
+    const bAt = b.completed_at ?? '';
+    if (aAt === bAt) return 0;
+    return aAt < bAt ? -1 : 1;
+  })[0] ?? null;
+}
 
 type Progress = {
   mindfulness_score: number;
@@ -304,10 +346,19 @@ export default function HomeScreen() {
     competitionDate,
     session,
     isDevAccount,
+    hasPremiumAccess,
+    entitlementStatus,
+    sport,
   } = useAuth();
   const currentUserId = session?.user?.id ?? null;
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
+  const packHeroWidth = windowWidth - 42;
+  const packHeroHeight = packHeroWidth;
   const [lesson, setLesson] = useState<Lesson | null>(null);
+  const [programComplete, setProgramComplete] = useState(false);
+  const [packCoverImage, setPackCoverImage] = useState<string | null>(null);
+  const [packSwitching, setPackSwitching] = useState(false);
   const [lastWod, setLastWod] = useState<Lesson | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [streak, setStreak] = useState<Streak | null>(null);
@@ -353,6 +404,7 @@ export default function HomeScreen() {
   });
   /** null = not yet loaded this session (skeleton); [] = loaded, nothing to show. */
   const [recPrograms, setRecPrograms] = useState<RecommendedProgram[] | null>(null);
+  const [suggestPool, setSuggestPool] = useState<RecommendedProgram[]>([]);
   const freebieScale = useRef(new Animated.Value(0)).current;
   const freebieOpacity = useRef(new Animated.Value(0)).current;
   const deltaDateRef = useRef<string | null>(null);
@@ -469,6 +521,12 @@ export default function HomeScreen() {
       const cachedStreak = getCached<Streak>('/streak');
       if (cachedLesson && cachedProgress && cachedStreak) {
         setLesson(cachedLesson.data);
+        setProgramComplete(cachedLesson.rawBody?.program_complete === true);
+        setPackCoverImage(
+          typeof cachedLesson.rawBody?.pack_cover_image === 'string'
+            ? cachedLesson.rawBody.pack_cover_image
+            : null,
+        );
         const rpt = cachedLesson.rawBody?.repeat_lesson;
         setLastWod(rpt ? (rpt as Lesson) : null);
         setProgress(cachedProgress);
@@ -542,6 +600,14 @@ export default function HomeScreen() {
 
     const nextLesson = lessonRes.data ?? null;
     setLesson(nextLesson);
+    if (!lessonRes.error) {
+      setProgramComplete(lessonRes.rawBody?.program_complete === true);
+      setPackCoverImage(
+        typeof lessonRes.rawBody?.pack_cover_image === 'string'
+          ? lessonRes.rawBody.pack_cover_image
+          : null,
+      );
+    }
     const rpt = lessonRes.rawBody?.repeat_lesson;
     setLastWod(rpt ? (rpt as Lesson) : null);
     const prog = progressRes.error ? emptyProgress : (progressRes.data ?? emptyProgress);
@@ -627,6 +693,11 @@ export default function HomeScreen() {
   const referralPopupShownRef = useRef(false);
   const [showReferralPopup, setShowReferralPopup] = useState(false);
   const [referralCadence, setReferralCadence] = useState<ReferralCadence | null>(null);
+  // Persistent badge — deriveReferralHomeBadge() owns visibility + copy.
+  // Re-checked on tab focus so apply / new invites update without a restart.
+  const [referralBannerVisible, setReferralBannerVisible] = useState(false);
+  const [referralBadgeText, setReferralBadgeText] = useState<ReferralHomeBadgeText>('GET 20% OFF');
+  const referralBadgeBounce = useRef(new Animated.Value(0)).current;
 
   // Read through a ref, not the closure: the checks below run after a delay,
   // and any of these can flip in the meantime (the freebie is set during
@@ -697,6 +768,11 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const refreshSuggestPool = useCallback(async () => {
+    const res = await apiFetch<{ items: RecommendedProgram[] }>('/programs?include_active=1');
+    if (res.data?.items) setSuggestPool(res.data.items);
+  }, []);
+
   // "More programs you might like" rail — hidden when the API returns nothing
   // (which is always the case for non-dev users today). Cache-then-network so
   // the skeleton only ever shows on the first load of a session.
@@ -705,16 +781,58 @@ export default function HomeScreen() {
       const cached = getCached<{ items: RecommendedProgram[] }>('/programs');
       if (cached) setRecPrograms(cached.items ?? []);
       void refreshPrograms();
-    }, [refreshPrograms]),
+      void refreshSuggestPool();
+    }, [refreshPrograms, refreshSuggestPool]),
   );
 
   // Tapping a featured program row goes straight to the full library (same
   // destination as the "Explore the full library" button below) instead of
   // popping a restart/continue/cancel prompt right on Home.
-  const goToLibrary = useCallback(() => {
+  const goToLibrary = useCallback((completedProgramId?: string | null) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push('/programs' as any);
+    if (completedProgramId) {
+      router.push({ pathname: '/programs', params: { pin: completedProgramId } } as any);
+    } else {
+      router.push('/programs' as any);
+    }
   }, [router]);
+
+  const programPool =
+    (recPrograms && recPrograms.length > 0)
+      ? recPrograms
+      : (getCached<{ items: RecommendedProgram[] }>('/programs')?.items ?? suggestPool);
+  const suggestedPack = programComplete
+    ? pickSuggestedPack(programPool, lesson?.program_id, sport)
+    : null;
+  const suggestedHeroPhoto = suggestedPack
+    ? (suggestedPack.cover_image
+      ? { uri: suggestedPack.cover_image }
+      : coachAvatarSource(suggestedPack.coach_avatar_url, suggestedPack.coach_name))
+    : null;
+
+  const startSuggestedPack = useCallback(() => {
+    if (!suggestedPack || packSwitching) return;
+    const mode = suggestedPack.completed ? 'restart' : 'continue';
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    trackPackCtaClicked({
+      program_id: suggestedPack.id,
+      program_title: suggestedPack.title,
+      coach_name: suggestedPack.coach_name,
+      action: suggestedPack.completed ? 'restart' : suggestedPack.started ? 'continue' : 'activate',
+      source_screen: 'home',
+    });
+    void (async () => {
+      setPackSwitching(true);
+      const err = await selectProgram(suggestedPack.id, mode);
+      setPackSwitching(false);
+      if (err) {
+        Alert.alert('Could not start pack', err);
+        return;
+      }
+      void fetchData(true);
+      void refreshPrograms();
+    })();
+  }, [fetchData, packSwitching, refreshPrograms, suggestedPack]);
 
   useEffect(() => {
     setJournalText('');
@@ -750,6 +868,49 @@ export default function HomeScreen() {
     })();
     return () => { cancelled = true; };
   }, [currentUserId, loading]);
+
+  // Referral home-screen banner — derive visibility + text from referral state.
+  // Re-evaluated on every tab focus so changes (new invites, claimed reward)
+  // are reflected without a full app restart.
+  useFocusEffect(
+    useCallback(() => {
+      if (!hasPremiumAccess) {
+        setReferralBannerVisible(false);
+        return;
+      }
+      let cancelled = false;
+      void (async () => {
+        if (!(await isReferralEnabled())) {
+          if (!cancelled) setReferralBannerVisible(false);
+          return;
+        }
+        const refState = await fetchReferralState();
+        if (cancelled) return;
+        const badge = refState ? deriveReferralHomeBadge(refState) : { visible: false as const };
+        if (badge.visible) {
+          setReferralBadgeText(badge.text);
+          setReferralBannerVisible(true);
+        } else {
+          setReferralBannerVisible(false);
+        }
+      })();
+      return () => { cancelled = true; };
+    }, [hasPremiumAccess]),
+  );
+
+  // Gentle bounce on the referral badge — starts when the badge is visible.
+  useEffect(() => {
+    if (!referralBannerVisible) { referralBadgeBounce.setValue(0); return; }
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(referralBadgeBounce, { toValue: -5, duration: 420, useNativeDriver: true }),
+        Animated.timing(referralBadgeBounce, { toValue: 0, duration: 420, useNativeDriver: true }),
+        Animated.delay(1800),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [referralBannerVisible, referralBadgeBounce]);
 
   useEffect(() => {
     if (!showFreebieModal) return;
@@ -1149,10 +1310,96 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={styles.workoutCardOuter}>
+        // wodWrapper gives the badge room above workoutCardOuter without
+        // relying on overflow: 'visible', which doesn't work on Android.
+        <View style={styles.wodWrapper}>
+          {referralBannerVisible && (
+            <Animated.View
+              style={[
+                styles.referralBadgeOverlay,
+                { transform: [{ translateY: referralBadgeBounce }] },
+              ]}
+              pointerEvents="box-none"
+            >
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.referralBadgeOverlayInner}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push('/referral' as any);
+                }}
+              >
+                <Text style={styles.referralBadgeOverlayText}>{referralBadgeText}</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+          <View style={styles.workoutCardOuter}>
           <View style={styles.workoutCardInner}>
             {loading ? (
               <WorkoutCardSkeleton />
+            ) : programComplete && lesson ? (
+              <View style={styles.wodTapArea}>
+                <View style={[styles.wodHeroWrap, { width: packHeroWidth, height: packHeroHeight }]}>
+                  {suggestedHeroPhoto || packCoverImage || coachPhotoSource(lesson.coach) ? (
+                    <Image
+                      source={
+                        suggestedHeroPhoto
+                        ?? (packCoverImage ? { uri: packCoverImage } : coachPhotoSource(lesson.coach)!)
+                      }
+                      style={{ width: packHeroWidth, height: packHeroWidth }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.wodHeroPlaceholder}>
+                      <Ionicons name="person" size={64} color={colors.textSecondary} />
+                    </View>
+                  )}
+                  <View style={styles.packCompleteWash} />
+                  <View style={styles.packCompleteMarkWrap} pointerEvents="none">
+                    <Text style={styles.packCompleteMark}>
+                      WE THINK YOU'D LIKE
+                    </Text>
+                    <Text style={styles.packCompleteName} numberOfLines={2}>
+                      {suggestedPack?.title ?? ''}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.packCompleteMeta}>
+                  <Text style={styles.packCompleteNoteLead}>Finishing isn't the skill.</Text>
+                  <Text style={styles.packCompleteNoteSub}>Consistency is how it holds.</Text>
+                </View>
+                <View style={styles.wodActionRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.wodBeginBtn,
+                      (packSwitching || !suggestedPack) && { opacity: 0.6 },
+                    ]}
+                    activeOpacity={0.85}
+                    disabled={packSwitching || !suggestedPack}
+                    onPress={startSuggestedPack}
+                  >
+                    <Text style={styles.wodBeginBtnText} numberOfLines={1}>
+                      {packSwitching ? 'Starting…' : 'Start'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.wodScheduleBtn}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      trackPackCtaClicked({
+                        program_id: suggestedPack?.id ?? lesson.program_id ?? null,
+                        program_title: suggestedPack?.title ?? lesson.program_title ?? null,
+                        coach_name: suggestedPack?.coach_name ?? lesson.coach?.name ?? null,
+                        action: 'browse_other',
+                        source_screen: 'home',
+                      });
+                      goToLibrary(lesson.program_id);
+                    }}
+                  >
+                    <Text style={styles.wodScheduleBtnText} numberOfLines={1}>Choose another</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             ) : lesson ? (
               <WodCard
                 title={lesson.title}
@@ -1191,10 +1438,11 @@ export default function HomeScreen() {
               </TouchableOpacity>
             )}
           </View>
+          </View>
         </View>
       )}
 
-      {!error && lesson && lastWod && lastWod.id !== lesson.id && (
+      {!error && !programComplete && lesson && lastWod && lastWod.id !== lesson.id && (
         <TouchableOpacity
           style={styles.repeatStandalone}
           onPress={() => void handleStartWorkout(lastWod.id)}
@@ -1509,7 +1757,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(167, 139, 250, 0.4)',
     backgroundColor: colors.surface,
     overflow: 'hidden',
-    marginBottom: spacing.md,
+    // marginBottom handled by wodWrapper above
   },
   workoutCardInner: {
     flexDirection: 'column',
@@ -1555,6 +1803,59 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlign: 'center',
     lineHeight: 26,
+  },
+  packCompleteWash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(8, 8, 10, 0.42)',
+  },
+  packCompleteMarkWrap: {
+    position: 'absolute',
+    top: 18,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
+  },
+  packCompleteMark: {
+    color: '#F4F4F4',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
+  packCompleteName: {
+    color: colors.white,
+    fontSize: 26,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 32,
+    textShadowColor: 'rgba(0, 0, 0, 0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
+  packCompleteMeta: {
+    width: '100%',
+    paddingTop: 18,
+    paddingBottom: 16,
+    paddingHorizontal: 8,
+  },
+  packCompleteNoteLead: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    lineHeight: 23,
+  },
+  packCompleteNoteSub: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginTop: 6,
   },
   wodProgramLine: {
     fontSize: 14,
@@ -1795,6 +2096,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: colors.white,
+  },
+  // Wrapper gives the badge room above workoutCardOuter without needing
+  // overflow: 'visible' on the card (which would break border-radius clipping
+  // and doesn't work cross-platform).
+  wodWrapper: {
+    paddingTop: 14,  // room for the badge to sit above the card
+    marginBottom: spacing.md,
+  },
+  // Referral badge — absolute within wodWrapper, bounces gently
+  referralBadgeOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 16,
+    zIndex: 10,
+  },
+  referralBadgeOverlayInner: {
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.6,
+    shadowRadius: 7,
+    elevation: 8,
+  },
+  referralBadgeOverlayText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.white,
+    letterSpacing: 0.6,
   },
   journalCard: {
     backgroundColor: colors.surface,

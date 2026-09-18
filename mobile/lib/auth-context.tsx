@@ -13,6 +13,7 @@ import { clearLessonCompletedForReferral } from './referral-popup-state';
 import { setApiToken } from './api';
 import { clearOnboardingProgress } from './onboarding-local-state';
 import { flushPendingGrantJournal } from './pending-grant-journal';
+import { runOnboardingCompletionExtras } from './onboarding-completion-extras';
 import { restorePurchasesViaStoreKit } from './iap-restore';
 
 /** Google / Apple OAuth pitfalls: see `mobile/docs/AUTH_SOCIAL_SIGNIN.md`. */
@@ -547,6 +548,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (sessionData.session?.user) {
           return { ok: true as const, user: sessionData.session.user };
         }
+        // First exchange can 400 when the in-app browser and the deep-link
+        // both finish the same PKCE code. Session often lands a beat later.
+        await new Promise((r) => setTimeout(r, 800));
+        const { data: retrySession } = await supabase.auth.getSession();
+        if (retrySession.session?.user) {
+          return { ok: true as const, user: retrySession.session.user };
+        }
         return { ok: false as const, error: exchangeError.message };
       }
       if (!data?.user) return { ok: false as const, error: 'Could not sign in with Google.' };
@@ -771,6 +779,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         'No profile row for this user yet. Reload the app, or finish the signup flow that creates your profile.',
       );
     }
+    // Same 20/20/20 seed signup.tsx runs after a Superwall purchase. Referral
+    // invitees complete onboarding from the paywall overlay instead, so without
+    // this they land in the app at 0. ON CONFLICT DO NOTHING — existing scores
+    // are never overwritten.
+    try {
+      await supabase.rpc('initialize_mac_scores', {
+        p_mindfulness: 20,
+        p_acceptance: 20,
+        p_commitment: 20,
+      });
+    } catch {
+      // Non-fatal: rings stay at 0 until the next successful seed.
+    }
+    runOnboardingCompletionExtras(userId);
     setProfileOnboardingCompleted(true);
     setDevReplayOnboarding(false);
   }, []);

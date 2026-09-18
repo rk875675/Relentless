@@ -20,7 +20,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 
 import * as Haptics from 'expo-haptics';
@@ -35,6 +35,7 @@ import { trackLessonViewed, trackLessonStarted, trackLessonCompleted, trackRefle
 import { incrementLessonsCompleted, maybeRequestAppStoreReview } from '@/lib/app-store-review-prompt';
 import { scheduleScrollFooterAboveKeyboard } from '@/lib/schedule-scroll-for-keyboard';
 import FormattedJournalBody from '@/components/FormattedJournalBody';
+import { LessonReadySkeleton } from '@/components/Skeleton';
 import PromptCards from '@/components/lesson/PromptCards';
 import BubbleSortExercise from '@/components/lesson/BubbleSort';
 import TwoColumnSortExercise from '@/components/lesson/TwoColumnSort';
@@ -307,6 +308,7 @@ type Phase =
   | 'reflection'
   | 'completing'
   | 'done'
+  | 'pack_congrats'
   | 'streak'
   | 'pack_complete'
   | 'error';
@@ -319,6 +321,14 @@ const LESSON_DAY3_BASELINE_ID = 'd0000000-0000-0000-0000-000000000003';
 
 function isLibraryLessonType(lessonType: string | undefined): boolean {
   return lessonType === 'library' || lessonType === 'library_long';
+}
+
+/** Last day of any lesson pack (loader packs included — sequence == total days). */
+function isLastLessonOfPack(lesson: LessonDetail | null): boolean {
+  if (!lesson?.program_id) return false;
+  const day = lesson.program_day;
+  const total = lesson.program_total_days;
+  return typeof day === 'number' && typeof total === 'number' && total > 0 && day === total;
 }
 
 const BASELINE_SCORE_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
@@ -591,9 +601,13 @@ export default function LessonPlayerScreen() {
   /** streak_extended is reported at most once per lesson session (double-tap safe). */
   const streakExtendedFiredRef = useRef(false);
   // Set when THIS completion finished the user's active lesson pack (server-
-  // authoritative pack_completed flag). Drives the celebratory pack_complete
-  // phase after the Workout Complete screen.
-  const [packComplete, setPackComplete] = useState<{ title: string | null } | null>(null);
+  // authoritative pack_completed flag). Drives first-time rating + feedback
+  // after the pack congrats screen. Repeats of the last lesson still get
+  // congrats via isLastLessonOfPack (program_day === program_total_days).
+  const [packComplete, setPackComplete] = useState<{
+    title: string | null;
+    coverImage: string | null;
+  } | null>(null);
   const [packFeedbackText, setPackFeedbackText] = useState('');
   const [packFeedbackSaving, setPackFeedbackSaving] = useState(false);
   const [packFeedbackSaved, setPackFeedbackSaved] = useState(false);
@@ -611,6 +625,14 @@ export default function LessonPlayerScreen() {
   const doneAnim3 = useRef(new Animated.Value(0)).current;
   const doneAnim4 = useRef(new Animated.Value(0)).current;
   const doneScale = useRef(new Animated.Value(0.3)).current;
+
+  const packCongratsHero = useRef(new Animated.Value(0)).current;
+  const packCongratsHeroScale = useRef(new Animated.Value(0.4)).current;
+  const packCongratsSpin = useRef(new Animated.Value(0)).current;
+  const packCongratsPulse = useRef(new Animated.Value(1)).current;
+  const packCongratsCopy = useRef(new Animated.Value(0)).current;
+  const packCongratsMac = useRef(new Animated.Value(0)).current;
+  const packCongratsBtn = useRef(new Animated.Value(0)).current;
 
   const streakAnim1 = useRef(new Animated.Value(0)).current;
   const streakAnim2 = useRef(new Animated.Value(0)).current;
@@ -977,6 +999,7 @@ export default function LessonPlayerScreen() {
       progress?: { deltas?: Record<string, { amount: number; reason: string }> };
       pack_completed?: boolean;
       pack_title?: string | null;
+      pack_cover_image?: string | null;
     }>(`/lessons/${currentLesson.id}/complete`, {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKeyRef.current },
@@ -996,8 +1019,10 @@ export default function LessonPlayerScreen() {
         setDoneDeltas(completeData.progress.deltas);
       }
       if (completeData?.pack_completed) {
-        setPackComplete({ title: completeData.pack_title ?? null });
-        setPackRatingVisible(true);
+        setPackComplete({
+          title: completeData.pack_title ?? null,
+          coverImage: completeData.pack_cover_image ?? null,
+        });
       }
       bustCache('/lessons/next', '/progress', '/streak');
       trackLessonCompleted({
@@ -1016,10 +1041,70 @@ export default function LessonPlayerScreen() {
       // Lets Home tell a post-lesson return from a plain tab switch, since
       // leaving a lesson is a bare router.back() with no params.
       markLessonCompletedForReferral();
-      // First pack-complete: feedback + rating first. Trophy / streak come after.
-      setPhase(completeData?.pack_completed ? 'pack_complete' : 'done');
+      // Always trophy first. Last-lesson packs continue to pack_congrats,
+      // then first-time rating + feedback.
+      setPhase('done');
     }
   }, []);
+
+  const goHomeAfterPack = useCallback(() => {
+    maybeRequestAppStoreReview();
+    bustCache('/lessons/next', '/progress', '/streak');
+    router.replace('/(tabs)' as any);
+  }, [router]);
+
+  // Same leave as a normal lesson (back), except a first pack-finish must
+  // land on Home so the suggestion card can show.
+  const leaveLessonAfterCelebration = useCallback(() => {
+    if (packComplete) {
+      goHomeAfterPack();
+      return;
+    }
+    maybeRequestAppStoreReview();
+    router.back();
+  }, [packComplete, goHomeAfterPack, router]);
+
+  const continueAfterCelebration = useCallback(async () => {
+    const now = new Date();
+    const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (preStreakDateRef.current === localToday) {
+      leaveLessonAfterCelebration();
+      return;
+    }
+    const { data } = await apiFetch<{ current_streak: number }>('/streak');
+    const newCount = data?.current_streak ?? 1;
+    setStreakCount(newCount);
+    const priorCount = preStreakCountRef.current;
+    if (
+      !streakExtendedFiredRef.current &&
+      typeof data?.current_streak === 'number' &&
+      (priorCount === null || newCount > priorCount)
+    ) {
+      streakExtendedFiredRef.current = true;
+      trackStreakExtended({
+        new_streak_count: newCount,
+        program_day: lessonRef.current?.program_day ?? null,
+      });
+    }
+    setPhase('streak');
+  }, [leaveLessonAfterCelebration]);
+
+  const continueFromTrophy = useCallback(() => {
+    if (packComplete || isLastLessonOfPack(lessonRef.current)) {
+      setPhase('pack_congrats');
+      return;
+    }
+    void continueAfterCelebration();
+  }, [packComplete, continueAfterCelebration]);
+
+  const continueFromPackCongrats = useCallback(() => {
+    if (packComplete) {
+      setPackRatingVisible(true);
+      setPhase('pack_complete');
+      return;
+    }
+    void continueAfterCelebration();
+  }, [packComplete, continueAfterCelebration]);
 
   // -----------------------------------------------------------------------
   // Block-based: progress bar reset between blocks. The bar represents only
@@ -1847,6 +1932,7 @@ export default function LessonPlayerScreen() {
         lesson_id: l.id,
         program_id: l.program_id ?? null,
         program_key: l.program_key ?? null,
+        program_day: l.program_day ?? null,
         coach_key: l.coach?.coach_key ?? null,
         lesson_type: l.lesson_type ?? null,
         block_index: blockIndexRef.current,
@@ -1869,6 +1955,7 @@ export default function LessonPlayerScreen() {
         lesson_id: l.id,
         program_id: l.program_id ?? null,
         program_key: l.program_key ?? null,
+        program_day: l.program_day ?? null,
         coach_key: l.coach?.coach_key ?? null,
         lesson_type: l.lesson_type ?? null,
         block_index: blockIndexRef.current,
@@ -2240,6 +2327,65 @@ export default function LessonPlayerScreen() {
   }, [phase, doneAnim1, doneAnim2, doneAnim3, doneAnim4, doneScale, glowPulse]);
 
   useEffect(() => {
+    if (phase !== 'pack_congrats') return;
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    packCongratsHero.setValue(0);
+    packCongratsHeroScale.setValue(0.4);
+    packCongratsSpin.setValue(0);
+    packCongratsPulse.setValue(1);
+    packCongratsCopy.setValue(0);
+    packCongratsMac.setValue(0);
+    packCongratsBtn.setValue(0);
+
+    const entrance = Animated.stagger(90, [
+      Animated.parallel([
+        Animated.timing(packCongratsHero, { toValue: 1, duration: 280, useNativeDriver: true }),
+        Animated.spring(packCongratsHeroScale, { toValue: 1, friction: 6, tension: 70, useNativeDriver: true }),
+      ]),
+      Animated.timing(packCongratsCopy, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.timing(packCongratsMac, { toValue: 1, duration: 280, useNativeDriver: true }),
+      Animated.timing(packCongratsBtn, { toValue: 1, duration: 240, useNativeDriver: true }),
+    ]);
+    entrance.start();
+
+    const spin = Animated.loop(
+      Animated.timing(packCongratsSpin, {
+        toValue: 1,
+        duration: 14000,
+        useNativeDriver: true,
+      }),
+    );
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(packCongratsPulse, { toValue: 1.08, duration: 1600, useNativeDriver: true }),
+        Animated.timing(packCongratsPulse, { toValue: 1, duration: 1600, useNativeDriver: true }),
+      ]),
+    );
+    const startLoops = setTimeout(() => {
+      spin.start();
+      pulse.start();
+    }, 400);
+
+    return () => {
+      clearTimeout(startLoops);
+      spin.stop();
+      pulse.stop();
+      entrance.stop();
+    };
+  }, [
+    phase,
+    packCongratsHero,
+    packCongratsHeroScale,
+    packCongratsSpin,
+    packCongratsPulse,
+    packCongratsCopy,
+    packCongratsMac,
+    packCongratsBtn,
+  ]);
+
+  useEffect(() => {
     if (phase !== 'streak') return;
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2399,11 +2545,7 @@ export default function LessonPlayerScreen() {
           <View style={{ width: 28 }} />
         </View>
 
-        {phase === 'loading' && (
-          <View style={styles.centered}>
-            <ActivityIndicator color={colors.accent} size="large" />
-          </View>
-        )}
+        {phase === 'loading' && <LessonReadySkeleton />}
 
         {phase === 'error' && (
           <View style={styles.centered}>
@@ -2502,7 +2644,9 @@ export default function LessonPlayerScreen() {
                         });
                       }}
                     >
-                      <Text style={styles.coachOfferBtnText}>About Me</Text>
+                      <Text style={styles.coachOfferBtnText} numberOfLines={2}>
+                        About Me
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.coachOfferBtn, styles.coachOfferBtnFlex]}
@@ -2524,7 +2668,7 @@ export default function LessonPlayerScreen() {
                         void Linking.openURL(coach.external_url);
                       }}
                     >
-                      <Text style={styles.coachOfferBtnText}>
+                      <Text style={styles.coachOfferBtnText} numberOfLines={2}>
                         {lesson.coach.offer_label ?? 'Book a call'}
                       </Text>
                     </TouchableOpacity>
@@ -3782,37 +3926,81 @@ export default function LessonPlayerScreen() {
             <Animated.View style={{ opacity: doneAnim4, marginTop: spacing.sm }}>
               <TouchableOpacity
                 style={styles.primaryBtn}
-                onPress={async () => {
-                  const now = new Date();
-                  const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                  if (preStreakDateRef.current === localToday) {
-                    maybeRequestAppStoreReview();
-                    router.back();
-                    return;
-                  }
-                  const { data } = await apiFetch<{ current_streak: number }>('/streak');
-                  const newCount = data?.current_streak ?? 1;
-                  setStreakCount(newCount);
-                  // Only report a genuine advance, at most once per session.
-                  // The read must have succeeded (the `?? 1` above is a display
-                  // fallback, not a real count), and where the pre-completion
-                  // snapshot is known the count must actually have gone up —
-                  // which also stops a same-day repeat from re-reporting if the
-                  // snapshot date was missing.
-                  const priorCount = preStreakCountRef.current;
-                  if (
-                    !streakExtendedFiredRef.current &&
-                    typeof data?.current_streak === 'number' &&
-                    (priorCount === null || newCount > priorCount)
-                  ) {
-                    streakExtendedFiredRef.current = true;
-                    trackStreakExtended({
-                      new_streak_count: newCount,
-                      program_day: lessonRef.current?.program_day ?? null,
-                    });
-                  }
-                  setPhase('streak');
-                }}
+                onPress={continueFromTrophy}
+              >
+                <Text style={styles.primaryBtnText}>Continue</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        )}
+
+        {phase === 'pack_congrats' && lesson && (
+          <View style={styles.centered}>
+            <Animated.View
+              style={{
+                opacity: packCongratsHero,
+                transform: [{ scale: packCongratsHeroScale }],
+                alignItems: 'center' as const,
+              }}
+            >
+              <Animated.View style={{ transform: [{ scale: packCongratsPulse }] }}>
+                <View style={styles.packCongratsRingWrap}>
+                  <Animated.View
+                    style={{
+                      transform: [{
+                        rotate: packCongratsSpin.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0deg', '360deg'],
+                        }),
+                      }],
+                    }}
+                  >
+                    <MacAlternatingRing
+                      size={168}
+                      strokeWidth={10}
+                      colors={MAC_ORDER.map((cat) => MAC_COLORS[cat])}
+                    />
+                  </Animated.View>
+                  <View style={styles.packCongratsRingCore} pointerEvents="none">
+                    <MaterialCommunityIcons name="bullseye-arrow" size={40} color={colors.accentLight} />
+                  </View>
+                </View>
+              </Animated.View>
+            </Animated.View>
+
+            <Animated.View style={{ opacity: packCongratsCopy, alignItems: 'center' as const }}>
+              <Text style={styles.packCongratsEyebrow}>PACK COMPLETE</Text>
+              <Text style={styles.packCongratsTitle}>Congratulations</Text>
+              <Text style={styles.packCongratsSub} numberOfLines={3}>
+                {packComplete?.title || lesson.program_title
+                  ? `You finished ${packComplete?.title ?? lesson.program_title}`
+                  : 'You finished this lesson pack'}
+              </Text>
+            </Animated.View>
+
+            <Animated.View style={[styles.packCongratsMacRow, { opacity: packCongratsMac }]}>
+              {MAC_ORDER.map((cat) => (
+                <View
+                  key={cat}
+                  style={[
+                    styles.packCongratsMacBadge,
+                    {
+                      borderColor: MAC_COLORS[cat],
+                      backgroundColor: `${MAC_COLORS[cat]}22`,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.packCongratsMacLetter, { color: MAC_COLORS[cat] }]}>
+                    {MAC_LETTER[cat]}
+                  </Text>
+                </View>
+              ))}
+            </Animated.View>
+
+            <Animated.View style={{ opacity: packCongratsBtn, marginTop: spacing.sm }}>
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={continueFromPackCongrats}
               >
                 <Text style={styles.primaryBtnText}>Continue</Text>
               </TouchableOpacity>
@@ -3839,10 +4027,7 @@ export default function LessonPlayerScreen() {
               </Text>
               <TouchableOpacity
                 style={[styles.primaryBtn, { marginTop: spacing.xl }]}
-                onPress={() => {
-                  maybeRequestAppStoreReview();
-                  router.back();
-                }}
+                onPress={leaveLessonAfterCelebration}
               >
                 <Text style={styles.primaryBtnText}>Done</Text>
               </TouchableOpacity>
@@ -3866,17 +4051,26 @@ export default function LessonPlayerScreen() {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
             >
-              <View style={[styles.trophyGlow, { alignSelf: 'center' }]}>
-                <Ionicons name="ribbon" size={72} color={colors.accentLight} />
+              <View style={styles.packPhotoWrap}>
+                {packComplete?.coverImage || (lesson?.coach && coachAvatarSource(lesson.coach)) ? (
+                  <Image
+                    source={
+                      packComplete?.coverImage
+                        ? { uri: packComplete.coverImage }
+                        : coachAvatarSource(lesson!.coach!)!
+                    }
+                    style={styles.packPhoto}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Image source={GRANT_PHOTO} style={styles.packPhoto} resizeMode="cover" />
+                )}
               </View>
-              <Text style={styles.packCompleteTitle}>
+
+              <Text style={styles.packCompleteTitle} numberOfLines={3}>
                 {packComplete?.title
-                  ? `You finished\n${packComplete.title}`
+                  ? `You finished ${packComplete.title}`
                   : 'You finished the program'}
-              </Text>
-              <Text style={styles.packCompleteBody}>
-                Every lesson, done. That consistency is exactly what builds mental
-                toughness — thank you for training with us.
               </Text>
 
               {packFeedbackSaved ? (
@@ -3888,7 +4082,7 @@ export default function LessonPlayerScreen() {
                 <View style={styles.packFeedbackBlock}>
                   <Text style={styles.packFeedbackLabel}>WE'D LOVE YOUR FEEDBACK</Text>
                   <TextInput
-                    style={styles.journalInput}
+                    style={[styles.journalInput, styles.packFeedbackInput]}
                     placeholder={
                       packComplete?.title
                         ? `What did you think of ${packComplete.title}?`
@@ -3957,12 +4151,14 @@ export default function LessonPlayerScreen() {
                 </View>
               )}
 
-              <TouchableOpacity
-                style={[styles.primaryBtn, { marginTop: spacing.lg }]}
-                onPress={() => setPhase('done')}
-              >
-                <Text style={styles.primaryBtnText}>Continue</Text>
-              </TouchableOpacity>
+              <View style={{ width: '100%', marginTop: spacing.lg }}>
+                <TouchableOpacity
+                  style={styles.primaryBtn}
+                  onPress={() => void continueAfterCelebration()}
+                >
+                  <Text style={styles.primaryBtnText}>Continue</Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </View>
         )}
@@ -3990,8 +4186,8 @@ export default function LessonPlayerScreen() {
         )}
 
         {/* ── Pack rating modal ───────────────────────────────────────────────
-            Appears immediately when the pack_complete phase begins.
-            Required: no dismiss path until the user submits a star rating.     */}
+            First-time only. Shown after trophy → pack congrats, when
+            pack_complete begins. No dismiss until the user submits stars.     */}
         <Modal
           visible={packRatingVisible}
           transparent
@@ -4228,11 +4424,13 @@ const styles = StyleSheet.create({
   },
   coachOfferBtn: {
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.accent,
     backgroundColor: colors.accentSubtle,
     paddingVertical: 13,
+    paddingHorizontal: 8,
     marginTop: spacing.md,
   },
   coachOfferBtnFlex: {
@@ -4242,18 +4440,23 @@ const styles = StyleSheet.create({
   coachOfferBtnStandalone: {
     alignSelf: 'stretch',
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.accent,
     backgroundColor: colors.accentSubtle,
     paddingVertical: 13,
+    paddingHorizontal: 8,
     marginTop: spacing.md,
   },
   coachOfferBtnText: {
+    width: '100%',
     fontSize: 14,
     fontWeight: '700',
     color: colors.accentLight,
     letterSpacing: 0.2,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   readyTagline: {
     fontSize: 14,
@@ -4508,11 +4711,84 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(167, 139, 250, 0.15)',
   },
+  packCongratsRingWrap: {
+    width: 168,
+    height: 168,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: spacing.lg,
+  },
+  packCongratsRingCore: {
+    position: 'absolute' as const,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  packCongratsEyebrow: {
+    fontSize: 12,
+    fontWeight: '700' as const,
+    letterSpacing: 2,
+    color: colors.accentLight,
+    marginTop: spacing.sm,
+  },
+  packCongratsTitle: {
+    fontSize: 28,
+    fontWeight: '800' as const,
+    color: colors.textPrimary,
+    marginTop: spacing.sm,
+    textAlign: 'center' as const,
+  },
+  packCongratsSub: {
+    fontSize: 16,
+    fontWeight: '500' as const,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
+    textAlign: 'center' as const,
+    lineHeight: 22,
+    paddingHorizontal: spacing.md,
+  },
+  packCongratsMacRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 14,
+    marginBottom: spacing.lg,
+  },
+  packCongratsMacBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  packCongratsMacLetter: {
+    fontSize: 22,
+    fontWeight: '800' as const,
+    letterSpacing: 0.5,
+  },
   packCompleteContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
+  },
+  packPhotoWrap: {
+    width: '100%',
+    aspectRatio: 1.2,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  packPhoto: {
+    width: '100%',
+    height: '100%',
   },
   packCompleteTitle: {
     fontSize: 24,
@@ -4520,15 +4796,43 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlign: 'center',
     marginTop: spacing.lg,
+    marginBottom: spacing.lg,
     lineHeight: 32,
   },
-  packCompleteBody: {
-    fontSize: 15,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginTop: spacing.md,
-    marginBottom: spacing.xl,
+  packCtaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    width: '100%',
+  },
+  packCtaBtn: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 140,
+    marginTop: 0,
+    paddingHorizontal: 18,
+  },
+  packRepeatBtn: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 140,
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSubtle,
+  },
+  packRepeatBtnText: {
+    color: colors.accentLight,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  packFeedbackInput: {
+    minHeight: 72,
+    marginBottom: spacing.sm,
   },
   packFeedbackBlock: {
     width: '100%',

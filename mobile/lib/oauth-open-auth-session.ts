@@ -22,7 +22,11 @@ export async function openAuthSessionWithTimeout(
     });
     removeLinkListener = () => sub.remove();
   });
-  const sessionPromise = WebBrowser.openAuthSessionAsync(url, redirect, { preferEphemeralSession: true });
+  // Do not use preferEphemeralSession. Google's identifier page often 400s
+  // ("malformed or illegal request") in a cookie-less Safari session on first
+  // open; the second attempt works because WebKit is warm. Shared Safari
+  // cookies are the supported Google OAuth path on iOS.
+  const sessionPromise = WebBrowser.openAuthSessionAsync(url, redirect);
   const timeoutPromise = new Promise<'timeout'>((resolve) => {
     timeoutId = setTimeout(() => resolve('timeout'), timeoutMs);
   });

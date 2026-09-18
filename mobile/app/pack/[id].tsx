@@ -353,7 +353,41 @@ export default function PackDetailScreen() {
   }, [detail, router]);
 
   const renderActionButtons = () => {
-    if (!detail || detail.is_active) {
+    if (!detail) return null;
+
+    if (detail.completed && !isActivelyRedoing(detail)) {
+      return (
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.secondaryBtn, switching && styles.btnDisabled]}
+            activeOpacity={0.85}
+            disabled={switching}
+            onPress={() => {
+              trackPackCtaClicked({
+                program_id: detail.id,
+                program_title: detail.title,
+                coach_name: detail.coach_name,
+                action: 'browse_other',
+                source_screen: 'pack_detail',
+              });
+              router.push('/programs' as any);
+            }}
+          >
+            <Text style={styles.secondaryBtnText}>Start another</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.primaryBtn, styles.actionRowPrimary, switching && styles.btnDisabled]}
+            activeOpacity={0.85}
+            disabled={switching}
+            onPress={confirmRestart}
+          >
+            <Text style={styles.primaryBtnText}>{switching ? 'Switching…' : 'Repeat'}</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (detail.is_active) {
       return (
         <TouchableOpacity
           style={[styles.primaryBtn, switching && styles.btnDisabled]}
@@ -363,19 +397,6 @@ export default function PackDetailScreen() {
         >
           <Ionicons name="play" size={16} color={colors.white} />
           <Text style={styles.primaryBtnText}>Start today&apos;s workout</Text>
-        </TouchableOpacity>
-      );
-    }
-
-    if (detail.completed) {
-      return (
-        <TouchableOpacity
-          style={[styles.primaryBtn, switching && styles.btnDisabled]}
-          activeOpacity={0.85}
-          disabled={switching}
-          onPress={confirmRestart}
-        >
-          <Text style={styles.primaryBtnText}>{switching ? 'Switching…' : 'Restart'}</Text>
         </TouchableOpacity>
       );
     }

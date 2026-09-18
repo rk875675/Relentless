@@ -8,9 +8,16 @@ import {
   trackPurchaseCompleted,
   trackPurchaseFailed,
   trackPurchaseRestored,
+  trackPaywallPresented,
 } from '@/lib/lifecycle-analytics';
 import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
 import { emitTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
+import {
+  extractPaywallPresentationProps,
+  extractPurchaseProductProps,
+  loadLocalAttribution,
+} from '@/lib/purchase-analytics';
+import { SUPERWALL_ONBOARDING_PLACEMENT } from '@/lib/superwall-config';
 
 let SuperwallProvider: any = ({ children }: { children: ReactNode }) => <>{children}</>;
 let useSuperwallEvents: any = () => {};
@@ -96,6 +103,8 @@ function SuperwallIdentitySync() {
   useEffect(() => {
     if (!isConfigured) return;
     if (session?.user?.id) {
+      // Supabase user ids are UUIDs. Superwall uses that value as StoreKit's
+      // appAccountToken so Apple Server Notifications can resolve the account.
       identify(session.user.id, { restorePaywallAssignments: true }).catch(() => {});
     } else {
       superwallSignOut().catch(() => {});
@@ -157,17 +166,36 @@ function SuperwallPurchaseSync() {
       // Metric 1 — paywall_dismissed: sheet closed without a trusted purchase.
       // Does NOT fire after a successful purchase (sessionPurchasedRef guards it).
       // -----------------------------------------------------------------------
+      if (name === 'paywallOpen') {
+        const paywall = extractPaywallPresentationProps(merged);
+        trackPaywallPresented({
+          source: 'superwall',
+          placement: paywall.placement ?? SUPERWALL_ONBOARDING_PLACEMENT,
+          paywall_id: paywall.paywall_id,
+          paywall_identifier: paywall.paywall_identifier,
+          variant: paywall.variant,
+        });
+      }
       if (name === 'transactionStart') {
         transactionInFlight.current = true;
         sawAppCloseDuringTransaction.current = false;
-        trackPurchaseStarted({ source: 'superwall' });
+        const product = extractPurchaseProductProps(merged);
+        void loadLocalAttribution().then((attribution) => {
+          trackPurchaseStarted({ source: 'superwall', ...product, ...attribution });
+        });
       }
       if (name === 'appClose' && transactionInFlight.current) {
         sawAppCloseDuringTransaction.current = true;
       }
       if (name === 'paywallClose') {
         if (!sessionPurchasedRef.current) {
-          analytics.capture('paywall_dismissed');
+          const paywall = extractPaywallPresentationProps(merged);
+          analytics.capture('paywall_dismissed', {
+            placement: paywall.placement ?? SUPERWALL_ONBOARDING_PLACEMENT,
+            paywall_id: paywall.paywall_id,
+            paywall_identifier: paywall.paywall_identifier,
+            variant: paywall.variant,
+          });
         }
         sessionPurchasedRef.current = false;
         transactionInFlight.current = false;
@@ -175,7 +203,10 @@ function SuperwallPurchaseSync() {
       }
 
       if (name === 'transactionFail' || name === 'transactionAbandon') {
-        trackPurchaseFailed({ source: 'superwall', reason: name });
+        const product = extractPurchaseProductProps(merged);
+        void loadLocalAttribution().then((attribution) => {
+          trackPurchaseFailed({ source: 'superwall', reason: name, ...product, ...attribution });
+        });
         transactionInFlight.current = false;
         sawAppCloseDuringTransaction.current = false;
       }
@@ -206,9 +237,25 @@ function SuperwallPurchaseSync() {
           optimisticGrantAccess();
           emitTrustedPaywallPurchase({ originalTransactionId: oid, signedTransactionInfo: signedTx });
           if (name === 'transactionComplete') {
-            trackPurchaseCompleted({ source: 'superwall', original_transaction_id: oid ?? null });
+            const product = extractPurchaseProductProps(merged);
+            void loadLocalAttribution().then((attribution) => {
+              trackPurchaseCompleted({
+                source: 'superwall',
+                original_transaction_id: oid ?? null,
+                ...product,
+                ...attribution,
+              });
+            });
           } else {
-            trackPurchaseRestored({ source: 'superwall', original_transaction_id: oid ?? null });
+            const product = extractPurchaseProductProps(merged);
+            void loadLocalAttribution().then((attribution) => {
+              trackPurchaseRestored({
+                source: 'superwall',
+                original_transaction_id: oid ?? null,
+                ...product,
+                ...attribution,
+              });
+            });
           }
         } else if (__DEV__) {
           console.log('[Superwall][purchaseIgnored]', name, 'without Apple sheet');

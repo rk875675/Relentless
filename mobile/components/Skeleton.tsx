@@ -84,7 +84,7 @@ const wcs = StyleSheet.create({
   },
 });
 
-/** Program cards for the Programs screen — mirrors Home WOD card layout. */
+/** Program cards for the Programs screen — mirrors the two CTA buttons per card. */
 export function ProgramListSkeleton() {
   return (
     <View style={pls.container}>
@@ -97,7 +97,10 @@ export function ProgramListSkeleton() {
             <View style={pls.metaSection}>
               <Skeleton width="65%" height={22} borderRadius={8} />
             </View>
-            <Skeleton width="100%" height={48} borderRadius={14} />
+            {/* Primary CTA ("Make this my pack" / "Resume") */}
+            <Skeleton width="100%" height={48} borderRadius={14} style={pls.btn} />
+            {/* Secondary CTA ("Try Day 1") */}
+            <Skeleton width="100%" height={40} borderRadius={12} />
           </View>
         </View>
       ))}
@@ -127,6 +130,7 @@ const pls = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 14,
   },
+  btn: { marginBottom: 10 },
 });
 
 /** Lesson-pack cards on the Library tab — leading image + title/progress lines. */
@@ -135,11 +139,15 @@ export function LessonPackListSkeleton() {
     <View style={lps.container}>
       {[0, 1].map((i) => (
         <View key={i} style={lps.card}>
+          {/* Rounded-rect avatar (borderRadius 14 matches packImageWrap in library.tsx) */}
           <Skeleton width={56} height={56} borderRadius={14} />
           <View style={lps.body}>
             <Skeleton width="40%" height={11} borderRadius={6} style={lps.coachLine} />
             <Skeleton width="70%" height={16} borderRadius={6} style={lps.titleLine} />
-            <Skeleton width="100%" height={6} borderRadius={3} />
+            {/* Progress bar */}
+            <Skeleton width="100%" height={6} borderRadius={3} style={lps.progressBar} />
+            {/* Progress label ("Day 5 of 30") */}
+            <Skeleton width="35%" height={11} borderRadius={6} style={lps.progressLabel} />
           </View>
         </View>
       ))}
@@ -162,6 +170,8 @@ const lps = StyleSheet.create({
   body: { flex: 1 },
   coachLine: { marginBottom: 6 },
   titleLine: { marginBottom: 10 },
+  progressBar: { marginBottom: 6 },
+  progressLabel: {},
 });
 
 /** Compact "More programs" rail skeleton for Home (header + two rows). */
@@ -211,15 +221,22 @@ const mps = StyleSheet.create({
   btn: { marginTop: 4 },
 });
 
-/** 3 card-shaped rectangles for journal / session-log list screens. */
+/**
+ * 3 card-shaped rectangles for journal / session-log list screens.
+ * Order matches real card: title → date → body preview.
+ */
 export function JournalListSkeleton() {
   return (
     <View style={jls.container}>
       {[0, 1, 2].map((i) => (
         <View key={i} style={jls.card}>
-          <Skeleton width="45%" height={12} borderRadius={6} style={jls.date} />
-          <Skeleton width="85%" height={14} style={jls.line1} />
-          <Skeleton width="60%" height={14} />
+          {/* Title line (lesson title / "Check-In") */}
+          <Skeleton width="70%" height={15} borderRadius={6} style={jls.title} />
+          {/* Date + time */}
+          <Skeleton width="45%" height={11} borderRadius={6} style={jls.date} />
+          {/* Body preview */}
+          <Skeleton width="90%" height={13} borderRadius={6} style={jls.line} />
+          <Skeleton width="65%" height={13} borderRadius={6} />
         </View>
       ))}
     </View>
@@ -235,27 +252,140 @@ const jls = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.lg,
   },
+  title: { marginBottom: 10 },
   date: { marginBottom: 12 },
-  line1: { marginBottom: 8 },
+  line: { marginBottom: 8 },
 });
 
-/** Content skeleton for a single journal entry / WOD day detail. */
+/**
+ * Content skeleton for a single journal entry / WOD day detail.
+ * Order matches real screen: title → date → body lines.
+ */
 export function JournalDetailSkeleton() {
   return (
     <View style={jds.container}>
-      <Skeleton width="40%" height={12} borderRadius={6} style={jds.date} />
-      <Skeleton width="90%" height={16} style={jds.line} />
-      <Skeleton width="100%" height={16} style={jds.line} />
-      <Skeleton width="75%" height={16} style={jds.line} />
-      <Skeleton width="60%" height={16} />
+      {/* Lesson title */}
+      <Skeleton width="75%" height={18} borderRadius={6} style={jds.title} />
+      {/* Date + time */}
+      <Skeleton width="45%" height={12} borderRadius={6} style={jds.date} />
+      {/* Body paragraphs */}
+      <Skeleton width="100%" height={14} borderRadius={6} style={jds.line} />
+      <Skeleton width="90%" height={14} borderRadius={6} style={jds.line} />
+      <Skeleton width="75%" height={14} borderRadius={6} style={jds.line} />
+      <Skeleton width="55%" height={14} borderRadius={6} />
     </View>
   );
 }
 
 const jds = StyleSheet.create({
-  container: { marginTop: 20, paddingHorizontal: 4 },
-  date: { marginBottom: 16 },
+  container: { marginTop: 20, paddingHorizontal: 20 },
+  title: { marginBottom: 12 },
+  date: { marginBottom: 20 },
   line: { marginBottom: 10 },
+});
+
+/**
+ * Lesson "ready" screen skeleton — mirrors the readyCard layout:
+ * title + optional program line + begin button.
+ * Used while phase === 'loading' in the lesson player.
+ */
+export function LessonReadySkeleton() {
+  return (
+    <View style={lrss.root}>
+      <View style={lrss.card}>
+        <Skeleton width="70%" height={22} borderRadius={8} style={lrss.title} />
+        <Skeleton width="45%" height={14} borderRadius={6} style={lrss.sub} />
+        <Skeleton width="85%" height={14} borderRadius={6} style={lrss.line} />
+        <Skeleton width="60%" height={14} borderRadius={6} style={lrss.line} />
+        <Skeleton width="100%" height={52} borderRadius={14} style={lrss.btn} />
+      </View>
+    </View>
+  );
+}
+
+const lrss = StyleSheet.create({
+  root: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    alignItems: 'center',
+  },
+  title: { marginBottom: spacing.sm },
+  sub: { marginBottom: spacing.md },
+  line: { marginBottom: 8 },
+  btn: { marginTop: spacing.md },
+});
+
+/**
+ * Invite / referral page skeleton — mirrors:
+ * hero card → section label → how-it-works card → section label → teammates card.
+ */
+export function ReferralSkeleton() {
+  return (
+    <View style={rss.container}>
+      {/* Hero card */}
+      <View style={rss.heroCard}>
+        <Skeleton width={40} height={40} borderRadius={20} style={rss.heroIcon} />
+        <Skeleton width="55%" height={20} borderRadius={8} style={rss.heroTitle} />
+        <Skeleton width="80%" height={14} borderRadius={6} style={rss.heroLine} />
+        <Skeleton width="65%" height={14} borderRadius={6} />
+      </View>
+
+      {/* How it works */}
+      <Skeleton width="30%" height={11} borderRadius={6} style={rss.label} />
+      <View style={rss.card}>
+        <Skeleton width="90%" height={14} borderRadius={6} style={rss.cardLine} />
+        <Skeleton width="75%" height={14} borderRadius={6} />
+      </View>
+
+      {/* Teammates */}
+      <Skeleton width="28%" height={11} borderRadius={6} style={rss.label} />
+      <View style={rss.card}>
+        <Skeleton width="60%" height={14} borderRadius={6} />
+      </View>
+
+      {/* Share button */}
+      <Skeleton width="100%" height={52} borderRadius={12} style={rss.btn} />
+    </View>
+  );
+}
+
+const rss = StyleSheet.create({
+  container: { paddingHorizontal: 20, paddingTop: spacing.lg },
+  heroCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 24,
+    marginBottom: 28,
+    alignItems: 'center',
+  },
+  heroIcon: { marginBottom: 12 },
+  heroTitle: { marginBottom: 10 },
+  heroLine: { marginBottom: 8 },
+  label: { marginBottom: 12, marginLeft: 4 },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    marginBottom: 16,
+  },
+  cardLine: { marginBottom: 8 },
+  btn: { marginTop: 8 },
 });
 
 /** 3 lesson card skeletons for category / lesson-list screens. */

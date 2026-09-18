@@ -19,7 +19,7 @@ import { clearInAppAuthHubEntry, takeInAppAuthHubEntry } from '@/lib/auth-hub-en
 import { loadOnboardingProgress } from '@/lib/onboarding-local-state';
 import { prefetchHomeData } from '@/lib/api-cache';
 
-export { ErrorBoundary } from 'expo-router';
+export { ErrorBoundary } from '@/components/AppErrorBoundary';
 
 /** Root `app/index.tsx` redirects to welcome; this must be the default child or cold start can still open `(auth)`. */
 export const unstable_settings = {
@@ -28,7 +28,10 @@ export const unstable_settings = {
 
 SplashScreen.preventAutoHideAsync();
 
-LogBox.ignoreLogs([/The action 'REPLACE' with payload .* was not handled/]);
+LogBox.ignoreLogs([
+  /was not handled by any navigator/,
+  /Non-serializable values were found in the navigation state/,
+]);
 
 const SPLASH_SAFETY_MS = 4000;
 
@@ -135,6 +138,39 @@ function RouteGuard() {
     return () => clearTimeout(timer);
   }, []);
 
+  // When the user completes signup with a premium subscription, force the
+  // navigation tree to remount. router.replace('/(tabs)') is silently
+  // swallowed by the nested (onboarding) navigator after OAuth return.
+  // Changing the key unmounts the stuck Stack and mounts a fresh one —
+  // the same thing a manual reload does.
+  const navPhase = session && onboardingComplete && hasPremiumAccess ? 'app' : 'onboarding';
+  const prevNavPhase = useRef(navPhase);
+  const [transitioning, setTransitioning] = useState(false);
+
+  // Detect phase change synchronously during render so the overlay
+  // appears on the SAME frame — not one frame late (which causes a flash).
+  // Only needed when transitioning FROM onboarding — (auth) → (tabs) works
+  // fine with router.replace and doesn't need the overlay.
+  const currentRoot = (segments as string[])[0];
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  if (prevNavPhase.current !== navPhase) {
+    prevNavPhase.current = navPhase;
+    if (!transitioning && currentRoot === '(onboarding)') {
+      setTransitioning(true);
+      fadeAnim.setValue(1);
+    }
+  }
+
+  useEffect(() => {
+    if (!transitioning) return;
+    const t = setTimeout(() => {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
+        setTransitioning(false);
+      });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [transitioning, fadeAnim]);
+
   useEffect(() => {
     if (loading) return;
     // Avoid mis-routing while the root navigator hasn't reported a segment yet (common after refresh).
@@ -217,51 +253,22 @@ function RouteGuard() {
       router.replace('/(onboarding)/paywall');
     } else if (session && onboardingComplete && hasPremiumAccess && inOnboarding) {
       prefetchHomeData();
-      try { router.replace('/(tabs)'); } catch { /* navPhase key change handles this */ }
+      // Wait for the navPhase remount — REPLACE on the outgoing onboarding
+      // stack is what showed the unmatched-route screen.
+      if (!transitioning) {
+        try { router.replace('/(tabs)'); } catch { /* remount already landed us */ }
+      }
     } else if (session && !onboardingComplete && hasPremiumAccess && !isOptimisticGrant && onPaywall) {
       // Safety net: paywall only, DB-confirmed subscription only (not optimistic grant).
       // Post-paywall signup handles its own completion in signup.tsx — running this on
       // signup races finishPostPaywallSetup and can hang. When isOptimisticGrant is true
       // the purchase hasn't been synced to the DB yet; PaywallSuperwall routes to
       // signup.tsx which syncs first before completing onboarding.
-      completeOnboarding().then(() => { prefetchHomeData(); router.replace('/(tabs)'); }).catch(() => {});
+      completeOnboarding().then(() => { prefetchHomeData(); }).catch(() => {});
     }
 
     setTimeout(hideSplash, 50);
-  }, [session, loading, onboardingComplete, hasPremiumAccess, isOptimisticGrant, profileLoaded, segments, allowAuthHub, completeOnboarding]);
-
-  // When the user completes signup with a premium subscription, force the
-  // navigation tree to remount. router.replace('/(tabs)') is silently
-  // swallowed by the nested (onboarding) navigator after OAuth return.
-  // Changing the key unmounts the stuck Stack and mounts a fresh one —
-  // the same thing a manual reload does.
-  const navPhase = session && onboardingComplete && hasPremiumAccess ? 'app' : 'onboarding';
-  const prevNavPhase = useRef(navPhase);
-  const [transitioning, setTransitioning] = useState(false);
-
-  // Detect phase change synchronously during render so the overlay
-  // appears on the SAME frame — not one frame late (which causes a flash).
-  // Only needed when transitioning FROM onboarding — (auth) → (tabs) works
-  // fine with router.replace and doesn't need the overlay.
-  const currentRoot = (segments as string[])[0];
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  if (prevNavPhase.current !== navPhase) {
-    prevNavPhase.current = navPhase;
-    if (!transitioning && currentRoot === '(onboarding)') {
-      setTransitioning(true);
-      fadeAnim.setValue(1);
-    }
-  }
-
-  useEffect(() => {
-    if (!transitioning) return;
-    const t = setTimeout(() => {
-      Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
-        setTransitioning(false);
-      });
-    }, 200);
-    return () => clearTimeout(t);
-  }, [transitioning, fadeAnim]);
+  }, [session, loading, onboardingComplete, hasPremiumAccess, isOptimisticGrant, profileLoaded, segments, allowAuthHub, completeOnboarding, transitioning]);
 
   if (!initialLoadDone.current && loading) {
     return <View style={{ flex: 1, backgroundColor: '#1A1A1B' }} />;
@@ -277,7 +284,7 @@ function RouteGuard() {
     )}
     <Stack key={navPhase} screenOptions={{ headerShown: false, animation: 'fade' }}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="(onboarding)" />
+      <Stack.Screen name="(onboarding)" options={{ gestureEnabled: false }} />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="lesson/[id]" options={{ headerShown: false, animation: 'slide_from_bottom' }} />

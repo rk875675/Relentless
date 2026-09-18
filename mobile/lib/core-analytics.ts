@@ -58,11 +58,25 @@ export function trackPackCtaClicked(
     program_title?: string | null;
     coach_name?: string | null;
     /** activate = first-time switch; try_day1 = preview without switching. */
-    action: 'activate' | 'continue' | 'restart' | 'try_day1' | 'start_today_workout';
-    source_screen: 'programs' | 'pack_detail';
+    action: 'activate' | 'continue' | 'restart' | 'try_day1' | 'start_today_workout' | 'browse_other';
+    source_screen: 'programs' | 'pack_detail' | 'onboarding' | 'home' | 'pack_complete';
   },
 ): void {
   captureCoreEvent('pack_cta_clicked', properties);
+}
+
+/** First time a pack becomes the user's daily workout (including default Grant sprint). */
+export function trackPackActivated(
+  properties: CoreProps & {
+    program_id?: string | null;
+    program_key?: string | null;
+    program_title?: string | null;
+    coach_key?: string | null;
+    coach_name?: string | null;
+    source: 'onboarding' | 'program_select';
+  },
+): void {
+  captureCoreEvent('pack_activated', properties);
 }
 
 /** Shell affordances */
@@ -94,6 +108,7 @@ export function trackLessonAbandoned(
     lesson_id?: string;
     program_id?: string | null;
     program_key?: string | null;
+    program_day?: number | null;
     coach_key?: string | null;
     lesson_type?: string;
     block_index?: number;
@@ -103,6 +118,19 @@ export function trackLessonAbandoned(
   },
 ): void {
   captureCoreEvent('lesson_abandoned', properties);
+}
+
+/** Entire lesson pack completed (fired once per pack finish, after lesson_completed) */
+export function trackPackCompleted(
+  properties: CoreProps & {
+    program_id?: string | null;
+    program_key?: string | null;
+    program_title?: string | null;
+    coach_key?: string | null;
+    total_days?: number | null;
+  },
+): void {
+  captureCoreEvent('pack_completed', properties);
 }
 
 /** Exercise block lifecycle (per-block within a lesson) */
@@ -168,11 +196,6 @@ export function trackStreakBroken(
   properties: CoreProps & { previous_streak_count: number },
 ): void {
   captureCoreEvent('streak_broken', properties);
-}
-
-/** Reflections — never include journal body text (legacy, kept for continuity) */
-export function trackReflectionPromptViewed(properties?: CoreProps): void {
-  captureCoreEvent('reflection_prompt_viewed', properties);
 }
 
 export function trackReflectionSaved(properties?: CoreProps): void {
