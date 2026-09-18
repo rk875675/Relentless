@@ -281,11 +281,17 @@ produce a cheaper receipt.
 10.5.3 Sharer eligibility
 The share CTA is shown only to a user who is all of the following:
 has a Relentless account with an Apple-backed entitlement,
-has status active and paid (not trial, not a promo grant, not expired),
+has status active and paid, or is in an Apple offer-code / promotional
+free period (current-transaction offerType 2 or 3) with a card on file,
+is not a Relentless creator promo grant, not a Superwall / product
+introductory trial (offerType 1), and not expired,
 has auto-renew on (has not cancelled),
 is not in billing retry or grace,
 has a non-null Apple original_transaction_id,
-and has not already consumed their give slot for the current billing period.
+has not already consumed their give slot for the current billing period,
+and does not already have an offer attached to the next renewal
+(Apple will not stack a second offer, so the share CTA is hidden and
+inviting is locked until that offer is used).
 There is no pre-renewal timing window. Apple applies a same-product promotional
 offer at the subscriber's next billing event regardless of when it is redeemed,
 so the sharer may apply at any point in their period.

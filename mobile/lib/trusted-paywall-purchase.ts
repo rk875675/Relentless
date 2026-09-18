@@ -30,3 +30,14 @@ export function subscribeTrustedPaywallPurchase(listener: TrustedPaywallPurchase
 export function getLastTrustedPaywallPurchase(): TrustedPaywallPurchase | null {
   return lastTrustedPaywallPurchase;
 }
+
+/**
+ * Clear the in-memory trusted purchase value.
+ *
+ * Call this before navigating to signup on paths where no Apple purchase has
+ * occurred (e.g. the referral invitee path), so the stale singleton from a
+ * prior Superwall session cannot force isPostPaywall=true in signup.tsx.
+ */
+export function clearTrustedPaywallPurchase(): void {
+  lastTrustedPaywallPurchase = null;
+}

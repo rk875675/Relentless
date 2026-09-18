@@ -166,6 +166,8 @@ export type ReferralReward = {
   status: 'pending' | 'ready' | 'applied' | 'expired' | 'void' | string;
   product_id: string;
   ready_at: string | null;
+  /** The specific invite whose conversion earned this reward. */
+  invite_id: string | null;
 };
 
 export type ReferralState = {
@@ -180,9 +182,54 @@ export type ReferralState = {
   max_open_invites: number;
   invite_ttl_days: number;
   has_active_renewal_offer: boolean;
+  /** One Relentless code the sharer reuses. Each claim mints an Apple code. */
+  share_code: string | null;
   reward: ReferralReward | null;
   invites: ReferralInvite[];
 };
+
+export type ReferralHomeBadgeText = 'GET 20% OFF' | 'CLAIM 20% OFF';
+
+export type ReferralHomeBadge =
+  | { visible: false }
+  | { visible: true; text: ReferralHomeBadgeText };
+
+/**
+ * Home-badge visibility from server eligibility — not lifetime invite history.
+ *
+ *   CLAIM — reward is ready and Apple will still accept an apply
+ *   hidden — this period's reward is used / blocked (applied, slot used,
+ *            or an offer already on the renewal)
+ *   GET    — otherwise
+ *
+ * Latest reward `applied` alone is not enough: that row can be from a prior
+ * period. `give_slot_used` is the current-period signal.
+ */
+export function deriveReferralHomeBadge(state: ReferralState): ReferralHomeBadge {
+  if (!state.enabled) return { visible: false };
+
+  const rewardStatus = state.reward?.status ?? null;
+  const cannotApply = state.has_active_renewal_offer;
+  const slotUsedThisPeriod = state.reason === 'give_slot_used';
+
+  if (state.reason === 'trial_not_paid') return { visible: false };
+
+  if (rewardStatus === 'ready' && !cannotApply) {
+    return { visible: true, text: 'CLAIM 20% OFF' };
+  }
+
+  // No GET/CLAIM if they cannot actually receive 20% this cycle: slot used,
+  // or Apple already has an offer on the next renewal (cannot stack).
+  if (slotUsedThisPeriod || cannotApply || state.reason === 'renewal_offer_active') {
+    return { visible: false };
+  }
+
+  if (!state.eligible || !state.share_code) {
+    return { visible: false };
+  }
+
+  return { visible: true, text: 'GET 20% OFF' };
+}
 
 /**
  * Eligibility is computed server-side only; the client never decides it and
@@ -191,7 +238,7 @@ export type ReferralState = {
 export async function fetchReferralState(): Promise<ReferralState | null> {
   const { data, error } = await apiFetch<ReferralState>('/referral/eligibility');
   if (error || !data) return null;
-  return data;
+  return { ...data, share_code: data.share_code ?? null };
 }
 
 export type CreateInviteResult =
@@ -231,15 +278,31 @@ export type ApplyRewardResult =
         | 'already_applied'
         | 'offer_already_active'
         | 'not_eligible'
+        | 'not_active'
+        | 'auto_renew_off'
         | 'unavailable'
         | 'sdk_unavailable'
+        | 'already_owned'
         | 'purchase_failed';
+      detail?: string;
     };
 
 /** Apple's ErrorCode.UserCancelled, plus the legacy StoreKit 1 spelling. */
 function isCancellation(err: unknown): boolean {
   const code = (err as { code?: unknown })?.code;
   return code === 'user-cancelled' || code === 'E_USER_CANCELLED';
+}
+
+/** StoreKit refused a second buy of a SKU this Apple ID already subscribes to. */
+function isAlreadyOwned(err: unknown): boolean {
+  const code = String((err as { code?: unknown })?.code ?? '').toLowerCase();
+  const message = (err instanceof Error ? err.message : String(err ?? '')).toLowerCase();
+  return (
+    code === 'already-owned' ||
+    code === 'e_already_owned' ||
+    code.includes('already_owned') ||
+    message.includes('already owned')
+  );
 }
 
 /**
@@ -307,9 +370,11 @@ export async function applySharerReward(): Promise<ApplyRewardResult> {
       case 'OFFER_ALREADY_ACTIVE':
         return { ok: false, reason: 'offer_already_active' };
       case 'NOT_ELIGIBLE':
-      case 'SUBSCRIPTION_NOT_ACTIVE':
-      case 'AUTO_RENEW_OFF':
         return { ok: false, reason: 'not_eligible' };
+      case 'SUBSCRIPTION_NOT_ACTIVE':
+        return { ok: false, reason: 'not_active' };
+      case 'AUTO_RENEW_OFF':
+        return { ok: false, reason: 'auto_renew_off' };
       default:
         return { ok: false, reason: 'unavailable' };
     }
@@ -319,31 +384,59 @@ export async function applySharerReward(): Promise<ApplyRewardResult> {
     await iap.initConnection();
 
     // StoreKit needs the product loaded before it can be purchased.
-    const products = await iap.fetchProducts({ skus: [data.product_id], type: 'subs' });
-    if (!Array.isArray(products) || products.length === 0) {
-      return { ok: false, reason: 'purchase_failed' };
+    const productsRaw = await iap.fetchProducts({ skus: [data.product_id], type: 'subs' });
+    const products = Array.isArray(productsRaw)
+      ? productsRaw
+      : Array.isArray((productsRaw as { products?: unknown[] } | null)?.products)
+        ? (productsRaw as unknown as { products: unknown[] }).products
+        : [];
+    if (products.length === 0) {
+      return { ok: false, reason: 'purchase_failed', detail: 'product_not_found' };
     }
+
+    const withOffer = {
+      identifier: data.offer_identifier,
+      keyIdentifier: data.key_identifier,
+      nonce: data.nonce,
+      signature: data.signature,
+      // OpenIAP 2.1.2 decodes timestamp as an Int. A string can drop withOffer
+      // so the purchase looks like a second buy of a plan they already own.
+      timestamp: data.timestamp,
+    };
+    const appleRequest = {
+      sku: data.product_id,
+      withOffer,
+      // Must match the UUID folded into the server signature.
+      appAccountToken: data.app_account_token,
+    };
 
     const result = await iap.requestPurchase({
       type: 'subs',
       request: {
-        apple: {
-          sku: data.product_id,
-          withOffer: {
-            identifier: data.offer_identifier,
-            keyIdentifier: data.key_identifier,
-            nonce: data.nonce,
-            signature: data.signature,
-            timestamp: data.timestamp,
-          },
-        },
+        apple: appleRequest,
+        ios: appleRequest,
       },
     });
 
-    const purchases = Array.isArray(result) ? result : result ? [result] : [];
+    let purchases = Array.isArray(result) ? result : result ? [result] : [];
     if (purchases.length === 0) {
-      // iOS returns an empty array for subscriptions when nothing completed.
-      return { ok: false, reason: 'purchase_failed' };
+      // StoreKit 2 / expo-iap sometimes returns [] for a completed
+      // subscription offer. Treat a fresh receipt for this SKU as success.
+      try {
+        const available = (await iap.getAvailablePurchases()) as Array<{
+          productId?: string;
+          transactionDate?: number;
+        }>;
+        const cutoff = Date.now() - 120_000;
+        purchases = (available ?? []).filter(
+          (p) => p.productId === data.product_id && (p.transactionDate ?? 0) >= cutoff,
+        ) as typeof purchases;
+      } catch {
+        purchases = [];
+      }
+      if (purchases.length === 0) {
+        return { ok: false, reason: 'purchase_failed', detail: 'empty_purchase' };
+      }
     }
 
     let unfinished = 0;
@@ -363,9 +456,17 @@ export async function applySharerReward(): Promise<ApplyRewardResult> {
     return { ok: true };
   } catch (err) {
     if (isCancellation(err)) return { ok: false, reason: 'cancelled' };
-    console.warn('[referral] promotional offer purchase failed', {
-      code: (err as { code?: unknown })?.code ?? null,
-    });
+    if (isAlreadyOwned(err)) {
+      // Same-SKU promotional offers often throw this because Apple will not
+      // sell the plan again. If the offer actually landed on the renewal,
+      // treat it as sent — do not claim the next charge is discounted.
+      const state = await fetchReferralState().catch(() => null);
+      if (state?.has_active_renewal_offer) return { ok: true };
+      return { ok: false, reason: 'already_owned' };
+    }
+    const code = (err as { code?: unknown })?.code;
+    const message = err instanceof Error ? err.message : null;
+    console.warn('[referral] promotional offer purchase failed', { code, message });
     return { ok: false, reason: 'purchase_failed' };
   }
 }
@@ -392,4 +493,64 @@ export async function presentAppleOfferCodeSheet(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Newest StoreKit transactionDate on this device, or 0. */
+export async function latestStoreKitPurchaseAt(): Promise<number> {
+  const iap = loadExpoIap();
+  if (!iap) return 0;
+  try {
+    await iap.initConnection();
+    const purchases = (await iap.getAvailablePurchases()) as Array<{ transactionDate?: number }>;
+    if (!Array.isArray(purchases)) return 0;
+    return purchases.reduce((max, p) => Math.max(max, p.transactionDate ?? 0), 0);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Offer-code redeem often skips purchaseUpdatedListener. Subscribe anyway so
+ * a purchase that does emit can leave the redeem pane immediately.
+ */
+export function watchStoreKitPurchases(onPurchase: () => void): () => void {
+  const iap = loadExpoIap();
+  const subscribe = (
+    iap as { purchaseUpdatedListener?: (cb: () => void) => { remove: () => void } } | null
+  )?.purchaseUpdatedListener;
+  if (!subscribe) return () => {};
+  try {
+    const sub = subscribe(() => {
+      onPurchase();
+    });
+    return () => {
+      try {
+        sub.remove();
+      } catch {
+        /* listener already gone */
+      }
+    };
+  } catch {
+    return () => {};
+  }
+}
+
+/**
+ * Ask the server to reconcile a pending offer-code subscription.
+ *
+ * The client cannot reliably determine the correct OTID after an offer-code
+ * redemption (StoreKit sandbox shares purchases across Apple IDs on the same
+ * device). This endpoint resolves it server-side by matching the user's
+ * claimed invite to the Apple notification log, updating the entitlement,
+ * and firing the reward release.
+ *
+ * Returns `true` when the entitlement was successfully set to active.
+ */
+export async function reconcileReferralPurchase(): Promise<boolean> {
+  const { data, error } = await apiFetch<{ reconciled: boolean; status?: string }>(
+    '/referral/reconcile',
+    { method: 'POST' },
+  );
+  if (error || !data) return false;
+  return data.reconciled === true && (data.status === 'active' || data.status === 'trial');
 }

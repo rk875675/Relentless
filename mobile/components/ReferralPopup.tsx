@@ -1,7 +1,12 @@
+import { useEffect, useRef } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/lib/theme';
 import type { ReferralCadence } from '@/lib/referral';
+import {
+  trackReferralPopupInviteTapped,
+  trackReferralPopupShown,
+} from '@/lib/referral-analytics';
 
 /*
  * HUMAN INPUT NEEDED — copy not approved.
@@ -39,6 +44,13 @@ type Props = {
 };
 
 export default function ReferralPopup({ visible, cadence, onInvite, onDismiss }: Props) {
+  const shown = useRef(false);
+  useEffect(() => {
+    if (!visible || shown.current) return;
+    shown.current = true;
+    trackReferralPopupShown({ cadence });
+  }, [visible, cadence]);
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
       <View style={styles.overlay}>
@@ -48,10 +60,19 @@ export default function ReferralPopup({ visible, cadence, onInvite, onDismiss }:
           </View>
           <Text style={styles.title}>{COPY.title}</Text>
           <Text style={styles.body}>{COPY.body(cadence)}</Text>
-          <TouchableOpacity style={styles.primaryBtn} onPress={onInvite}>
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            onPress={() => {
+              trackReferralPopupInviteTapped({ cadence });
+              onInvite();
+            }}
+          >
             <Text style={styles.primaryText}>{COPY.primary}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={onDismiss}>
+          <TouchableOpacity
+            style={styles.secondaryBtn}
+            onPress={onDismiss}
+          >
             <Text style={styles.secondaryText}>{COPY.dismiss}</Text>
           </TouchableOpacity>
         </View>

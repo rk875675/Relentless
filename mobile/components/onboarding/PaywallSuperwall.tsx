@@ -26,9 +26,9 @@ import {
 import { SubscriptionLegalDisclosure } from '@/components/onboarding/SubscriptionLegalDisclosure';
 import { PromoCodeSheet } from '@/components/PromoCodeSheet';
 import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
-import { clearOnboardingProgress, saveOnboardingProgress } from '@/lib/onboarding-local-state';
-import { subscribeTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
-import { isReferralEnabled } from '@/lib/referral';
+import { clearPaywallResumeFlag, saveOnboardingProgress } from '@/lib/onboarding-local-state';
+import { clearTrustedPaywallPurchase, subscribeTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
+import { isReferralEnabled, reconcileReferralPurchase } from '@/lib/referral';
 import {
   loadPendingReferralClaim,
   type PendingReferralClaim,
@@ -69,6 +69,15 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
   const [isOpening, setIsOpening] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   /**
+   * True while we are polling the backend for the entitlement after a referral
+   * offer-code redemption. Covers the gap between Apple confirming the purchase
+   * and our DB being updated so the user never sees the raw paywall after paying.
+   *
+   * null  → not syncing
+   * false → timed out (show fallback message)
+   */
+  const [syncingSubscription, setSyncingSubscription] = useState<boolean | null>(null);
+  /**
    * Set true the moment the user taps Continue. The navigate-to-signup effect
    * below requires this — it stops a passive entitlement grant (e.g. Superwall
    * detecting an existing sandbox sub during preload) from skipping the paywall
@@ -81,7 +90,7 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
     saveOnboardingProgress({ sport, competitionDate });
     trackOnboardingPaywallViewed({
       step_key: 'paywall',
-      step_index: ONBOARDING_PROGRESS.competitionDate + 1,
+      step_index: ONBOARDING_PROGRESS.sportSelection + 1,
     });
   }, [sport, competitionDate]);
 
@@ -110,6 +119,12 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
   }, [isConfigured, preloadPaywalls]);
 
   const navigatedToSignup = useRef(false);
+  // Let the polling loop in handlePromoRedeemed bail early once the entitlement
+  // is confirmed — avoids spurious setState after unmount.
+  const hasPremiumAccessRef = useRef(hasPremiumAccess);
+  useEffect(() => {
+    hasPremiumAccessRef.current = hasPremiumAccess;
+  }, [hasPremiumAccess]);
 
   const navigateToSignup = (extraParams?: Record<string, string>) => {
     if (navigatedToSignup.current) return;
@@ -137,6 +152,11 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
     if (navigatedToSignup.current) return;
     navigatedToSignup.current = true;
     setPromoSheetVisible(false);
+    // Clear the in-memory trusted purchase so signup.tsx cannot see a stale
+    // Superwall event value and mistakenly enter the post-paywall purchase
+    // verification loop. This path has no Apple purchase yet — the invitee
+    // redeems the offer code after account creation.
+    clearTrustedPaywallPurchase();
     router.replace({
       pathname: '/(onboarding)/signup' as any,
       params: {
@@ -197,9 +217,36 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
   const handlePromoRedeemed = () => {
     setPromoSheetVisible(false);
     setResumeReferral(null);
-    // hasPremiumAccess flips on refresh → the effect below completes
-    // onboarding for signed-in users and RouteGuard routes into the app.
-    refreshUserState().catch(() => {});
+
+    // Show a loading screen immediately — never leave the user staring at the
+    // paywall after they just paid. Poll until the entitlement flips active
+    // (the server may need a few seconds to process the Apple notification or
+    // drain the pending-notification queue). The effect below calls
+    // completeOnboarding the moment hasPremiumAccess becomes true.
+    setSyncingSubscription(true);
+
+    void (async () => {
+      // Restore may attach the newest StoreKit receipt on this phone — which
+      // can be the sharer's sandbox subscription. Always reconcile afterward
+      // so the offer-code Apple id wins even if hasPremiumAccess is already true.
+      await restorePurchasesViaStoreKit().catch(() => {});
+      await refreshUserState().catch(() => {});
+
+      const POLL_INTERVALS_MS = [0, 2000, 4000, 6000, 10000];
+      for (const ms of POLL_INTERVALS_MS) {
+        if (ms > 0) await new Promise<void>((r) => setTimeout(r, ms));
+        try {
+          const ok = await reconcileReferralPurchase();
+          if (ok) {
+            await refreshUserState().catch(() => {});
+            if (hasPremiumAccessRef.current) return;
+          }
+        } catch {}
+      }
+      // All retries exhausted: surface a fallback message so the user is not
+      // silently stuck.
+      setSyncingSubscription(false);
+    })();
   };
 
   // Carry the code in the nav params as well as the AsyncStorage stash —
@@ -259,20 +306,31 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
     // Pre-check: if Superwall won't present (e.g. device already has an
     // active subscription → noAudienceMatch), skip straight to signup so the
     // user isn't stuck with a dead Continue button.
+    //
+    // Guard: only shortcut to signup when our backend actually confirms the
+    // user has premium access. Superwall's internal StoreKit subscription
+    // cache can go stale — an expired sandbox subscription may still read as
+    // "subscribed" inside the SDK, causing getPresentationResult to return
+    // UserIsSubscribed / noAudienceMatch even though the user genuinely needs
+    // to re-subscribe. Without this guard, the expired user is dumped into
+    // signup's post-paywall verification flow, which fails and surfaces
+    // "Setup needs another try — could not verify your subscription."
     if (getPresentationResult) {
       try {
         const result = await getPresentationResult(SUPERWALL_ONBOARDING_PLACEMENT);
         if (__DEV__) console.log('[Superwall] getPresentationResult:', JSON.stringify(result));
         if (result?.type && result.type !== 'Paywall') {
-          navigateToSignup();
-          setIsOpening(false);
-          return;
+          if (hasPremiumAccess) {
+            navigateToSignup();
+            setIsOpening(false);
+            return;
+          }
+          if (__DEV__) console.log('[Superwall] pre-check returned', result.type, 'but hasPremiumAccess is false — skipping signup shortcut');
         }
       } catch {}
     }
 
     const tapAt = Date.now();
-    analytics.capture('paywall_presented');
     registerPlacement(SUPERWALL_ONBOARDING_PLACEMENT)
       .catch((err: unknown) => {
         registerFailedAt.current = Date.now();
@@ -298,7 +356,9 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
       if (registerFailedAt.current >= tapAt) return;
       if (navigatedToSignup.current) return;
       preloadPaywalls?.([SUPERWALL_ONBOARDING_PLACEMENT])?.catch?.(() => {});
-      analytics.capture('paywall_present_failed');
+      analytics.capture('paywall_present_failed', {
+        placement: SUPERWALL_ONBOARDING_PLACEMENT,
+      });
       Alert.alert(
         'Subscription unavailable',
         'Could not open the subscription options. Please try again.',
@@ -353,27 +413,69 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
   const continueDisabled = isOpening;
 
   /**
-   * X always returns the user to competition-date with full back history when possible.
-   * Push from competition-date → router.back() pops cleanly. For replace-style entries
-   * (cold start saved progress, dev "Jump to Paywall"), fall back to a fresh replace.
+   * X returns to sport-selection with full back history when possible.
+   * For replace-style entries (cold start saved progress), fall back to a fresh replace.
    * Clear the saved reachedPaywall flag so the next reload doesn't bounce them back.
    */
   const handleClose = () => {
     trackOnboardingPaywallDismissed({
       step_key: 'paywall',
-      step_index: ONBOARDING_PROGRESS.competitionDate + 1,
+      step_index: ONBOARDING_PROGRESS.sportSelection + 1,
       button_key: 'close',
     });
-    void clearOnboardingProgress();
+    void clearPaywallResumeFlag();
     if (router.canGoBack()) {
       router.back();
       return;
     }
     router.replace({
-      pathname: '/(onboarding)/competition-date' as any,
+      pathname: '/(onboarding)/sport-selection' as any,
       params: sport ? { sport } : {},
     });
   };
+
+  // -------------------------------------------------------------------------
+  // Post-redemption loading overlay — shown after the user pays via an offer
+  // code while we wait for the entitlement to sync. Covers the whole screen
+  // so the user never sees the raw paywall after paying.
+  // -------------------------------------------------------------------------
+  if (syncingSubscription === true || syncingSubscription === false) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.syncOverlay}>
+          {syncingSubscription ? (
+            <>
+              <ActivityIndicator size="large" color={colors.accentLight} />
+              <Text style={styles.syncTitle}>Activating your subscription…</Text>
+              <Text style={styles.syncBody}>
+                Confirming your purchase with Apple. This usually takes a few seconds.
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.syncTitle}>Almost there</Text>
+              <Text style={styles.syncBody}>
+                Your purchase was received but activation is taking longer than expected.
+                Tap below to finish setup, or come back in a moment.
+              </Text>
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => {
+                  setSyncingSubscription(null);
+                  void restorePurchasesViaStoreKit().then((res) => {
+                    if (res.ok) refreshUserState().catch(() => {});
+                  }).catch(() => {});
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.buttonText}>Try Restore Purchases</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -466,6 +568,25 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  syncOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    gap: spacing.lg,
+  },
+  syncTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.white,
+    textAlign: 'center',
+  },
+  syncBody: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',

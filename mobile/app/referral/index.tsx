@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   RefreshControl,
   ScrollView,
   Share,
@@ -22,10 +23,17 @@ import {
   type ReferralInvite,
   type ReferralState,
 } from '@/lib/referral';
+import { copyText, isClipboardAvailable } from '@/lib/clipboard';
+import { ReferralSkeleton } from '@/components/Skeleton';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
+import {
+  trackReferralInviteTabViewed,
+  trackReferralShareTapped,
+} from '@/lib/referral-analytics';
 
 // App Store Connect app ID — matches ascAppId in mobile/eas.json.
 const APP_STORE_URL = 'https://apps.apple.com/app/id6762413686';
+const AMBASSADOR_EMAIL = 'admin@relentlessmentaltoughness.com';
 
 // ---------------------------------------------------------------------------
 // HUMAN INPUT NEEDED — placeholder copy. Every user-facing string for the
@@ -75,29 +83,45 @@ const COPY = {
   // chosen a plan yet, so their side stays "their first payment" — which is
   // also the rule-1 anchor.
   howBody: (cadence: ReferralCadence | null) =>
-    `Send a teammate your invite code. When their first payment goes through, you both get 20% off — your next ${period(cadence)}, and their first payment.`,
+    `Send your invite code. When their first payment goes through, you both get 20% off (your next ${period(cadence)}) and their first payment.`,
   capDisclosure: (cadence: ReferralCadence | null) =>
     `You can earn one reward per ${period(cadence)}. Extra teammates in the same ${period(cadence)} do not add another.`,
 
-  shareCta: 'Get an invite code',
+  shareCta: 'Share your code',
+  yourCodeTitle: 'Your code',
   // The reserved code is for the sharer's own cadence, so this names that
   // period. An invitee who switches plans gets a different code and Apple
   // shows them the real price, so the worst case understates their discount.
+  // The code sits alone on its own line so the recipient can long-press it
+  // in iMessage to copy without typing the whole thing out.
   shareMessage: (code: string, cadence: ReferralCadence | null) =>
-    `Join me on Relentless and get 20% off your first ${period(cadence)}. Use code ${code} when you subscribe.\n\n${APP_STORE_URL}`,
+    `I've been training my mental performance on Relentless. Join me and get 20% OFF your first ${period(cadence)}!\n\nYour invite code:\n${code}\n\n${APP_STORE_URL}`,
 
-  invitesTitle: 'Your invites',
-  invitesEmpty: 'You have not created an invite yet.',
-  statusOpen: 'Not used yet',
+  invitesTitle: 'Teammates',
+  invitesEmpty: 'No one has used your code yet.',
   statusClaimed: 'Waiting on their first payment',
   statusConverted: 'Reward earned',
-  expiresPrefix: 'Expires ',
+  // Once the reward this specific invite earned has actually renewed at the
+  // discount (not just signed), the card names that instead of the more
+  // generic "Reward earned" — a persistent, past-tense confirmation.
+  statusConvertedApplied: 'Reward applied',
+  chipClaimed: 'Waiting',
+  chipConverted: 'Paid',
+  chipConvertedApplied: 'Applied',
+  claimedTitle: 'Teammate started',
+  convertedTitle: 'First payment in',
 
   rewardTitle: 'Your reward',
   rewardPending: 'Waiting on your teammate’s first payment.',
   rewardReady: 'Your 20% off is ready to apply.',
   rewardApplied: (cadence: ReferralCadence | null) =>
     `Applied. Apple has accepted your 20% off, so your next ${period(cadence)} is discounted.`,
+  // Shown once the discounted renewal has already happened (the applied
+  // reward's period has passed — rewardApplied above would now be stale,
+  // since "your next period" already came and went). Placeholder like the
+  // rest of this block; review/replace before release.
+  rewardAppliedPast: (cadence: ReferralCadence | null) =>
+    `Applied. Invite another teammate to earn 20% off your next ${period(cadence)} again.`,
   applyCta: 'Apply my reward',
   // Rule 4: this fires the moment Apple RECEIVES the offer, so it must stay
   // conditional. Acceptance arrives later on the renewal notification, and
@@ -114,13 +138,21 @@ const COPY = {
   ineligibleBilling: 'We could not confirm your subscription with the App Store.',
   ineligibleSlotUsed: (cadence: ReferralCadence | null) =>
     `You have already earned your reward for this ${period(cadence)}. You can invite again next ${period(cadence)}.`,
+  ineligibleOfferActive:
+    'You already have an offer on your next renewal. Apple allows only one at a time.',
   ineligibleUnavailable: 'Inviting is temporarily unavailable. Please try again later.',
 
   errorLoad: 'Could not load your invites. Pull down to try again.',
   errorShare: 'Could not create an invite code. Please try again.',
   errorApply: 'Could not apply your reward. Please try again.',
+  errorApplyNotActive:
+    'Your subscription needs to be active to apply this. Renew, then try again.',
+  errorApplyAutoRenew:
+    'Turn auto-renew on in your Apple subscription settings, then try again.',
   errorApplyOfferActive:
     'You already have an offer on your next renewal. Apple allows only one at a time.',
+  errorApplyAlreadyOwned:
+    'Could not attach your 20% off to the plan you already have. Your reward is still saved — this is not lost.',
 };
 
 // Covers every Reason the eligibility endpoint can return; the default is the
@@ -133,6 +165,8 @@ function ineligibleCopy(reason: string | null, cadence: ReferralCadence | null):
       return COPY.ineligibleAutoRenewOff;
     case 'give_slot_used':
       return COPY.ineligibleSlotUsed(cadence);
+    case 'renewal_offer_active':
+      return COPY.ineligibleOfferActive;
     case 'billing_retry':
     case 'billing_grace':
     case 'apple_unavailable':
@@ -147,21 +181,23 @@ function ineligibleCopy(reason: string | null, cadence: ReferralCadence | null):
   }
 }
 
-function inviteStatusCopy(invite: ReferralInvite): string {
-  switch (invite.status) {
-    case 'claimed':
-      return COPY.statusClaimed;
-    case 'converted':
-      return COPY.statusConverted;
-    default:
-      return COPY.statusOpen;
-  }
+function inviteStatusCopy(invite: ReferralInvite, isAppliedInvite: boolean): string {
+  if (invite.status !== 'converted') return COPY.statusClaimed;
+  return isAppliedInvite ? COPY.statusConvertedApplied : COPY.statusConverted;
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+function inviteChip(
+  invite: ReferralInvite,
+  isAppliedInvite: boolean,
+): { label: string; tone: 'claimed' | 'converted' } {
+  if (invite.status === 'converted') {
+    return { label: isAppliedInvite ? COPY.chipConvertedApplied : COPY.chipConverted, tone: 'converted' };
+  }
+  return { label: COPY.chipClaimed, tone: 'claimed' };
+}
+
+function inviteTitle(invite: ReferralInvite): string {
+  return invite.status === 'converted' ? COPY.convertedTitle : COPY.claimedTitle;
 }
 
 export default function ReferralScreen() {
@@ -171,6 +207,7 @@ export default function ReferralScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const canCopyCode = isClipboardAvailable();
 
   const load = useCallback(async () => {
     const next = await fetchReferralState();
@@ -189,6 +226,20 @@ export default function ReferralScreen() {
     })();
   }, [load]);
 
+  const tabViewed = useRef(false);
+  useEffect(() => {
+    if (loading || !state || tabViewed.current) return;
+    tabViewed.current = true;
+    trackReferralInviteTabViewed({
+      eligible: state.eligible,
+      reason: state.reason,
+      cadence: state.cadence,
+      has_share_code: !!state.share_code,
+      open_invites: state.open_invites,
+      reward_status: state.reward?.status ?? null,
+    });
+  }, [loading, state]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await load();
@@ -197,31 +248,36 @@ export default function ReferralScreen() {
 
   const shareCode = async (code: string) => {
     try {
-      // The message carries the App Store link plus the code as text. Apple
-      // redeem URLs are deliberately not distributed: redemption outside the
-      // app destroys attribution and bypasses onboarding (PRD 10.5.4).
+      // Single message: invite text + code on its own line (so the recipient
+      // can long-press-select just the code in iMessage) + App Store link.
+      // Apple redeem URLs are deliberately not distributed (PRD 10.5.4).
       await Share.share({ message: COPY.shareMessage(code, state?.cadence ?? null) });
     } catch {
-      // A dismissed share sheet is not an error.
+      // Dismissed share sheet is not an error.
     }
   };
 
-  const handleCreateInvite = async () => {
+  const handleShare = async () => {
     if (busy) return;
-    setBusy(true);
-    setError('');
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    const created = await createReferralInvite();
-    if (!created.ok) {
-      setError(COPY.errorShare);
+    let code = state?.share_code ?? null;
+    trackReferralShareTapped({
+      cadence: state?.cadence ?? null,
+      had_code: !!code,
+    });
+    if (!code) {
+      setBusy(true);
+      setError('');
+      const created = await createReferralInvite();
       setBusy(false);
-      return;
+      if (!created.ok) {
+        setError(COPY.errorShare);
+        return;
+      }
+      code = created.code;
+      await load();
     }
-
-    await load();
-    setBusy(false);
-    await shareCode(created.code);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await shareCode(code);
   };
 
   const handleApply = async () => {
@@ -246,17 +302,45 @@ export default function ReferralScreen() {
       await load();
       return;
     }
-    setError(
+    const applyMessage =
       applied.reason === 'offer_already_active'
         ? COPY.errorApplyOfferActive
-        : COPY.errorApply,
-    );
+        : applied.reason === 'already_owned'
+          ? COPY.errorApplyAlreadyOwned
+          : applied.reason === 'not_active'
+            ? COPY.errorApplyNotActive
+            : applied.reason === 'auto_renew_off'
+              ? COPY.errorApplyAutoRenew
+              : COPY.errorApply;
+    Alert.alert('', applyMessage);
+    await load();
   };
 
-  const openInvites = (state?.invites ?? []).filter((i) => i.status === 'open');
-  const canCreate =
-    !!state?.eligible && (state?.open_invites ?? 0) < (state?.max_open_invites ?? 0);
+  const invites = state?.invites ?? [];
+  const shareCodeValue = state?.share_code ?? null;
+  const canShare = !!state?.eligible;
   const reward = state?.reward ?? null;
+  // An 'applied' reward describes an upcoming discounted renewal only while
+  // Apple still reports the offer attached to it (has_active_renewal_offer).
+  // Once that renewal actually happens, Apple clears the offer and the
+  // reward is history — "your next {period} is discounted" would now be
+  // false, so the card below switches to the past-tense confirmation instead
+  // (rewardAppliedPast), and the specific teammate card that earned it is
+  // labeled "Applied" rather than the generic "Reward earned"/"Paid".
+  const rewardIsPastApplied = reward?.status === 'applied' && !state?.has_active_renewal_offer;
+  const appliedInviteId = rewardIsPastApplied ? reward?.invite_id ?? null : null;
+
+  const orderedInvites = [
+    ...invites.filter((i) => i.status === 'claimed'),
+    ...invites.filter((i) => i.status === 'converted'),
+  ];
+
+  const handleCopyCode = async () => {
+    if (!shareCodeValue) return;
+    if (await copyText(shareCodeValue)) {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
 
   return (
     <>
@@ -273,30 +357,75 @@ export default function ReferralScreen() {
 
       <View style={styles.screen}>
         {loading ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={colors.accentLight} />
-          </View>
+          <ScrollView contentContainerStyle={styles.content} scrollEnabled={false}>
+            <ReferralSkeleton />
+          </ScrollView>
         ) : (
           <ScrollView
             contentContainerStyle={styles.content}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
-                onRefresh={() => {
-                  void onRefresh();
-                }}
+                onRefresh={() => { void onRefresh(); }}
                 tintColor={colors.accentLight}
               />
             }
           >
-            {/* How it works, plus the per-period cap disclosed before the
-                user invites anyone (PRD 10.5.7). */}
+            {/* Hero header */}
+            <View style={styles.heroCard}>
+              <Ionicons name="people" size={32} color={colors.accent} style={{ marginBottom: 10 }} />
+              <Text style={styles.heroTitle}>Enjoying Relentless?</Text>
+              <Text style={styles.heroSub}>
+                Share with a teammate and you both get{' '}
+                <Text style={styles.heroHighlight}>20% OFF</Text>
+                {' '}— your next {period(state?.cadence ?? null)}, their first.
+              </Text>
+            </View>
+
+            {/* How it works (PRD 10.5.7 cap disclosure before inviting) */}
             <Text style={styles.sectionLabel}>{COPY.howTitle.toUpperCase()}</Text>
             <View style={styles.card}>
               <Text style={styles.body}>{COPY.howBody(state?.cadence ?? null)}</Text>
               <Text style={styles.footnote}>{COPY.capDisclosure(state?.cadence ?? null)}</Text>
             </View>
 
+            {shareCodeValue && canShare ? (
+              <>
+                <Text style={styles.sectionLabel}>{COPY.yourCodeTitle.toUpperCase()}</Text>
+                <View style={styles.shareCodeCard}>
+                  <View style={styles.shareCodePill}>
+                    <Text style={styles.shareCodeValue} selectable>{shareCodeValue}</Text>
+                  </View>
+                  <View style={styles.shareCodeActions}>
+                    {canCopyCode ? (
+                      <TouchableOpacity
+                        style={styles.shareCodeIconBtn}
+                        onPress={() => { void handleCopyCode(); }}
+                        activeOpacity={0.75}
+                        accessibilityLabel="Copy code"
+                      >
+                        <Ionicons name="copy-outline" size={18} color={colors.accentLight} />
+                      </TouchableOpacity>
+                    ) : null}
+                    <TouchableOpacity
+                      style={styles.shareCodeIconBtn}
+                      onPress={() => { void handleShare(); }}
+                      disabled={busy}
+                      activeOpacity={0.75}
+                      accessibilityLabel={COPY.shareCta}
+                    >
+                      {busy ? (
+                        <ActivityIndicator color={colors.accentLight} />
+                      ) : (
+                        <Ionicons name="share-outline" size={18} color={colors.accentLight} />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </>
+            ) : null}
+
+            {/* Reward */}
             {reward ? (
               <>
                 <Text style={styles.sectionLabel}>{COPY.rewardTitle.toUpperCase()}</Text>
@@ -305,16 +434,15 @@ export default function ReferralScreen() {
                     {reward.status === 'ready'
                       ? COPY.rewardReady
                       : reward.status === 'applied'
-                        ? COPY.rewardApplied(state?.cadence ?? null)
+                        ? (rewardIsPastApplied
+                          ? COPY.rewardAppliedPast(state?.cadence ?? null)
+                          : COPY.rewardApplied(state?.cadence ?? null))
                         : COPY.rewardPending}
                   </Text>
-
-                  {reward.status === 'ready' ? (
+                  {reward.status === 'ready' && !state?.has_active_renewal_offer ? (
                     <TouchableOpacity
                       style={[styles.button, busy && styles.buttonDisabled]}
-                      onPress={() => {
-                        void handleApply();
-                      }}
+                      onPress={() => { void handleApply(); }}
                       disabled={busy}
                       activeOpacity={0.85}
                     >
@@ -330,59 +458,70 @@ export default function ReferralScreen() {
             ) : null}
 
             <Text style={styles.sectionLabel}>{COPY.invitesTitle.toUpperCase()}</Text>
-            <View style={styles.card}>
-              {openInvites.length === 0 && (state?.invites ?? []).length === 0 ? (
+            {orderedInvites.length === 0 ? (
+              <View style={styles.card}>
                 <Text style={styles.body}>{COPY.invitesEmpty}</Text>
-              ) : (
-                (state?.invites ?? []).map((invite, index) => (
+              </View>
+            ) : (
+              orderedInvites.map((invite) => {
+                const isAppliedInvite = invite.id === appliedInviteId;
+                const chip = inviteChip(invite, isAppliedInvite);
+                return (
                   <View
                     key={invite.id}
-                    style={[styles.inviteRow, index === 0 && styles.inviteRowFirst]}
+                    style={[
+                      styles.inviteCard,
+                      chip.tone === 'claimed' && styles.inviteCardClaimed,
+                      chip.tone === 'converted' && styles.inviteCardConverted,
+                    ]}
                   >
-                    <View style={styles.inviteLeft}>
-                      {invite.code ? (
-                        <Text style={styles.inviteCode} selectable>
-                          {invite.code}
+                    <View style={styles.inviteCardTop}>
+                      <View style={styles.inviteCardMain}>
+                        <Text style={[styles.inviteCode, styles.inviteCardTitleMuted]}>
+                          {inviteTitle(invite)}
                         </Text>
-                      ) : null}
-                      <Text style={styles.inviteStatus}>{inviteStatusCopy(invite)}</Text>
-                      {invite.status === 'open' ? (
-                        <Text style={styles.footnote}>
-                          {COPY.expiresPrefix}
-                          {formatDate(invite.ttl_expires_at)}
+                        <Text
+                          style={[
+                            styles.inviteStatus,
+                            chip.tone === 'converted' && styles.inviteStatusConverted,
+                            chip.tone === 'claimed' && styles.inviteStatusClaimed,
+                          ]}
+                        >
+                          {inviteStatusCopy(invite, isAppliedInvite)}
                         </Text>
-                      ) : null}
-                    </View>
-
-                    {invite.code ? (
-                      <TouchableOpacity
-                        style={styles.shareIconBtn}
-                        onPress={() => {
-                          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          void shareCode(invite.code as string);
-                        }}
-                        activeOpacity={0.7}
+                      </View>
+                      <View
+                        style={[
+                          styles.inviteChip,
+                          chip.tone === 'claimed' && styles.inviteChipClaimed,
+                          chip.tone === 'converted' && styles.inviteChipConverted,
+                        ]}
                       >
-                        <Ionicons
-                          name="share-outline"
-                          size={20}
-                          color={colors.accentLight}
-                        />
-                      </TouchableOpacity>
-                    ) : null}
+                        {chip.tone === 'converted' ? (
+                          <Ionicons name="checkmark-circle" size={12} color={colors.success} />
+                        ) : null}
+                        <Text
+                          style={[
+                            styles.inviteChipText,
+                            chip.tone === 'claimed' && styles.inviteChipTextClaimed,
+                            chip.tone === 'converted' && styles.inviteChipTextConverted,
+                          ]}
+                        >
+                          {chip.label}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
-                ))
-              )}
-            </View>
+                );
+              })
+            )}
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
-            {canCreate ? (
+            {!shareCodeValue && canShare ? (
               <TouchableOpacity
                 style={[styles.button, busy && styles.buttonDisabled]}
-                onPress={() => {
-                  void handleCreateInvite();
-                }}
+                onPress={() => { void handleShare(); }}
                 disabled={busy}
                 activeOpacity={0.85}
               >
@@ -397,21 +536,83 @@ export default function ReferralScreen() {
                 {ineligibleCopy(state.reason, state.cadence)}
               </Text>
             ) : null}
+
+            {/* Ambassador section — no lock, links to external application */}
+            <View style={styles.ambassadorCard}>
+              <View style={styles.ambassadorTitleRow}>
+                <Text style={styles.ambassadorTitle}>Relentless Ambassador</Text>
+              </View>
+              <Text style={styles.ambassadorBody}>
+                Think you can grow the Relentless community? Apply to become an ambassador.
+              </Text>
+              <TouchableOpacity
+                style={styles.ambassadorBtn}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  void Linking.openURL('https://ambassador.relentlessmentaltoughness.com/');
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.ambassadorBtnText}>
+                  Apply to be an ambassador
+                </Text>
+              </TouchableOpacity>
+              <Text style={styles.ambassadorEmail}>
+                Coach, team, or organization?{' '}
+                <Text
+                  style={styles.ambassadorEmailLink}
+                  onPress={() => Linking.openURL(`mailto:${AMBASSADOR_EMAIL}?subject=${encodeURIComponent('Coach / Team Plans Inquiry')}`)}
+                >
+                  Email {AMBASSADOR_EMAIL}
+                </Text>
+                {' '}for team plans.
+              </Text>
+            </View>
           </ScrollView>
         )}
       </View>
+
     </>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: {
     paddingHorizontal: 20,
     paddingTop: spacing.lg,
-    paddingBottom: TAB_BAR_CLEARANCE,
+    paddingBottom: TAB_BAR_CLEARANCE + 24,
   },
+
+  // Hero header
+  heroCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    padding: 24,
+    marginBottom: 28,
+    alignItems: 'center',
+  },
+  heroTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: 0.2,
+  },
+  heroSub: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 23,
+  },
+  heroHighlight: {
+    color: colors.accentLight,
+    fontWeight: '800',
+  },
+
   sectionLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -442,33 +643,111 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.sm,
   },
-  inviteRow: {
+
+  shareCodeCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    marginBottom: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    marginTop: 14,
+    gap: 10,
   },
-  inviteRowFirst: { borderTopWidth: 0, marginTop: 0, paddingTop: 0 },
-  inviteLeft: { flex: 1, paddingRight: spacing.md },
+  shareCodePill: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  shareCodeValue: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    letterSpacing: 1.6,
+  },
+  shareCodeActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  shareCodeIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.accentSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inviteCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    marginBottom: 10,
+  },
+  inviteCardClaimed: {
+    borderColor: 'rgba(245, 158, 11, 0.45)',
+    backgroundColor: 'rgba(245, 158, 11, 0.06)',
+  },
+  inviteCardConverted: {
+    borderColor: 'rgba(74, 222, 128, 0.28)',
+    backgroundColor: 'rgba(74, 222, 128, 0.05)',
+  },
+  inviteCardTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  inviteCardMain: { flex: 1, minWidth: 0 },
   inviteCode: {
     fontSize: 18,
     fontWeight: '800',
     color: colors.white,
     letterSpacing: 2,
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  inviteStatus: { fontSize: 14, color: colors.textPrimary },
-  shareIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: colors.accentSubtle,
+  inviteCardTitleMuted: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0,
+    color: colors.textPrimary,
+  },
+  inviteStatus: { fontSize: 14, color: colors.textPrimary, lineHeight: 20 },
+  inviteStatusClaimed: { color: '#f59e0b', fontWeight: '600' },
+  inviteStatusConverted: { color: colors.success, fontSize: 13, fontWeight: '600' },
+  inviteChip: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: colors.accentSubtle,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
+  inviteChipClaimed: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+  },
+  inviteChipConverted: {
+    backgroundColor: 'rgba(74, 222, 128, 0.12)',
+    borderColor: 'rgba(74, 222, 128, 0.35)',
+  },
+  inviteChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.accentLight,
+    letterSpacing: 0.3,
+  },
+  inviteChipTextClaimed: { color: '#f59e0b' },
+  inviteChipTextConverted: { color: colors.success },
+
   button: {
     backgroundColor: colors.accent,
     borderRadius: 12,
@@ -478,6 +757,59 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: spacing.sm,
   },
+
+  // Ambassador section
+  ambassadorCard: {
+    backgroundColor: 'rgba(139, 92, 246, 0.06)',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.20)',
+    padding: 20,
+    marginTop: 28,
+    marginBottom: 8,
+  },
+  ambassadorTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  ambassadorTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  ambassadorBody: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 21,
+    marginBottom: 16,
+  },
+  ambassadorBtn: {
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  ambassadorBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.accentLight,
+    letterSpacing: 0.2,
+  },
+  ambassadorEmail: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  ambassadorEmailLink: {
+    color: colors.accentLight,
+    textDecorationLine: 'underline',
+  },
+
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: colors.white, fontSize: 16, fontWeight: '700' },
   error: {

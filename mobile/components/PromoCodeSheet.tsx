@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  AppState,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -13,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import { copyText, isClipboardAvailable } from '@/lib/clipboard';
 import { useAuth } from '@/lib/auth-context';
 import { analytics } from '@/lib/analytics';
@@ -30,13 +32,22 @@ import {
 import {
   claimReferralCode,
   isReferralEnabled,
+  latestStoreKitPurchaseAt,
   looksLikeOfferCode,
   presentAppleOfferCodeSheet,
+  reconcileReferralPurchase,
+  watchStoreKitPurchases,
   type ReferralCadence,
   type ReferralClaimErrorCode,
 } from '@/lib/referral';
 import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { colors, spacing } from '@/lib/theme';
+import {
+  trackReferralCadenceSelected,
+  trackReferralCodeRecognized,
+  trackReferralOfferSheetPresented,
+  trackReferralOfferSheetResult,
+} from '@/lib/referral-analytics';
 
 // ---------------------------------------------------------------------------
 // HUMAN INPUT NEEDED — placeholder copy. Every user-facing string for the
@@ -83,6 +94,8 @@ const COPY = {
   codeCopied: 'Copied',
   redeemOpen: 'Continue',
   redeemDone: 'Done',
+  redeemCheckingTitle: 'Activating your subscription…',
+  redeemCheckingBody: 'Confirming your purchase with Apple. This usually takes a few seconds.',
   referralUnavailable: 'This offer is temporarily unavailable. Please try again later.',
   referralSelfShare: 'You cannot use your own invite.',
   referralAlreadyReceived: 'This account has already used a referral offer.',
@@ -148,6 +161,7 @@ export function PromoCodeSheet({
   // Kept so the redeem copy can name the actual period the invitee bought,
   // rather than a generic one.
   const [issuedCadence, setIssuedCadence] = useState<ReferralCadence>('monthly');
+  const [checkingPurchase, setCheckingPurchase] = useState(false);
 
   // Resolved once, not per render: an older binary has no clipboard module, in
   // which case the copy must not promise a tap that does nothing.
@@ -190,6 +204,7 @@ export function PromoCodeSheet({
     setError('');
     setStep('entry');
     setIssuedCode('');
+    setCheckingPurchase(false);
   };
 
   const handleClose = () => {
@@ -232,6 +247,7 @@ export function PromoCodeSheet({
         setBusy(false);
         // The invitee picks a plan before redemption, and is always issued a
         // code for the current live SKU for that cadence (PRD 10.5.4).
+        trackReferralCodeRecognized({ has_account: !!session });
         setStep('cadence');
         return;
       }
@@ -294,6 +310,7 @@ export function PromoCodeSheet({
     // No account yet: the claim has to wait, because binding the code to a
     // user is what makes attribution work at all.
     if (!session) {
+      trackReferralCadenceSelected({ cadence, has_account: false });
       await savePendingReferralClaim({
         code: entered,
         cadence,
@@ -307,6 +324,7 @@ export function PromoCodeSheet({
     setBusy(true);
     setError('');
 
+    trackReferralCadenceSelected({ cadence, has_account: true });
     const claimed = await claimReferralCode(entered, cadence);
     setBusy(false);
 
@@ -327,19 +345,89 @@ export function PromoCodeSheet({
     setIssuedCode(claimed.code);
     setIssuedCadence(cadence);
     setStep('redeem');
+    void copyText(claimed.code);
   };
 
   const handlePresentRedemption = async () => {
     if (busy) return;
     setBusy(true);
+    trackReferralOfferSheetPresented({ cadence: issuedCadence });
+
+    // presentCodeRedemptionSheetIOS often resolves when the sheet *opens*,
+    // not when it closes. Confirm as soon as StoreKit sees a new purchase or
+    // the app returns from Apple — do not leave the user on the copy pane.
+    const beforeAt = await latestStoreKitPurchaseAt();
+    let confirmed = false;
+    let advanced = false;
+    const advance = () => {
+      if (advanced) return;
+      advanced = true;
+      setBusy(false);
+      setCheckingPurchase(false);
+      reset();
+      onRedeemed();
+    };
+    const confirmIfPurchased = async (): Promise<boolean> => {
+      if (confirmed) return true;
+      if ((await latestStoreKitPurchaseAt()) > beforeAt) {
+        confirmed = true;
+        return true;
+      }
+      const restored = await restorePurchasesViaStoreKit().catch(() => null);
+      if (restored?.ok) {
+        confirmed = true;
+        return true;
+      }
+      if (await reconcileReferralPurchase().catch(() => false)) {
+        confirmed = true;
+        return true;
+      }
+      return false;
+    };
+
+    const stopWatch = watchStoreKitPurchases(() => {
+      confirmed = true;
+      advance();
+    });
+    let sawBackground = AppState.currentState !== 'active';
+    const appSub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') {
+        sawBackground = true;
+        return;
+      }
+      if (!sawBackground) return;
+      setCheckingPurchase(true);
+      void confirmIfPurchased().then((ok) => {
+        if (ok) advance();
+      });
+    });
+
     await presentAppleOfferCodeSheet();
-    // Apple neither reports whether the user redeemed nor which code was
-    // used, so this only syncs whatever StoreKit now has. The reward itself
-    // is released server-side from Apple's notification, never from here.
-    await restorePurchasesViaStoreKit().catch(() => undefined);
-    setBusy(false);
-    reset();
-    onRedeemed();
+    setCheckingPurchase(true);
+    if (await confirmIfPurchased()) {
+      appSub.remove();
+      stopWatch();
+      trackReferralOfferSheetResult({ confirmed: true, cadence: issuedCadence });
+      advance();
+      return;
+    }
+
+    const RETRY_DELAYS_MS = [2000, 4000, 8000];
+    for (const ms of RETRY_DELAYS_MS) {
+      if (advanced) break;
+      await new Promise<void>((r) => setTimeout(r, ms));
+      if (await confirmIfPurchased()) {
+        advance();
+        break;
+      }
+    }
+    appSub.remove();
+    stopWatch();
+    if (!advanced) {
+      setBusy(false);
+      setCheckingPurchase(false);
+    }
+    trackReferralOfferSheetResult({ confirmed, cadence: issuedCadence });
   };
 
   return (
@@ -385,25 +473,37 @@ export function PromoCodeSheet({
                 </TouchableOpacity>
               </>
             ) : step === 'redeem' ? (
+              checkingPurchase ? (
+                <>
+                  <ActivityIndicator size="large" color={colors.accentLight} style={styles.spinner} />
+                  <Text style={styles.title}>{COPY.redeemCheckingTitle}</Text>
+                  <Text style={styles.instructions}>{COPY.redeemCheckingBody}</Text>
+                </>
+              ) : (
               <>
                 <Text style={styles.title}>{COPY.redeemTitle}</Text>
 
-                {/* Apple's redemption sheet cannot be pre-filled, so the code
-                    has to be readable and copyable here. Tapping copies it;
-                    the Text stays selectable so long-press still works, and
-                    so the code is still obtainable on an older binary that
-                    has no clipboard module. */}
+                {/* Apple's redemption sheet cannot be pre-filled, so the
+                    code must be easy to copy. The whole pill is a button so
+                    the tap target is obvious; a clipboard icon reinforces
+                    the affordance; the Text stays selectable for long-press
+                    on older binaries without a clipboard module. */}
                 <TouchableOpacity
                   onPress={() => {
                     void handleCopyCode();
                   }}
-                  activeOpacity={0.7}
+                  activeOpacity={0.75}
                   accessibilityRole="button"
                   accessibilityLabel={`Copy code ${issuedCode}`}
+                  style={styles.codePill}
                 >
                   <Text style={styles.issuedCode} selectable>
                     {issuedCode}
                   </Text>
+                  <View style={styles.copyHint}>
+                    <Ionicons name="copy-outline" size={14} color={colors.accentLight} />
+                    <Text style={styles.copyHintText}>Tap to copy</Text>
+                  </View>
                   <Animated.View
                     style={[styles.copiedBadge, { opacity: copiedOpacity }]}
                     pointerEvents="none"
@@ -442,6 +542,7 @@ export function PromoCodeSheet({
                   <Text style={styles.cancelText}>{COPY.redeemDone}</Text>
                 </TouchableOpacity>
               </>
+              )
             ) : (
               <>
             <Text style={styles.title}>{COPY.title}</Text>
@@ -550,19 +651,40 @@ const styles = StyleSheet.create({
   buttonText: { color: colors.white, fontSize: 16, fontWeight: '700' },
   cadenceButton: { marginBottom: spacing.md },
   spinner: { marginTop: spacing.sm },
+  // Pill container makes the entire code region obviously tappable.
+  codePill: {
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: colors.accentLight,
+    borderRadius: 14,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
   issuedCode: {
     color: colors.white,
     fontSize: 28,
     fontWeight: '800',
     letterSpacing: 3,
     textAlign: 'center',
-    marginBottom: spacing.md,
   },
-  // Floats over the gap under the code, so showing it cannot reflow the pane.
+  copyHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+  },
+  copyHintText: {
+    color: colors.accentLight,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // Floats over the code pill when tapped.
   copiedBadge: {
     position: 'absolute',
     alignSelf: 'center',
-    bottom: -2,
+    bottom: 6,
     backgroundColor: colors.accent,
     borderRadius: 10,
     paddingHorizontal: 10,
