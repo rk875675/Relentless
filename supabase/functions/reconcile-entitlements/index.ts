@@ -225,8 +225,15 @@ Deno.serve(async (req) => {
     // where the user is still in the billing-retry window.
     // Update expires_at if Apple provided a newer value, so future runs know
     // the real expiry and the lazy requireEntitlement check stays accurate.
+    //
+    // Compare instants, not strings: Apple's value is serialised as
+    // "2026-08-11T17:15:41.000Z" while Postgres returns
+    // "2026-08-11T17:15:41+00:00" for the same moment. A string compare marks
+    // every billing-retry row as changed on every run, which rewrote the row
+    // and appended an entitlement_events entry four times a day forever.
     const expiresAtChanged =
-      resolved.expiresAt !== null && resolved.expiresAt !== row.expires_at;
+      resolved.expiresAt !== null &&
+      !sameInstant(resolved.expiresAt, row.expires_at as string | null);
 
     if (expiresAtChanged) {
       detail.action = dryRun ? "would_update_expires_at" : "updated_expires_at";
@@ -277,6 +284,15 @@ Deno.serve(async (req) => {
 
   return successResponse(result, requestId);
 });
+
+/** True when both timestamps name the same instant (or both are absent). */
+function sameInstant(a: string | null, b: string | null): boolean {
+  if (a === null || b === null) return a === b;
+  const ta = new Date(a).getTime();
+  const tb = new Date(b).getTime();
+  if (Number.isNaN(ta) || Number.isNaN(tb)) return a === b;
+  return ta === tb;
+}
 
 // ---------------------------------------------------------------------------
 // Apple resolution
