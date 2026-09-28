@@ -6,6 +6,25 @@ export type CaptureOptions = {
   timestamp?: string;
 };
 
+export function isSandboxEnvironment(environment: string | null | undefined): boolean {
+  if (!environment) return false;
+  const value = environment.toLowerCase();
+  return value === "sandbox" || value === "xcode" || value === "localtesting";
+}
+
+/**
+ * Sandbox StoreKit traffic is our own TestFlight/Xcode test accounts, and there
+ * is only one PostHog project, so an unfiltered sandbox event lands in the same
+ * trial/paid funnels as a real purchase. Every billing and referral event
+ * carries is_sandbox (or Apple's environment), so one gate here covers them all
+ * instead of an is_sandbox filter each insight has to remember.
+ */
+function isSandboxEvent(properties: Record<string, unknown>): boolean {
+  if (properties.is_sandbox === true) return true;
+  const environment = properties.environment;
+  return typeof environment === "string" && isSandboxEnvironment(environment);
+}
+
 export async function capturePostHogEvent(
   distinctId: string,
   event: string,
@@ -14,7 +33,15 @@ export async function capturePostHogEvent(
 ): Promise<void> {
   const apiKey = Deno.env.get("POSTHOG_API_KEY") ?? "";
   const host = (Deno.env.get("POSTHOG_HOST") ?? "https://us.i.posthog.com").replace(/\/$/, "");
-  if (!apiKey) return;
+  if (!apiKey) {
+    console.warn("[posthog] capture skipped, API key unset", { event });
+    return;
+  }
+  if (isSandboxEvent(properties)) {
+    // Logged so a sandbox test run is still verifiable in the function logs.
+    console.log("[posthog] Dropped sandbox event", event, distinctId);
+    return;
+  }
   try {
     const props: Record<string, unknown> = {
       ...properties,
@@ -28,13 +55,21 @@ export async function capturePostHogEvent(
       properties: props,
     };
     if (options?.timestamp) body.timestamp = options.timestamp;
-    await fetch(`${host}/capture/`, {
+    const res = await fetch(`${host}/capture/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-  } catch {
+    if (!res.ok) {
+      // Status only. The body can echo the request, which carries the API key.
+      console.error("[posthog] capture failed", { event, status: res.status });
+    }
+  } catch (err) {
     // Analytics must never crash entitlement or purchase handling.
+    console.error("[posthog] capture failed", {
+      event,
+      reason: err instanceof Error ? err.name : "unknown",
+    });
   }
 }
 
@@ -60,13 +95,15 @@ export async function capturePostHogBatch(
   const apiKey = Deno.env.get("POSTHOG_API_KEY") ?? "";
   const host = (Deno.env.get("POSTHOG_HOST") ?? "https://us.i.posthog.com").replace(/\/$/, "");
   if (!apiKey || events.length === 0) return events.length === 0;
+  const sendable = events.filter((item) => !isSandboxEvent(item.properties));
+  if (sendable.length === 0) return true;
   try {
     const res = await fetch(`${host}/batch/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         api_key: apiKey,
-        batch: events.map((item) => {
+        batch: sendable.map((item) => {
           const properties: Record<string, unknown> = {
             ...item.properties,
             $lib: "supabase-edge-function",

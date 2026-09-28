@@ -26,7 +26,7 @@ import { fetchJwsForTransaction, restorePurchasesViaStoreKit } from '@/lib/iap-r
 import { clearOnboardingProgress } from '@/lib/onboarding-local-state';
 import { redeemPromoCode } from '@/lib/promo-codes';
 import { clearPendingPromoCode, loadPendingPromoCode } from '@/lib/promo-code-state';
-import { loadPendingReferralClaim } from '@/lib/referral-claim-state';
+import { loadPendingAppleOfferCode, loadPendingReferralClaim } from '@/lib/referral-claim-state';
 import { syncSubscriptionWithBackend } from '@/lib/purchases-sync';
 import { supabase } from '@/lib/supabase';
 import { LEGAL_PRIVACY_POLICY_URL, LEGAL_TERMS_OF_USE_URL } from '@/lib/legal-urls';
@@ -548,6 +548,43 @@ export default function OnboardingSignupScreen() {
     }, 300);
   };
 
+  /**
+   * A referral invitee or App Store Connect code holder was sent here to create
+   * an account with the code already stashed. RouteGuard has no branch for a
+   * signed-in user sitting on signup with onboarding incomplete, so they would
+   * be stranded here and the code would never run. Send them to the paywall,
+   * which finishes it — the same hop the email path makes below.
+   */
+  const pendingCodeHopStarted = useRef(false);
+  const hopToPaywallForPendingCode = useCallback(async (): Promise<void> => {
+    if (pendingCodeHopStarted.current) return;
+    if (!(await loadPendingReferralClaim()) && !(await loadPendingAppleOfferCode())) return;
+    if (pendingCodeHopStarted.current) return;
+    pendingCodeHopStarted.current = true;
+    // Persist the onboarding answers first, exactly as the email path does.
+    // They arrive as route params and are otherwise lost, since nothing
+    // downstream of the paywall collects them again.
+    if (competitionDate) {
+      const comp = Array.isArray(competitionDate) ? competitionDate[0] : competitionDate;
+      if (comp) await updateCompetitionDate(comp).catch(() => {});
+    }
+    const sportTrim = sportArg?.trim();
+    if (sportTrim) {
+      await updateSport(sportTrim).catch(() => {});
+    }
+    setTimeout(() => {
+      router.push('/(onboarding)/paywall');
+    }, 300);
+  }, [competitionDate, sportArg, updateCompetitionDate, updateSport, router]);
+
+  // Social sign-in can establish the session and still report failure (or
+  // time out), which left the handler above without navigating. Hub mode only:
+  // the email form makes its own paywall hop.
+  useEffect(() => {
+    if (isPostPaywall || !session || mode !== 'hub') return;
+    void hopToPaywallForPendingCode();
+  }, [isPostPaywall, session, mode, hopToPaywallForPendingCode]);
+
   const handleSocial = async (
     provider: () => Promise<SocialSignInResult>,
     setBusy: (v: boolean) => void,
@@ -579,29 +616,8 @@ export default function OnboardingSignupScreen() {
         return;
       }
       // Pre-paywall (rare path) — let RouteGuard / useSocialSignIn-style routing happen
-      // via session change. Nothing else to do here.
-      //
-      // Except for a referral invitee, who was sent here to create an account
-      // with a claim already stashed. RouteGuard has no branch for a signed-in
-      // user sitting on signup with onboarding incomplete, so they would be
-      // stranded here and the claim would never run. Send them to the paywall,
-      // which finishes the claim — the same hop the email path makes below.
-      if (await loadPendingReferralClaim()) {
-        // Persist the onboarding answers first, exactly as the email path
-        // does. They arrive as route params and are otherwise lost, since
-        // nothing downstream of the paywall collects them again.
-        if (competitionDate) {
-          const comp = Array.isArray(competitionDate) ? competitionDate[0] : competitionDate;
-          if (comp) await updateCompetitionDate(comp).catch(() => {});
-        }
-        const sportTrim = sportArg?.trim();
-        if (sportTrim) {
-          await updateSport(sportTrim).catch(() => {});
-        }
-        setTimeout(() => {
-          router.push('/(onboarding)/paywall');
-        }, 300);
-      }
+      // via session change. Nothing else to do here, except for a stashed code.
+      await hopToPaywallForPendingCode();
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Could not sign in.';
       if (isPostPaywall) {
@@ -682,6 +698,8 @@ export default function OnboardingSignupScreen() {
             googleLoading={googleLoading}
             appleLoading={appleLoading}
           />
+
+          {error ? <InlineErrorCard message={error} /> : null}
 
           <TouchableOpacity
             style={styles.emailBtn}

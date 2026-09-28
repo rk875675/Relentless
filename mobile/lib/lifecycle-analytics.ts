@@ -31,6 +31,8 @@ type PurchaseProps = LifecycleProps & {
   attribution_code?: string | null;
   attribution_creator?: string | null;
   attribution_source?: 'promo' | 'referral' | null;
+  /** Apple's environment for this transaction. Absent when no JWS was present. */
+  is_sandbox?: boolean;
   reason?: string;
 };
 

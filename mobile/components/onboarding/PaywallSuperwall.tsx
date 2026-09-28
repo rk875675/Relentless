@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  DevSettings,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,7 +12,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Updates from 'expo-updates';
 import { useRouter } from 'expo-router';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import { markInAppAuthHubEntry } from '@/lib/auth-hub-entry';
 import { useAuth } from '@/lib/auth-context';
 import { analytics } from '@/lib/analytics';
@@ -30,6 +33,7 @@ import { clearPaywallResumeFlag, saveOnboardingProgress } from '@/lib/onboarding
 import { clearTrustedPaywallPurchase, subscribeTrustedPaywallPurchase } from '@/lib/trusted-paywall-purchase';
 import { isReferralEnabled, reconcileReferralPurchase } from '@/lib/referral';
 import {
+  loadPendingAppleOfferCode,
   loadPendingReferralClaim,
   type PendingReferralClaim,
 } from '@/lib/referral-claim-state';
@@ -57,6 +61,28 @@ const PRESENTATION_LOCK_MS = 1500;
 // declaring the presentation silently failed (stale SDK config).
 const PRESENT_WATCHDOG_MS = 5000;
 
+/**
+ * Set when a code redemption hands off to the sync overlay. Module scope so it
+ * survives the navPhase remount of this screen — which otherwise drops the
+ * overlay and shows the raw paywall — but not an app reload, which is what
+ * keeps the reload fallback below from ever looping.
+ */
+let redeemFinishingUntil = 0;
+const REDEEM_FINISH_WINDOW_MS = 30_000;
+/** One reload per JS session, and only after a redemption in it. */
+let redeemReloadArmed = false;
+/** Still on this screen this long after access + onboarding: navigation was swallowed. */
+const STUCK_RESET_MS = 1200;
+const STUCK_RELOAD_MS = 2800;
+
+function reloadApp(): void {
+  if (__DEV__) {
+    DevSettings.reload();
+    return;
+  }
+  void Updates.reloadAsync().catch(() => {});
+}
+
 type PaywallSuperwallProps = {
   sport?: string;
   competitionDate?: string;
@@ -64,7 +90,8 @@ type PaywallSuperwallProps = {
 
 export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallProps) {
   const router = useRouter();
-  const { session, completeOnboarding, hasPremiumAccess, refreshUserState } = useAuth();
+  const { session, completeOnboarding, hasPremiumAccess, onboardingComplete, refreshUserState } = useAuth();
+  const navigation = useNavigation();
 
   const [isOpening, setIsOpening] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -76,7 +103,9 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
    * null  → not syncing
    * false → timed out (show fallback message)
    */
-  const [syncingSubscription, setSyncingSubscription] = useState<boolean | null>(null);
+  const [syncingSubscription, setSyncingSubscription] = useState<boolean | null>(() =>
+    Date.now() < redeemFinishingUntil ? true : null,
+  );
   /**
    * Set true the moment the user taps Continue. The navigate-to-signup effect
    * below requires this — it stops a passive entitlement grant (e.g. Superwall
@@ -125,6 +154,15 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
   useEffect(() => {
     hasPremiumAccessRef.current = hasPremiumAccess;
   }, [hasPremiumAccess]);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  // True on the instance whose handlePromoRedeemed loop owns the overlay.
+  const ownsRedeemLoop = useRef(false);
 
   const navigateToSignup = (extraParams?: Record<string, string>) => {
     if (navigatedToSignup.current) return;
@@ -180,10 +218,18 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
   // an account. Reopen the sheet and finish the claim rather than making them
   // type the code again. Inert unless the feature is on and a stash exists.
   const [resumeReferral, setResumeReferral] = useState<PendingReferralClaim | null>(null);
+  const [resumeAppleCode, setResumeAppleCode] = useState<string | null>(null);
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
     void (async () => {
+      const appleCode = await loadPendingAppleOfferCode();
+      if (cancelled) return;
+      if (appleCode) {
+        setResumeAppleCode(appleCode);
+        setPromoSheetVisible(true);
+        return;
+      }
       if (!(await isReferralEnabled())) return;
       const pending = await loadPendingReferralClaim();
       if (!pending || cancelled) return;
@@ -214,15 +260,19 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
     },
   });
 
-  const handlePromoRedeemed = () => {
+  const handlePromoRedeemed = (kind?: 'apple') => {
     setPromoSheetVisible(false);
     setResumeReferral(null);
+    setResumeAppleCode(null);
 
     // Show a loading screen immediately — never leave the user staring at the
     // paywall after they just paid. Poll until the entitlement flips active
     // (the server may need a few seconds to process the Apple notification or
     // drain the pending-notification queue). The effect below calls
     // completeOnboarding the moment hasPremiumAccess becomes true.
+    redeemFinishingUntil = Date.now() + REDEEM_FINISH_WINDOW_MS;
+    redeemReloadArmed = true;
+    ownsRedeemLoop.current = true;
     setSyncingSubscription(true);
 
     void (async () => {
@@ -233,9 +283,25 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
       await refreshUserState().catch(() => {});
 
       const POLL_INTERVALS_MS = [0, 2000, 4000, 6000, 10000];
+      // Restore shares the per-user billing rate limit with signup's own
+      // verification; stop once the server has refused this subscription twice.
+      let appleRefusals = 0;
       for (const ms of POLL_INTERVALS_MS) {
         if (ms > 0) await new Promise<void>((r) => setTimeout(r, ms));
         try {
+          if (kind === 'apple') {
+            // An App Store Connect offer code has no invite to reconcile; only
+            // a device restore can link its subscription. The navPhase remount
+            // replaces this instance once access lands; stop restoring then.
+            if (!mountedRef.current || hasPremiumAccessRef.current) return;
+            if (ms === 0) continue;
+            const restored = await restorePurchasesViaStoreKit().catch(() => null);
+            if (restored?.ok) await refreshUserState().catch(() => {});
+            else if (restored && restored.reason === 'sync_failed') appleRefusals += 1;
+            if (hasPremiumAccessRef.current) return;
+            if (appleRefusals >= 2) break;
+            continue;
+          }
           const ok = await reconcileReferralPurchase();
           if (ok) {
             await refreshUserState().catch(() => {});
@@ -245,6 +311,8 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
       }
       // All retries exhausted: surface a fallback message so the user is not
       // silently stuck.
+      if (!mountedRef.current) return;
+      redeemFinishingUntil = 0;
       setSyncingSubscription(false);
     })();
   };
@@ -290,6 +358,47 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
       completeOnboarding({ requireUser: true }).catch(() => {});
     }
   }, [hasPremiumAccess, session, completeOnboarding]);
+
+  // Still mounted after onboarding completed with access: RouteGuard's
+  // replace('/(tabs)') was swallowed (the post-OAuth navigation state it
+  // documents). Try the full reset signup.tsx uses; right after a redemption,
+  // where even that has been observed to drop, fall back to a reload — cold
+  // start routes a subscribed, onboarded user straight to tabs. Unmounting
+  // (i.e. navigation worked) cancels both.
+  useEffect(() => {
+    if (!hasPremiumAccess || !onboardingComplete || !session) return;
+    if (navigatedToSignup.current) return;
+    const resetTimer = setTimeout(() => {
+      if (navigatedToSignup.current || !navigation.isFocused()) return;
+      const root = navigation.getParent() ?? navigation;
+      try {
+        root.dispatch(CommonActions.reset({ index: 0, routes: [{ name: '(tabs)' }] }));
+      } catch {
+        router.replace('/(tabs)' as any);
+      }
+    }, STUCK_RESET_MS);
+    const reloadTimer = setTimeout(() => {
+      if (!redeemReloadArmed || navigatedToSignup.current || !navigation.isFocused()) return;
+      redeemReloadArmed = false;
+      redeemFinishingUntil = 0;
+      reloadApp();
+    }, STUCK_RELOAD_MS);
+    return () => {
+      clearTimeout(resetTimer);
+      clearTimeout(reloadTimer);
+    };
+  }, [hasPremiumAccess, onboardingComplete, session, navigation, router]);
+
+  // A remounted instance inherits the overlay (see redeemFinishingUntil) but
+  // not the loop that ends it, so it ends it itself at the window's close.
+  useEffect(() => {
+    if (syncingSubscription !== true || hasPremiumAccess || ownsRedeemLoop.current) return;
+    const t = setTimeout(() => {
+      redeemFinishingUntil = 0;
+      setSyncingSubscription(false);
+    }, Math.max(0, redeemFinishingUntil - Date.now()));
+    return () => clearTimeout(t);
+  }, [syncingSubscription, hasPremiumAccess]);
 
   const acquireLock = (): boolean => {
     const now = Date.now();
@@ -556,11 +665,13 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
           onClose={() => {
             setPromoSheetVisible(false);
             setResumeReferral(null);
+            setResumeAppleCode(null);
           }}
           onRedeemed={handlePromoRedeemed}
           onValidatedPreAuth={handlePromoValidatedPreAuth}
           onReferralPreAuth={navigateToSignupForReferral}
           resumeReferral={resumeReferral}
+          resumeAppleCode={resumeAppleCode}
         />
     </SafeAreaView>
   );

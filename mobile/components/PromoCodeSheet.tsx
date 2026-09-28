@@ -25,7 +25,9 @@ import {
 } from '@/lib/promo-codes';
 import { savePendingPromoCode } from '@/lib/promo-code-state';
 import {
+  clearPendingAppleOfferCode,
   clearPendingReferralClaim,
+  savePendingAppleOfferCode,
   savePendingReferralClaim,
   type PendingReferralClaim,
 } from '@/lib/referral-claim-state';
@@ -33,9 +35,11 @@ import {
   claimReferralCode,
   isReferralEnabled,
   latestStoreKitPurchaseAt,
+  looksLikeAppleOfferCode,
   looksLikeOfferCode,
   presentAppleOfferCodeSheet,
   reconcileReferralPurchase,
+  recognizeReferralCode,
   watchStoreKitPurchases,
   type ReferralCadence,
   type ReferralClaimErrorCode,
@@ -99,6 +103,9 @@ const COPY = {
   referralUnavailable: 'This offer is temporarily unavailable. Please try again later.',
   referralSelfShare: 'You cannot use your own invite.',
   referralAlreadyReceived: 'This account has already used a referral offer.',
+  // --- App Store Connect offer code path (HUMAN INPUT NEEDED: placeholder) ---
+  appleRedeemInstructions: (canCopy: boolean) =>
+    `${canCopy ? 'Tap the code to copy it, then tap Continue' : 'Tap Continue'} to open Apple's Redeem Code screen and enter it there.`,
 };
 
 /** Which pane of the sheet is showing. Entry is the only creator-path pane. */
@@ -126,8 +133,11 @@ function referralErrorCopy(code: ReferralClaimErrorCode): string {
 type PromoCodeSheetProps = {
   visible: boolean;
   onClose: () => void;
-  /** Signed-in path: the code was redeemed server-side; refresh state + route. */
-  onRedeemed: () => void;
+  /**
+   * Signed-in path: the code was redeemed; refresh state + route. 'apple' means
+   * an App Store Connect offer code, which only a device restore can link.
+   */
+  onRedeemed: (kind?: 'apple') => void;
   /** Pre-auth path: the code was validated and stashed; continue to signup. */
   onValidatedPreAuth: (validated: ValidatedPromoCode) => void;
   /**
@@ -142,6 +152,11 @@ type PromoCodeSheetProps = {
    * referral claim. Sends the sheet straight to the claim step.
    */
   resumeReferral?: PendingReferralClaim | null;
+  /**
+   * Set when the paywall reopens the sheet after signup with an App Store
+   * Connect offer code entered pre-auth. Sends the sheet straight to redeem.
+   */
+  resumeAppleCode?: string | null;
 };
 
 export function PromoCodeSheet({
@@ -151,6 +166,7 @@ export function PromoCodeSheet({
   onValidatedPreAuth,
   onReferralPreAuth,
   resumeReferral,
+  resumeAppleCode,
 }: PromoCodeSheetProps) {
   const { session } = useAuth();
   const [code, setCode] = useState('');
@@ -161,7 +177,11 @@ export function PromoCodeSheet({
   // Kept so the redeem copy can name the actual period the invitee bought,
   // rather than a generic one.
   const [issuedCadence, setIssuedCadence] = useState<ReferralCadence>('monthly');
+  // 'apple': the redeem pane is showing a code this app does not own; Apple
+  // validates it inside its own sheet.
+  const [redeemKind, setRedeemKind] = useState<'referral' | 'apple'>('referral');
   const [checkingPurchase, setCheckingPurchase] = useState(false);
+  const dismissedWhileChecking = useRef(false);
 
   // Resolved once, not per render: an older binary has no clipboard module, in
   // which case the copy must not promise a tap that does nothing.
@@ -204,11 +224,20 @@ export function PromoCodeSheet({
     setError('');
     setStep('entry');
     setIssuedCode('');
+    setRedeemKind('referral');
     setCheckingPurchase(false);
   };
 
   const handleClose = () => {
     if (busy) return;
+    reset();
+    onClose();
+  };
+
+  // Apple reports nothing when its sheet is cancelled, so the purchase check
+  // keeps running after this; a late redemption still reaches onRedeemed.
+  const handleDismissWhileChecking = () => {
+    dismissedWhileChecking.current = true;
     reset();
     onClose();
   };
@@ -224,6 +253,65 @@ export function PromoCodeSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, resumeReferral, session]);
 
+  const resumeAppleStarted = useRef(false);
+  useEffect(() => {
+    if (!visible || !resumeAppleCode || !session || resumeAppleStarted.current) return;
+    resumeAppleStarted.current = true;
+    void clearPendingAppleOfferCode();
+    showAppleRedeem(resumeAppleCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, resumeAppleCode, session]);
+
+  /** Hand a code this app does not own to Apple's redemption sheet. */
+  const showAppleRedeem = (appleCode: string) => {
+    setBusy(false);
+    setRedeemKind('apple');
+    setIssuedCode(appleCode);
+    setStep('redeem');
+    void copyText(appleCode);
+  };
+
+  /**
+   * Creator lookup missed. Referral codes go to the cadence picker; anything
+   * else that could be an App Store Connect offer code goes to Apple's sheet.
+   */
+  const routeUnownedCode = async (trimmed: string) => {
+    const referralOn =
+      looksLikeOfferCode(trimmed) &&
+      (session || onReferralPreAuth) &&
+      (await isReferralEnabled());
+    if (referralOn) {
+      const kind = await recognizeReferralCode(trimmed);
+      // An unanswered check falls back to the referral path, which is what
+      // every referral-shaped code did before this check existed.
+      if (kind === 'referral' || kind === 'error') {
+        setBusy(false);
+        // The invitee picks a plan before redemption, and is always issued a
+        // code for the current live SKU for that cadence (PRD 10.5.4).
+        trackReferralCodeRecognized({ has_account: !!session });
+        setStep('cadence');
+        return;
+      }
+    }
+
+    if (!looksLikeAppleOfferCode(trimmed) || (!session && !onReferralPreAuth)) {
+      setError(COPY.invalid);
+      setBusy(false);
+      return;
+    }
+
+    // No account yet: redeeming starts the subscription, which has to attach
+    // to an account, so sign up first and resume from the paywall.
+    if (!session) {
+      await savePendingAppleOfferCode(trimmed);
+      reset();
+      onReferralPreAuth?.();
+      return;
+    }
+
+    showAppleRedeem(trimmed);
+  };
+
   const handleSubmit = async () => {
     const trimmed = code.trim();
     if (!trimmed || busy) return;
@@ -238,20 +326,11 @@ export function PromoCodeSheet({
       // table owns the code rather than by inspecting the string — creator
       // codes have no reserved format, so no prefix or length test would be
       // safe.
-      if (
-        validated.reason === 'invalid' &&
-        looksLikeOfferCode(trimmed) &&
-        (session || onReferralPreAuth) &&
-        (await isReferralEnabled())
-      ) {
-        setBusy(false);
-        // The invitee picks a plan before redemption, and is always issued a
-        // code for the current live SKU for that cadence (PRD 10.5.4).
-        trackReferralCodeRecognized({ has_account: !!session });
-        setStep('cadence');
+      if (validated.reason === 'invalid') {
+        await routeUnownedCode(trimmed);
         return;
       }
-      setError(validated.reason === 'invalid' ? COPY.invalid : COPY.network);
+      setError(COPY.network);
       setBusy(false);
       return;
     }
@@ -351,7 +430,8 @@ export function PromoCodeSheet({
   const handlePresentRedemption = async () => {
     if (busy) return;
     setBusy(true);
-    trackReferralOfferSheetPresented({ cadence: issuedCadence });
+    const isReferral = redeemKind === 'referral';
+    if (isReferral) trackReferralOfferSheetPresented({ cadence: issuedCadence });
 
     // presentCodeRedemptionSheetIOS often resolves when the sheet *opens*,
     // not when it closes. Confirm as soon as StoreKit sees a new purchase or
@@ -365,24 +445,42 @@ export function PromoCodeSheet({
       setBusy(false);
       setCheckingPurchase(false);
       reset();
-      onRedeemed();
+      onRedeemed(isReferral ? undefined : 'apple');
     };
+    // Waiting only helps while StoreKit has not surfaced the purchase yet. Once
+    // restore reaches the server and is refused (e.g. this Apple ID's
+    // subscription belongs to another account), retrying just burns the
+    // per-user billing rate limit that signup's own verification also uses.
+    let serverRefusals = 0;
+    const APPLE_MAX_SERVER_REFUSALS = 2;
     const confirmIfPurchased = async (): Promise<boolean> => {
       if (confirmed) return true;
       if ((await latestStoreKitPurchaseAt()) > beforeAt) {
         confirmed = true;
         return true;
       }
+      if (!isReferral && serverRefusals >= APPLE_MAX_SERVER_REFUSALS) return false;
       const restored = await restorePurchasesViaStoreKit().catch(() => null);
       if (restored?.ok) {
         confirmed = true;
         return true;
       }
-      if (await reconcileReferralPurchase().catch(() => false)) {
+      if (restored && !restored.ok && restored.reason === 'sync_failed') serverRefusals += 1;
+      if (isReferral && (await reconcileReferralPurchase().catch(() => false))) {
         confirmed = true;
         return true;
       }
       return false;
+    };
+    // The retry loop and the foreground listener can overlap; one restore at a time.
+    let inFlight: Promise<boolean> | null = null;
+    const confirmOnce = (): Promise<boolean> => {
+      if (!inFlight) {
+        inFlight = confirmIfPurchased().finally(() => {
+          inFlight = null;
+        });
+      }
+      return inFlight;
     };
 
     const stopWatch = watchStoreKitPurchases(() => {
@@ -396,27 +494,36 @@ export function PromoCodeSheet({
         return;
       }
       if (!sawBackground) return;
-      setCheckingPurchase(true);
-      void confirmIfPurchased().then((ok) => {
+      if (!advanced && !dismissedWhileChecking.current) setCheckingPurchase(true);
+      void confirmOnce().then((ok) => {
         if (ok) advance();
       });
     });
 
+    dismissedWhileChecking.current = false;
     await presentAppleOfferCodeSheet();
     setCheckingPurchase(true);
-    if (await confirmIfPurchased()) {
+    if (await confirmOnce()) {
       appSub.remove();
       stopWatch();
-      trackReferralOfferSheetResult({ confirmed: true, cadence: issuedCadence });
+      if (isReferral) trackReferralOfferSheetResult({ confirmed: true, cadence: issuedCadence });
       advance();
       return;
     }
 
-    const RETRY_DELAYS_MS = [2000, 4000, 8000];
+    // An App Store Connect code has no invite for the server to reconcile, so
+    // the device restore is the only link. StoreKit can surface the redeemed
+    // subscription a minute or more after Apple's sheet closes (observed in
+    // sandbox), and the sheet itself is often still open during the first tries.
+    const RETRY_DELAYS_MS = isReferral
+      ? [2000, 4000, 8000]
+      : [2000, 3000, 5000, 5000, 5000, 10000, 10000, 10000, 15000, 15000, 20000, 20000];
     for (const ms of RETRY_DELAYS_MS) {
       if (advanced) break;
+      if (!isReferral && serverRefusals >= APPLE_MAX_SERVER_REFUSALS) break;
       await new Promise<void>((r) => setTimeout(r, ms));
-      if (await confirmIfPurchased()) {
+      if (advanced) break;
+      if (await confirmOnce()) {
         advance();
         break;
       }
@@ -427,7 +534,7 @@ export function PromoCodeSheet({
       setBusy(false);
       setCheckingPurchase(false);
     }
-    trackReferralOfferSheetResult({ confirmed, cadence: issuedCadence });
+    if (isReferral) trackReferralOfferSheetResult({ confirmed, cadence: issuedCadence });
   };
 
   return (
@@ -478,6 +585,15 @@ export function PromoCodeSheet({
                   <ActivityIndicator size="large" color={colors.accentLight} style={styles.spinner} />
                   <Text style={styles.title}>{COPY.redeemCheckingTitle}</Text>
                   <Text style={styles.instructions}>{COPY.redeemCheckingBody}</Text>
+                  {redeemKind === 'apple' ? (
+                    <TouchableOpacity
+                      style={styles.cancelBtn}
+                      onPress={handleDismissWhileChecking}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.cancelText}>{COPY.redeemDone}</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </>
               ) : (
               <>
@@ -513,7 +629,9 @@ export function PromoCodeSheet({
                 </TouchableOpacity>
 
                 <Text style={styles.instructions}>
-                  {COPY.redeemInstructions(issuedCadence, canCopyCode)}
+                  {redeemKind === 'apple'
+                    ? COPY.appleRedeemInstructions(canCopyCode)
+                    : COPY.redeemInstructions(issuedCadence, canCopyCode)}
                 </Text>
 
                 <TouchableOpacity

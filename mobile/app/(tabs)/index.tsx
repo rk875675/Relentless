@@ -49,6 +49,7 @@ import {
   recordReferralPopupShown,
   takeLessonCompletedForReferral,
 } from '@/lib/referral-popup-state';
+import { trackReferralBadgeTapped } from '@/lib/referral-analytics';
 import {
   trackWodViewed,
   trackWodStarted,
@@ -1326,6 +1327,7 @@ export default function HomeScreen() {
                 style={styles.referralBadgeOverlayInner}
                 onPress={() => {
                   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  trackReferralBadgeTapped({ badge_text: referralBadgeText });
                   router.push('/referral' as any);
                 }}
               >

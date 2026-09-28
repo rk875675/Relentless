@@ -1,5 +1,9 @@
 import { createServiceClient } from "../_shared/supabase.ts";
-import { capturePostHogEvent, entitlementPersonSet } from "../_shared/posthog.ts";
+import {
+  capturePostHogEvent,
+  entitlementPersonSet,
+  isSandboxEnvironment,
+} from "../_shared/posthog.ts";
 import {
   corsHeaders,
   generateRequestId,
@@ -213,6 +217,8 @@ Deno.serve(async (req) => {
             new_status: "expired",
             product_id: resolved.productId ?? row.product_id ?? null,
             original_transaction_id: txId,
+            environment: resolved.environment,
+            is_sandbox: isSandboxEnvironment(resolved.environment),
             $set: entitlementPersonSet("expired"),
           });
         }
@@ -303,6 +309,7 @@ type ResolvedAppleData = {
   newStatus: "active" | "trial" | "expired";
   productId: string | null;
   expiresAt: string | null;
+  environment: string;
 };
 
 type AppleSubscriptionResponse = {
@@ -339,8 +346,10 @@ async function resolveFromApple(
     }
   };
 
+  let environment = "Production";
   let data = await tryFetch(APPLE_PRODUCTION_URL);
   if (!data) {
+    environment = "Sandbox";
     data = await tryFetch(APPLE_SANDBOX_URL);
   }
   if (!data) return null;
@@ -385,6 +394,9 @@ async function resolveFromApple(
     newStatus: isActive ? (isTrial ? "trial" : "active") : "expired",
     productId: payload?.productId ?? null,
     expiresAt,
+    // Which Apple host answered. Apple gives no other way to tell a sandbox
+    // account apart here, and analytics must not count sandbox rows.
+    environment,
   };
 }
 

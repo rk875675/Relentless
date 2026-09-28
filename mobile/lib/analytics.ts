@@ -53,6 +53,10 @@ export const analytics = {
   },
 
   capture(event: string, properties?: Record<string, unknown>): void {
+    // Mirrors the server gate in supabase/functions/_shared/posthog.ts: a
+    // sandbox purchase is our own test traffic and must not land in the same
+    // project as real revenue.
+    if (properties?.is_sandbox === true) return;
     enqueueOrRun(() => {
       if (!client) return;
       client!.capture(event, properties as Parameters<PostHog['capture']>[1]);

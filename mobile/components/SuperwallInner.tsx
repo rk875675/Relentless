@@ -95,6 +95,61 @@ function extractSignedTransactionInfo(params: Record<string, unknown>): string |
   return read(params);
 }
 
+function isSandboxEnvironmentName(value: unknown): boolean | null {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  const name = value.toLowerCase();
+  if (name === 'sandbox' || name === 'xcode' || name === 'localtesting') return true;
+  if (name === 'production') return false;
+  return null;
+}
+
+/**
+ * TestFlight and Xcode purchases are sandbox, and there is one PostHog project,
+ * so an untagged sandbox purchase counts as revenue in the same funnels as a
+ * real one. Superwall carries the flag itself (`sw.events_rep.isSandbox`), and
+ * Apple's signed transaction names its environment, but which one is present
+ * varies by SDK version — so check the payload first and fall back to the JWS.
+ * Returns null when neither is readable: we tag nothing rather than guess.
+ */
+function extractIsSandbox(
+  params: Record<string, unknown>,
+  signedTx: string | undefined,
+): boolean | null {
+  const seen = new Set<unknown>();
+  const read = (v: unknown): boolean | null => {
+    if (!v || typeof v !== 'object' || seen.has(v)) return null;
+    seen.add(v);
+    const obj = v as Record<string, unknown>;
+    for (const key of ['isSandbox', 'is_sandbox', 'sandbox']) {
+      if (typeof obj[key] === 'boolean') return obj[key] as boolean;
+    }
+    for (const key of ['environment', 'storeEnvironment', 'appStoreEnvironment']) {
+      const named = isSandboxEnvironmentName(obj[key]);
+      if (named !== null) return named;
+    }
+    for (const nested of [obj.transaction, obj.storeTransaction, obj.restoreType, obj.event, obj.params, obj.product]) {
+      const found = read(nested);
+      if (found !== null) return found;
+    }
+    return null;
+  };
+
+  const fromPayload = read(params);
+  if (fromPayload !== null) return fromPayload;
+
+  if (!signedTx) return null;
+  try {
+    const segment = signedTx.split('.')[1];
+    if (!segment) return null;
+    const base64 = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const { environment } = JSON.parse(atob(padded)) as { environment?: unknown };
+    return isSandboxEnvironmentName(environment);
+  } catch {
+    return null;
+  }
+}
+
 function SuperwallIdentitySync() {
   const { session } = useAuth();
   const { identify, signOut: superwallSignOut } = useUser();
@@ -230,18 +285,27 @@ function SuperwallPurchaseSync() {
           console.log('[Superwall][purchaseMissingOriginalTransactionId]');
         }
         if (__DEV__ && trustedAppleSheetPurchase) {
-          console.log('[Superwall][purchase]', { hasOid: Boolean(oid), hasSignedTx: Boolean(signedTx) });
+          console.log('[Superwall][purchase]', {
+            hasOid: Boolean(oid),
+            hasSignedTx: Boolean(signedTx),
+            // null here means we could not read the environment, so the event
+            // ships untagged and would land in production funnels.
+            isSandbox: extractIsSandbox(merged, signedTx),
+          });
         }
         if (trustedAppleSheetPurchase) {
           sessionPurchasedRef.current = true;
           optimisticGrantAccess();
           emitTrustedPaywallPurchase({ originalTransactionId: oid, signedTransactionInfo: signedTx });
+          const isSandbox = extractIsSandbox(merged, signedTx);
+          const sandboxProps = isSandbox === null ? {} : { is_sandbox: isSandbox };
           if (name === 'transactionComplete') {
             const product = extractPurchaseProductProps(merged);
             void loadLocalAttribution().then((attribution) => {
               trackPurchaseCompleted({
                 source: 'superwall',
                 original_transaction_id: oid ?? null,
+                ...sandboxProps,
                 ...product,
                 ...attribution,
               });
@@ -252,6 +316,7 @@ function SuperwallPurchaseSync() {
               trackPurchaseRestored({
                 source: 'superwall',
                 original_transaction_id: oid ?? null,
+                ...sandboxProps,
                 ...product,
                 ...attribution,
               });

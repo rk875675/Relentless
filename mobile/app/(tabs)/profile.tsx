@@ -25,7 +25,14 @@ import { useAuth } from '@/lib/auth-context';
 import { apiFetch } from '@/lib/api';
 import { getCached, setCached, bustCache } from '@/lib/api-cache';
 import { colors, spacing, TAB_BAR_CLEARANCE } from '@/lib/theme';
-import { MAX_SPORT_LEN, OTHER_SENTINEL, PRESET_SPORTS, isPresetSport } from '@/lib/sport-presets';
+import {
+  MAX_OTHER_SPORT_LEN,
+  OTHER_SENTINEL,
+  PRESET_SPORTS,
+  canSaveSports,
+  joinSports,
+  parseSports,
+} from '@/lib/sport-presets';
 import { SUPERWALL_ENABLED } from '@/lib/superwall-config';
 import { restorePurchasesViaStoreKit } from '@/lib/iap-restore';
 import { isReferralEnabled } from '@/lib/referral';
@@ -89,7 +96,7 @@ export default function ProfileScreen() {
   const [totalCompletions, setTotalCompletions] = useState<number | null>(null);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [sportPickVisible, setSportPickVisible] = useState(false);
-  const [sportPickSelected, setSportPickSelected] = useState<string | null>(null);
+  const [sportPickSelected, setSportPickSelected] = useState<string[]>([]);
   const [sportPickOther, setSportPickOther] = useState('');
   const [pendingDate, setPendingDate] = useState<Date>(new Date());
   const [dateSaving, setDateSaving] = useState(false);
@@ -139,25 +146,15 @@ export default function ProfileScreen() {
   );
 
   const openSportPicker = useCallback(() => {
-    const s = sport?.trim() ?? '';
-    if (s && isPresetSport(s)) {
-      setSportPickSelected(s);
-      setSportPickOther('');
-    } else if (s) {
-      setSportPickSelected(OTHER_SENTINEL);
-      setSportPickOther(s.slice(0, MAX_SPORT_LEN));
-    } else {
-      setSportPickSelected(null);
-      setSportPickOther('');
-    }
+    const parsed = parseSports(sport);
+    setSportPickSelected(parsed.selected);
+    setSportPickOther(parsed.other);
     setSportPickVisible(true);
   }, [sport]);
 
   const persistSport = useCallback(async () => {
-    const isOther = sportPickSelected === OTHER_SENTINEL;
-    const resolved = isOther ? sportPickOther.trim() : sportPickSelected?.trim() ?? '';
-    if (!resolved || resolved.length > MAX_SPORT_LEN) return;
-    if (isOther && resolved.length < 2) return;
+    if (!canSaveSports(sportPickSelected, sportPickOther)) return;
+    const resolved = joinSports(sportPickSelected, sportPickOther);
     setSportSaving(true);
     try {
       const err = await updateSport(resolved);
@@ -396,17 +393,13 @@ export default function ProfileScreen() {
   const email = session?.user?.email ?? '';
   const emailLocal = email.includes('@') ? email.split('@')[0] : '';
   const heroDisplayName = displayName?.trim() || emailLocal || 'Account';
-  const heroSportLine = sport?.trim() ?? '';
+  const heroSportLine = (sport ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(' · ');
 
-  const sportResolvedForSave =
-    sportPickSelected === OTHER_SENTINEL
-      ? sportPickOther.trim()
-      : sportPickSelected?.trim() ?? '';
-  const sportPickCanSave =
-    sportPickSelected !== null &&
-    sportResolvedForSave.length > 0 &&
-    sportResolvedForSave.length <= MAX_SPORT_LEN &&
-    (sportPickSelected !== OTHER_SENTINEL || sportPickOther.trim().length >= 2);
+  const sportPickCanSave = canSaveSports(sportPickSelected, sportPickOther);
 
   const daysUntilCompetition = competitionDate
     ? Math.ceil((new Date(competitionDate + 'T00:00:00').getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -753,7 +746,7 @@ export default function ProfileScreen() {
           <View style={styles.sportSheet}>
             <Text style={styles.sportSheetTitle}>{"What's your sport?"}</Text>
             <Text style={styles.sportSheetBody}>
-              Same choices as onboarding. Updates your profile right away.
+              Select all that apply. Updates your profile right away.
             </Text>
             <ScrollView
               style={styles.sportScroll}
@@ -766,19 +759,20 @@ export default function ProfileScreen() {
                     key={opt}
                     style={[
                       styles.trackOptionBtn,
-                      sportPickSelected === opt && styles.trackOptionBtnActive,
+                      sportPickSelected.includes(opt) && styles.trackOptionBtnActive,
                     ]}
                     disabled={sportSaving}
                     onPress={() => {
                       Haptics.selectionAsync();
-                      setSportPickSelected(opt);
-                      if (opt !== OTHER_SENTINEL) setSportPickOther('');
+                      setSportPickSelected((prev) =>
+                        prev.includes(opt) ? prev.filter((s) => s !== opt) : [...prev, opt],
+                      );
                     }}
                   >
                     <Text
                       style={[
                         styles.trackOptionText,
-                        sportPickSelected === opt && styles.trackOptionTextActive,
+                        sportPickSelected.includes(opt) && styles.trackOptionTextActive,
                       ]}
                     >
                       {opt}
@@ -786,14 +780,14 @@ export default function ProfileScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-              {sportPickSelected === OTHER_SENTINEL ? (
+              {sportPickSelected.includes(OTHER_SENTINEL) ? (
                 <TextInput
                   style={styles.sportOtherInput}
                   placeholder="Type your sport"
                   placeholderTextColor={colors.textMuted}
                   value={sportPickOther}
                   onChangeText={setSportPickOther}
-                  maxLength={MAX_SPORT_LEN}
+                  maxLength={MAX_OTHER_SPORT_LEN}
                   autoCapitalize="words"
                   autoCorrect
                   editable={!sportSaving}
@@ -1003,7 +997,9 @@ function ProfileRow({
       {chevron ? (
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       ) : (
-        <Text style={styles.rowValue}>{value}</Text>
+        <Text style={styles.rowValue} numberOfLines={1}>
+          {value}
+        </Text>
       )}
     </TouchableOpacity>
   );
@@ -1121,6 +1117,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     letterSpacing: 0.5,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xl,
   },
   userSportMuted: {
     fontSize: 13,
@@ -1312,8 +1310,11 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   rowValue: {
+    flexShrink: 1,
+    marginLeft: spacing.md,
     fontSize: 14,
     color: colors.textMuted,
+    textAlign: 'right',
   },
 
   trackBackdrop: {

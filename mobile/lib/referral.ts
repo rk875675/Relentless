@@ -96,6 +96,44 @@ export function looksLikeOfferCode(code: string): boolean {
   return /^[A-Za-z0-9]{6,24}$/.test(code.trim());
 }
 
+/**
+ * Shape filter for handing an unrecognized string to Apple's redemption
+ * sheet: App Store Connect custom codes are alphanumeric, up to 64 chars.
+ */
+export function looksLikeAppleOfferCode(code: string): boolean {
+  return /^[A-Za-z0-9]{1,64}$/.test(code.trim());
+}
+
+/**
+ * Pre-auth, read-only: does this string belong to the referral system? Called
+ * only after the creator lookup missed. Anything that is not a referral code
+ * goes to Apple's own sheet instead of the cadence picker.
+ */
+export async function recognizeReferralCode(
+  code: string,
+): Promise<'referral' | 'other' | 'error'> {
+  const baseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+  const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+  if (!baseUrl || !anonKey) return 'error';
+
+  try {
+    const res = await fetch(`${baseUrl}/functions/v1/referral/recognize`, {
+      method: 'POST',
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ code: code.trim() }),
+    });
+    if (!res.ok) return 'error';
+    const json = await res.json();
+    return json?.data?.referral === true ? 'referral' : 'other';
+  } catch {
+    return 'error';
+  }
+}
+
 export async function claimReferralCode(
   code: string,
   cadence: ReferralCadence,

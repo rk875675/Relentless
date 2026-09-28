@@ -872,13 +872,23 @@ export default function LessonPlayerScreen() {
     return () => stopAllTimers();
   }, [stopAllTimers]);
 
+  // Same pause as leaving the app: audio and timers stop, then the existing
+  // "Paused" overlay. Used by OS background and the in-lesson pause button.
+  const enterOsStylePause = useCallback(() => {
+    if (!sessionActive.current || phaseRef.current !== 'playing') return;
+    backgroundPauseBeganMsRef.current = Date.now();
+    try { player.pause(); } catch { /* noop */ }
+    try { ambientPlayer.pause(); } catch { /* noop */ }
+    stopAllTimers({ preserveAudioFallbackForOsPause: true });
+    setPhase('paused_background');
+  }, [player, ambientPlayer, stopAllTimers]);
+
   // -----------------------------------------------------------------------
   // OS background: pause audio/timers; resume from same position (PRD §8.5).
   // -----------------------------------------------------------------------
   useEffect(() => {
     const handleAppState = (next: AppStateStatus) => {
       if (next !== 'active' && sessionActive.current && phaseRef.current === 'playing') {
-        backgroundPauseBeganMsRef.current = Date.now();
         const l = lessonRef.current;
         if (l) {
           trackLessonBackgrounded({
@@ -890,15 +900,12 @@ export default function LessonPlayerScreen() {
               : 0,
           });
         }
-        try { player.pause(); } catch { /* noop */ }
-        try { ambientPlayer.pause(); } catch { /* noop */ }
-        stopAllTimers({ preserveAudioFallbackForOsPause: true });
-        setPhase('paused_background');
+        enterOsStylePause();
       }
     };
     const sub = AppState.addEventListener('change', handleAppState);
     return () => sub.remove();
-  }, [player, ambientPlayer, stopAllTimers]);
+  }, [enterOsStylePause]);
 
   // -----------------------------------------------------------------------
   // Audio cue bars — each bar independently oscillates scaleY to random
@@ -2542,7 +2549,19 @@ export default function LessonPlayerScreen() {
               <View />
             )}
           </View>
-          <View style={{ width: 28 }} />
+          {phase === 'playing' ? (
+            <TouchableOpacity
+              onPress={enterOsStylePause}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Pause lesson"
+              style={styles.pauseBtn}
+            >
+              <Ionicons name="pause" size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 28 }} />
+          )}
         </View>
 
         {phase === 'loading' && <LessonReadySkeleton />}
@@ -4286,6 +4305,12 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
     paddingHorizontal: 4,
+  },
+  pauseBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   catBadge: {
     borderWidth: 1,

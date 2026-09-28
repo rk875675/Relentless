@@ -27,6 +27,7 @@ import {
 // ---------------------------------------------------------------------------
 // Referral offer — teammate share (PRD 10.5).
 //
+//   POST /referral/recognize       — pre-auth: is this string a referral code?
 //   GET  /referral/eligibility     — may this user share right now?
 //   POST /referral/invites         — return the sharer's one share token.
 //   POST /referral/claim           — invitee binds a code and gets the one to redeem.
@@ -92,6 +93,11 @@ Deno.serve(async (req) => {
         return errorResponse(405, "VALIDATION_ERROR", "Method not allowed", requestId);
       }
       return handleConfig(req, requestId);
+    case "recognize":
+      if (req.method !== "POST") {
+        return errorResponse(405, "VALIDATION_ERROR", "Method not allowed", requestId);
+      }
+      return handleRecognize(req, requestId);
     case "eligibility":
       if (req.method !== "GET") {
         return errorResponse(405, "VALIDATION_ERROR", "Method not allowed", requestId);
@@ -166,6 +172,84 @@ async function handleConfig(req: Request, requestId: string): Promise<Response> 
 
   configCache = { enabled: flag.config.enabled, at: now };
   return successResponse({ enabled: flag.config.enabled }, requestId);
+}
+
+// ---------------------------------------------------------------------------
+// POST /referral/recognize — pre-auth, read-only
+//
+// Tells the code sheet whether a string belongs to the referral system before
+// it asks for a cadence, so anything else can go to Apple's own redemption
+// sheet (App Store Connect offer codes). Same recognition rule as
+// claim_referral_code: a share token, or an offer code bound to an invite.
+// Answers one boolean; binds, assigns and logs nothing.
+// ---------------------------------------------------------------------------
+
+const RecognizeSchema = z.object({
+  code: z.string().trim().min(1).max(64),
+}).strict();
+
+async function handleRecognize(req: Request, requestId: string): Promise<Response> {
+  const rl = await checkRateLimit(`referral-rec-ip:${clientIp(req)}`, requestId, "billing");
+  if (!rl.ok) return rl.response;
+
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return errorResponse(400, "VALIDATION_ERROR", "Invalid JSON body", requestId);
+  }
+  const parsed = RecognizeSchema.safeParse(raw);
+  if (!parsed.success) {
+    return errorResponse(
+      400,
+      "VALIDATION_ERROR",
+      parsed.error.issues[0]?.message ?? "Invalid request body",
+      requestId,
+    );
+  }
+
+  const supabase = createServiceClient();
+  const flag = await loadFlag(supabase, requestId);
+  if (!flag.ok) return flag.response;
+  if (!flag.config.enabled) return successResponse({ referral: false }, requestId);
+
+  // % _ \ are ilike metacharacters; escape so the match stays exact.
+  const escaped = parsed.data.code.replace(/[\\%_]/g, (m) => `\\${m}`);
+
+  const { data: token, error: tokenErr } = await supabase
+    .from("referral_share_tokens")
+    .select("user_id")
+    .ilike("code", escaped)
+    .limit(1)
+    .maybeSingle();
+  if (tokenErr) {
+    console.error("[referral/recognize] token lookup failed", { requestId, error: tokenErr.message });
+    return errorResponse(500, "INTERNAL_ERROR", "Could not check code", requestId);
+  }
+  if (token) return successResponse({ referral: true }, requestId);
+
+  const { data: offer, error: offerErr } = await supabase
+    .from("referral_offer_codes")
+    .select("id")
+    .ilike("code", escaped)
+    .limit(1)
+    .maybeSingle();
+  if (offerErr) {
+    console.error("[referral/recognize] code lookup failed", { requestId, error: offerErr.message });
+    return errorResponse(500, "INTERNAL_ERROR", "Could not check code", requestId);
+  }
+  if (!offer) return successResponse({ referral: false }, requestId);
+
+  const { count, error: inviteErr } = await supabase
+    .from("referral_invites")
+    .select("id", { count: "exact", head: true })
+    .or(`code_id.eq.${offer.id},alt_code_id.eq.${offer.id}`);
+  if (inviteErr) {
+    console.error("[referral/recognize] invite lookup failed", { requestId, error: inviteErr.message });
+    return errorResponse(500, "INTERNAL_ERROR", "Could not check code", requestId);
+  }
+
+  return successResponse({ referral: (count ?? 0) > 0 }, requestId);
 }
 
 // ---------------------------------------------------------------------------

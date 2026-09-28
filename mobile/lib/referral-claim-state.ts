@@ -46,3 +46,29 @@ export async function loadPendingReferralClaim(): Promise<PendingReferralClaim |
 export async function clearPendingReferralClaim(): Promise<void> {
   await AsyncStorage.removeItem(PENDING_CLAIM_KEY).catch(() => {});
 }
+
+// Separate key again: an App Store Connect offer code is neither a creator
+// code nor a referral claim, and must not be mistaken for either on resume.
+const PENDING_APPLE_CODE_KEY = '@relentless/pending_apple_offer_code';
+
+/**
+ * An App Store Connect offer code entered on the paywall before the user had
+ * an account. Redeeming it starts the subscription, so it waits until the
+ * account exists and the paywall reopens Apple's sheet with it.
+ */
+export async function savePendingAppleOfferCode(code: string): Promise<void> {
+  await AsyncStorage.setItem(PENDING_APPLE_CODE_KEY, code).catch(() => {});
+}
+
+export async function loadPendingAppleOfferCode(): Promise<string | null> {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_APPLE_CODE_KEY);
+    return raw && raw.length > 0 ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearPendingAppleOfferCode(): Promise<void> {
+  await AsyncStorage.removeItem(PENDING_APPLE_CODE_KEY).catch(() => {});
+}

@@ -15,6 +15,7 @@ import { clearOnboardingProgress } from './onboarding-local-state';
 import { flushPendingGrantJournal } from './pending-grant-journal';
 import { runOnboardingCompletionExtras } from './onboarding-completion-extras';
 import { restorePurchasesViaStoreKit } from './iap-restore';
+import { MAX_SPORT_LEN } from './sport-presets';
 
 /** Google / Apple OAuth pitfalls: see `mobile/docs/AUTH_SOCIAL_SIGNIN.md`. */
 
@@ -872,7 +873,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { session: active } } = await supabase.auth.getSession();
     const userId = active?.user?.id;
     if (!userId) return 'Not authenticated';
-    const trimmed = sportValue?.trim() ? sportValue.trim().slice(0, 80) : null;
+    const trimmed = sportValue?.trim() ? sportValue.trim().slice(0, MAX_SPORT_LEN) : null;
     const { data, error } = await supabase
       .from('profiles')
       .update({ sport: trimmed })

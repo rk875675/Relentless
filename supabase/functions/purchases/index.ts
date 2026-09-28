@@ -14,7 +14,7 @@ import {
 } from "../_shared/idempotency.ts";
 import { verifyAppleJws } from "../_shared/apple_jws.ts";
 import { otidClaimedByOtherUser } from "../_shared/otid_guard.ts";
-import { capturePostHogEvent, entitlementPersonSet } from "../_shared/posthog.ts";
+import { capturePostHogEvent, entitlementPersonSet, isSandboxEnvironment } from "../_shared/posthog.ts";
 import {
   lookupSubscriptionAttribution,
   transactionAnalyticsProperties,
@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
           const directResult = await resolveEntitlementFromVerifiedClientJws(clientSignedTx);
           if (directResult && directResult.entitlementStatus !== "none") {
             resolvedEntitlement = directResult;
-            isSandbox = true;
+            isSandbox = isSandboxFromVerifiedTransaction(clientSignedTx);
             console.warn("[purchases/restore] Used Apple-verified client signedTransactionInfo fallback (Apple API unavailable)", { requestId });
           }
         }
@@ -220,7 +220,7 @@ Deno.serve(async (req) => {
         const directResult = await resolveEntitlementFromVerifiedClientJws(clientSignedTx);
         if (directResult && directResult.entitlementStatus !== "none") {
           resolvedEntitlement = directResult;
-          isSandbox = false;
+          isSandbox = isSandboxFromVerifiedTransaction(clientSignedTx);
           console.warn("[purchases/restore] Used Apple-verified client signedTransactionInfo fallback (Apple API unavailable)", { requestId });
         }
       }
@@ -487,6 +487,7 @@ Deno.serve(async (req) => {
     await capturePostHogEvent(auth.userId, "trial_started", analyticsProps);
   } else {
     await capturePostHogEvent(auth.userId, "$set", {
+      is_sandbox: isSandbox,
       $set: entitlementPersonSet(entitlementStatus),
     });
   }
@@ -801,6 +802,12 @@ function isFreeTrialTransaction(signedTransactionInfo?: string): boolean {
     payload.is_trial_period === true ||
     payload.offerDiscountType?.toUpperCase() === "FREE_TRIAL"
   );
+}
+
+/** Environment claim from a JWS that has already passed signature verification. */
+function isSandboxFromVerifiedTransaction(signedTransactionInfo: string): boolean {
+  const payload = decodeJwtPayload<{ environment?: unknown }>(signedTransactionInfo);
+  return typeof payload?.environment === "string" && isSandboxEnvironment(payload.environment);
 }
 
 function decodeJwtPayload<T>(jwt: string): T | null {

@@ -8,7 +8,9 @@
 //
 // Never attach an issued Apple offer-code string. Share tokens are public.
 
-import { capturePostHogEvent } from "./posthog.ts";
+import { capturePostHogEvent, isSandboxEnvironment } from "./posthog.ts";
+
+export { isSandboxEnvironment };
 
 export const REFERRAL_EVENT = {
   SHARE_CODE_READY: "referral_share_code_ready",
@@ -25,12 +27,6 @@ export const REFERRAL_EVENT = {
 } as const;
 
 const EXPECTED_SKIP = new Set(["trial_not_paid", "no_invite", "no_reward"]);
-
-export function isSandboxEnvironment(environment: string | null | undefined): boolean {
-  if (!environment) return false;
-  const value = environment.toLowerCase();
-  return value === "sandbox" || value === "xcode" || value === "localtesting";
-}
 
 export function referralBaseProps(
   extra: Record<string, unknown> = {},

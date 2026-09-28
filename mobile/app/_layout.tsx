@@ -16,7 +16,7 @@ import { setPendingRecoveryUrl } from '@/lib/recovery-link-store';
 import { setPendingConfirmUrl } from '@/lib/confirm-link-store';
 import { isAuthLinkAlreadyHandled } from '@/lib/auth-link-dedupe';
 import { clearInAppAuthHubEntry, takeInAppAuthHubEntry } from '@/lib/auth-hub-entry';
-import { loadOnboardingProgress } from '@/lib/onboarding-local-state';
+import { clearOnboardingProgress, loadOnboardingProgress } from '@/lib/onboarding-local-state';
 import { prefetchHomeData } from '@/lib/api-cache';
 
 export { ErrorBoundary } from '@/components/AppErrorBoundary';
@@ -34,6 +34,8 @@ LogBox.ignoreLogs([
 ]);
 
 const SPLASH_SAFETY_MS = 4000;
+/** Outlasts the navPhase remount + fade overlay so the stack has settled. */
+const SIGN_OUT_SETTLE_MS = 600;
 
 function firstParam(v: string | string[] | undefined): string | undefined {
   if (v == null) return undefined;
@@ -160,6 +162,32 @@ function RouteGuard() {
       fadeAnim.setValue(1);
     }
   }
+
+  // Signing out from inside the app flips navPhase before the session clears,
+  // and the remounted onboarding stack can land on the paywall and re-save the
+  // resume bookmark signOut already cleared. Once the session is gone, clear it
+  // again and start at welcome. (auth) is skipped: password recovery signs out
+  // on purpose there.
+  const wasInAppRef = useRef(false);
+  const segmentsRef = useRef<string[]>([]);
+  segmentsRef.current = segments as string[];
+  useEffect(() => {
+    if (session && onboardingComplete && hasPremiumAccess) {
+      wasInAppRef.current = true;
+      return;
+    }
+    if (session || loading || !wasInAppRef.current) return;
+    wasInAppRef.current = false;
+    if (segmentsRef.current[0] === '(auth)') return;
+    setTimeout(() => {
+      if (segmentsRef.current[0] === '(auth)') return;
+      void clearOnboardingProgress().then(() => {
+        const [root, sub] = segmentsRef.current;
+        if (root === '(onboarding)' && sub === 'welcome') return;
+        router.replace('/(onboarding)/welcome');
+      });
+    }, SIGN_OUT_SETTLE_MS);
+  }, [session, loading, onboardingComplete, hasPremiumAccess, router]);
 
   useEffect(() => {
     if (!transitioning) return;

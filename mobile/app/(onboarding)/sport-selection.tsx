@@ -16,14 +16,22 @@ import * as Haptics from 'expo-haptics';
 import { ProgressBar } from '@/components/onboarding/ProgressBar';
 import { ONBOARDING_PROGRESS, ONBOARDING_TOTAL_STEPS } from '@/lib/onboarding-progress';
 import { loadOnboardingAnswers, saveOnboardingAnswers } from '@/lib/onboarding-local-state';
-import { MAX_SPORT_LEN, OTHER_SENTINEL, PRESET_SPORTS } from '@/lib/sport-presets';
+import {
+  MAX_OTHER_SPORT_LEN,
+  MAX_SPORT_LEN,
+  OTHER_SENTINEL,
+  PRESET_SPORTS,
+  canSaveSports,
+  joinSports,
+  parseSports,
+} from '@/lib/sport-presets';
 import { colors, spacing } from '@/lib/theme';
 import { useOnboardingPopWithFade } from '@/lib/use-onboarding-pop-with-fade';
 import { trackOnboardingButtonClicked, trackOnboardingOptionSelected } from '@/lib/onboarding-analytics';
 
 export default function SportSelectionScreen() {
   const router = useRouter();
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
   const [otherText, setOtherText] = useState('');
   const fade = useRef(new Animated.Value(1)).current;
   const { shellTranslateX, panHandlers, onPop } = useOnboardingPopWithFade();
@@ -33,31 +41,30 @@ export default function SportSelectionScreen() {
     Animated.timing(fade, { toValue: 1, duration: 380, useNativeDriver: true }).start();
     loadOnboardingAnswers().then((saved) => {
       if (saved.sport) {
-        const isPreset = PRESET_SPORTS.includes(saved.sport as any);
-        setSelected(isPreset ? saved.sport : OTHER_SENTINEL);
-        if (!isPreset) setOtherText(saved.sport);
+        const parsed = parseSports(saved.sport);
+        setSelected(parsed.selected);
+        setOtherText(parsed.other);
       }
     });
   }, []);
 
-  const isOther = selected === OTHER_SENTINEL;
-  const resolvedSport = isOther ? otherText.trim() : selected?.trim() ?? '';
-  const canContinue =
-    resolvedSport.length > 0 &&
-    (!isOther || otherText.trim().length >= 2) &&
-    resolvedSport.length <= MAX_SPORT_LEN;
+  const isOther = selected.includes(OTHER_SENTINEL);
+  const resolvedSport = joinSports(selected, otherText);
+  const canContinue = canSaveSports(selected, otherText);
 
   const pick = (opt: string) => {
     Haptics.selectionAsync();
-    setSelected(opt);
-    trackOnboardingOptionSelected({
-      step_key: 'sport_selection',
-      step_index: ONBOARDING_PROGRESS.sportSelection,
-      selected_option_key: opt,
-    });
-    if (opt !== OTHER_SENTINEL) {
-      setOtherText('');
-      saveOnboardingAnswers({ sport: opt.trim() });
+    const next = selected.includes(opt) ? selected.filter((s) => s !== opt) : [...selected, opt];
+    setSelected(next);
+    if (next.includes(opt)) {
+      trackOnboardingOptionSelected({
+        step_key: 'sport_selection',
+        step_index: ONBOARDING_PROGRESS.sportSelection,
+        selected_option_key: opt,
+      });
+    }
+    if (canSaveSports(next, otherText)) {
+      saveOnboardingAnswers({ sport: joinSports(next, otherText) });
     }
   };
 
@@ -101,18 +108,19 @@ export default function SportSelectionScreen() {
               <Text style={styles.body}>
                 {"We'll show this on your profile so the app feels personal to how you train."}
               </Text>
+              <Text style={styles.hint}>Select all that apply</Text>
 
               <View style={styles.options}>
                 {PRESET_SPORTS.map((opt) => (
                   <TouchableOpacity
                     key={opt}
-                    style={[styles.optionBtn, selected === opt && styles.optionBtnActive]}
+                    style={[styles.optionBtn, selected.includes(opt) && styles.optionBtnActive]}
                     onPress={() => pick(opt)}
                   >
                     <Text
                       style={[
                         styles.optionText,
-                        selected === opt && styles.optionTextActive,
+                        selected.includes(opt) && styles.optionTextActive,
                       ]}
                     >
                       {opt}
@@ -129,12 +137,11 @@ export default function SportSelectionScreen() {
                   value={otherText}
                   onChangeText={(t) => {
                     setOtherText(t);
-                    const trimmed = t.trim();
-                    if (trimmed.length >= 2) {
-                      saveOnboardingAnswers({ sport: trimmed.slice(0, MAX_SPORT_LEN) });
+                    if (canSaveSports(selected, t)) {
+                      saveOnboardingAnswers({ sport: joinSports(selected, t) });
                     }
                   }}
-                  maxLength={MAX_SPORT_LEN}
+                  maxLength={MAX_OTHER_SPORT_LEN}
                   autoCapitalize="words"
                   autoCorrect
                 />
@@ -175,6 +182,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.textSecondary,
     lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  hint: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
     textAlign: 'center',
     marginBottom: spacing.lg,
   },

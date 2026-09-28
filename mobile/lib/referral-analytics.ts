@@ -19,6 +19,13 @@ export function trackReferralProfileCtaTapped(properties?: ReferralProps): void 
   captureReferral('referral_profile_cta_tapped', properties);
 }
 
+/** Home "GET 20% OFF" / "CLAIM 20% OFF" badge. Fires on the tap, before navigation. */
+export function trackReferralBadgeTapped(
+  properties: ReferralProps & { badge_text: string },
+): void {
+  captureReferral('referral_badge_tapped', properties);
+}
+
 export function trackReferralShareTapped(properties?: ReferralProps): void {
   captureReferral('referral_share_tapped', properties);
 }
