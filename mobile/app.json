@@ -13,7 +13,7 @@
       "backgroundColor": "#2d2c2c"
     },
     "ios": {
-      "buildNumber": "33",
+      "buildNumber": "34",
       "supportsTablet": false,
       "usesAppleSignIn": true,
       "bundleIdentifier": "com.relentlessmentaltoughness.relentless",
@@ -103,7 +103,7 @@
       "enableAppStoreReviewPrompt": true
     },
     "android": {
-      "versionCode": 33,
+      "versionCode": 34,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
