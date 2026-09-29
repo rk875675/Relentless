@@ -1,12 +1,12 @@
 diff --git a/node_modules/react-native/Libraries/Components/TextInput/TextInput.js b/node_modules/react-native/Libraries/Components/TextInput/TextInput.js
-index 1e95eb6..ae814dd 100644
+index 1e95eb6..ec98128 100644
 --- a/node_modules/react-native/Libraries/Components/TextInput/TextInput.js
 +++ b/node_modules/react-native/Libraries/Components/TextInput/TextInput.js
 @@ -885,6 +885,7 @@ const TextInput: component(
  ) = function TextInput({
    ref: forwardedRef,
    allowFontScaling = true,
-+  maxFontSizeMultiplier = 1.3,
++  maxFontSizeMultiplier = 1.1,
    rejectResponderTermination = true,
    underlineColorAndroid = 'transparent',
    autoComplete,
@@ -19,14 +19,14 @@ index 1e95eb6..ae814dd 100644
        underlineColorAndroid={underlineColorAndroid}
        editable={readOnly !== undefined ? !readOnly : editable}
 diff --git a/node_modules/react-native/Libraries/Text/Text.js b/node_modules/react-native/Libraries/Text/Text.js
-index b08b8f3..c72a22e 100644
+index b08b8f3..f8043ab 100644
 --- a/node_modules/react-native/Libraries/Text/Text.js
 +++ b/node_modules/react-native/Libraries/Text/Text.js
 @@ -44,6 +44,7 @@ const TextImpl: component(
    accessibilityLabel,
    accessibilityState,
    allowFontScaling,
-+  maxFontSizeMultiplier = 1.3,
++  maxFontSizeMultiplier = 1.1,
    'aria-busy': ariaBusy,
    'aria-checked': ariaChecked,
    'aria-disabled': ariaDisabled,
