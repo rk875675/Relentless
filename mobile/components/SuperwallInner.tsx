@@ -150,6 +150,29 @@ function extractIsSandbox(
   }
 }
 
+/** Dev-only. Apple's reason for a failed purchase, without receipts or signed transactions. */
+function summarizePurchaseError(merged: Record<string, unknown>): unknown {
+  const redact = (value: unknown, depth: number): unknown => {
+    if (depth > 4 || value == null) return value ?? null;
+    if (typeof value === 'string') {
+      if (/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value)) return '[redacted]';
+      return value.slice(0, 400);
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') return value;
+    if (Array.isArray(value)) return value.slice(0, 6).map((item) => redact(item, depth + 1));
+    if (typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+        if (/transaction|jws|token|receipt|signed/i.test(key)) continue;
+        out[key] = redact(item, depth + 1);
+      }
+      return out;
+    }
+    return null;
+  };
+  return redact(merged, 0);
+}
+
 function SuperwallIdentitySync() {
   const { session } = useAuth();
   const { identify, signOut: superwallSignOut } = useUser();
@@ -258,6 +281,7 @@ function SuperwallPurchaseSync() {
       }
 
       if (name === 'transactionFail' || name === 'transactionAbandon') {
+        if (__DEV__) console.log('[Superwall][purchaseError]', name, summarizePurchaseError(merged));
         const product = extractPurchaseProductProps(merged);
         void loadLocalAttribution().then((attribution) => {
           trackPurchaseFailed({ source: 'superwall', reason: name, ...product, ...attribution });

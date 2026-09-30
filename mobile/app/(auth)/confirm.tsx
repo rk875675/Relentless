@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import { EmailOtpType, isAuthRetryableFetchError } from '@supabase/supabase-js';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { parseAuthParamsFromUrl } from '@/lib/auth-redirects';
 import { clearPendingConfirmUrl, peekPendingConfirmUrl } from '@/lib/confirm-link-store';
@@ -43,6 +43,7 @@ function collectRouteParams(routeParams: Record<string, string | string[]>): Rec
  */
 export default function ConfirmScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const routeParams = useLocalSearchParams<Record<string, string | string[]>>();
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -106,13 +107,18 @@ export default function ConfirmScreen() {
   // Safety net: if RouteGuard hasn't moved us off this screen within 10s of a
   // successful confirmation (e.g. a stalled profile fetch), fall back to the
   // app root so nobody is stranded on the spinner.
+  //
+  // RouteGuard's move to the paywall can leave this screen mounted underneath.
+  // Firing then yanks the user off the paywall to welcome — mid-way through an
+  // App Store offer-code redemption — so only fire while still showing.
   useEffect(() => {
     if (!confirmed) return;
     const t = setTimeout(() => {
+      if (!navigation.isFocused()) return;
       router.replace('/' as any);
     }, 10_000);
     return () => clearTimeout(t);
-  }, [confirmed, router]);
+  }, [confirmed, router, navigation]);
 
   useEffect(() => {
     void (async () => {

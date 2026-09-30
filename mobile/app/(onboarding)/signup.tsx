@@ -534,6 +534,15 @@ export default function OnboardingSignupScreen() {
       return;
     }
 
+    // Email confirmation required: there is no session yet, so the paywall
+    // could not finish a stashed code. The confirm link resumes at the paywall.
+    const { data: { session: created } } = await supabase.auth.getSession();
+    if (!created) {
+      setLoading(false);
+      setNeedsConfirmation(true);
+      return;
+    }
+
     setLoading(false);
     if (competitionDate) {
       const comp = Array.isArray(competitionDate) ? competitionDate[0] : competitionDate;

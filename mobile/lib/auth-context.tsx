@@ -727,6 +727,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       options: { emailRedirectTo: getEmailConfirmRedirectUrl() },
     });
     if (error) return error.message;
+    // An already-confirmed email comes back as a user with no identities and no
+    // error, and Supabase sends no email for it.
+    if (data.user && data.user.identities?.length === 0) return 'User already registered';
     // With auto-confirm, the session is available immediately. Set it so
     // post-signup code (e.g. purchase sync) doesn't have to wait for
     // onAuthStateChange to fire.
