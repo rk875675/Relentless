@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { parseAuthParamsFromUrl } from '@/lib/auth-redirects';
 import { clearPendingConfirmUrl, peekPendingConfirmUrl } from '@/lib/confirm-link-store';
 import { markCredentialHandled } from '@/lib/auth-link-dedupe';
+import { pendingPaywallResume } from '@/lib/pending-paywall-resume';
 import { colors, spacing } from '@/lib/theme';
 
 const AUTH_PARAM_KEYS = [
@@ -115,7 +116,14 @@ export default function ConfirmScreen() {
     if (!confirmed) return;
     const t = setTimeout(() => {
       if (!navigation.isFocused()) return;
-      router.replace('/' as any);
+      void pendingPaywallResume().then((resume) => {
+        if (!navigation.isFocused()) return;
+        if (resume) {
+          router.replace(resume as any);
+          return;
+        }
+        router.replace('/' as any);
+      });
     }, 10_000);
     return () => clearTimeout(t);
   }, [confirmed, router, navigation]);

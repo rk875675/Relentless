@@ -327,13 +327,27 @@
       .replace(/^-+|-+$/g, "");
   }
 
-  function creatorIdForName(name) {
+  function creatorBySlug(name) {
     var slug = slugify(name);
     for (var i = 0; i < knownCreators.length; i++) {
-      var c = knownCreators[i];
-      if (c.active && c.slug === slug) return c.id;
+      if (knownCreators[i].slug === slug) return knownCreators[i];
     }
+    return null;
+  }
+
+  function creatorIdForName(name) {
+    var match = creatorBySlug(name);
+    if (match && match.active) return match.id;
     return "";
+  }
+
+  function readUses() {
+    var raw = el("codeMax").value.trim();
+    if (raw === "") return { ok: true, unlimited: true };
+    if (!/^\d+$/.test(raw)) return { ok: false };
+    var n = parseInt(raw, 10);
+    if (!n || n < 1 || n > 2147483647) return { ok: false };
+    return { ok: true, max: n };
   }
 
   function selectedPersonName() {
@@ -359,9 +373,10 @@
     }
     bits.push(person ? ("for " + person) : (currentMode === "personal" ? "type a name" : "add a person first"));
     if (code) bits.push("code " + code);
-    var max = parseInt(el("codeMax").value, 10);
-    if (max > 0) bits.push(max === 1 ? "1 use" : (max + " uses"));
-    else bits.push("unlimited uses");
+    var uses = readUses();
+    if (!uses.ok) bits.push("uses must be 1 or more");
+    else if (uses.unlimited) bits.push("unlimited uses");
+    else bits.push(uses.max === 1 ? "1 use" : (uses.max + " uses"));
     if (el("codeExpiry").value) bits.push("stops " + el("codeExpiry").value);
     el("codePreview").textContent = bits.join(" · ");
   }
@@ -407,11 +422,17 @@
     var showingDefault = lifetime && raw === "1" && !maxTouched;
     if (showingDefault) input.classList.add("is-default");
     else input.classList.remove("is-default");
-    el("usesHint").textContent = raw === "" ? "Unlimited." : "Clear for unlimited.";
+    var uses = readUses();
+    el("usesHint").textContent = raw === ""
+      ? "Unlimited."
+      : uses.ok
+        ? "Clear for unlimited."
+        : "Whole number, 1 or more.";
   }
 
   // ---- login ----
   function tryLogin() {
+    if (el("loginBtn").disabled) return;
     var pw = el("pw").value;
     if (!pw) { setMsg("loginMsg", "Enter the password"); return; }
     el("loginBtn").disabled = true;
@@ -547,6 +568,7 @@
 
   // ---- create person ----
   function addCreator() {
+    if (el("addCreatorBtn").disabled) return;
     var name = el("creatorName").value.trim();
     if (!name) { setMsg("creatorMsg", "Enter a name"); return; }
     el("addCreatorBtn").disabled = true;
@@ -574,21 +596,16 @@
     });
   }
 
-  function codeBody(creatorId) {
-    var type = el("codeType").value;
+  function codeBody(creatorId, draft) {
     var body = {
-      code: el("codeText").value.trim(),
-      type: type,
+      code: draft.code,
+      type: draft.type,
       creator_id: creatorId
     };
-    if (type === "months_free") body.months = parseInt(el("codeMonths").value, 10);
-    var max = parseInt(el("codeMax").value, 10);
-    if (max && max > 0) body.max_redemptions = max;
-    if (currentMode === "personal" || (currentMode === "months" && el("codePersonal").checked)) {
-      body.is_personal = true;
-    }
-    var expiry = el("codeExpiry").value;
-    if (expiry) body.expires_at = new Date(expiry + "T23:59:59Z").toISOString();
+    if (draft.type === "months_free") body.months = draft.months;
+    if (draft.max) body.max_redemptions = draft.max;
+    if (draft.personal) body.is_personal = true;
+    if (draft.expiry) body.expires_at = new Date(draft.expiry + "T23:59:59Z").toISOString();
     return body;
   }
 
@@ -605,10 +622,15 @@
       if (e.message.indexOf("already exists") === -1) throw e;
       return api("overview").then(function (data) {
         knownCreators = data.creators || [];
-        var id = creatorIdForName(name);
-        if (!id) throw e;
-        selectCreatorId = id;
-        return id;
+        var match = creatorBySlug(name);
+        if (match && match.active) {
+          selectCreatorId = match.id;
+          return match.id;
+        }
+        if (match && !match.active) {
+          throw new Error(match.name + " is inactive, so a new code can’t be created for that name.");
+        }
+        throw e;
       });
     });
   }
@@ -627,12 +649,29 @@
   }
 
   function createCode() {
+    if (el("addCodeBtn").disabled) return;
     var type = el("codeType").value;
-    if (!el("codeText").value.trim()) { setMsg("codeMsg", "Enter the code"); return; }
-    if (type === "months_free") {
-      var months = parseInt(el("codeMonths").value, 10);
-      if (!months || months < 1) { setMsg("codeMsg", "Enter how many free months"); return; }
+    var code = el("codeText").value.trim();
+    if (!code) { setMsg("codeMsg", "Enter the code"); return; }
+    var months = parseInt(el("codeMonths").value, 10);
+    if (type === "months_free" && (!months || months < 1)) {
+      setMsg("codeMsg", "Enter how many free months");
+      return;
     }
+    var uses = readUses();
+    if (!uses.ok) {
+      setMsg("codeMsg", "Uses must be a whole number, or clear the field for unlimited.");
+      return;
+    }
+
+    var draft = {
+      code: code,
+      type: type,
+      months: months,
+      max: uses.max,
+      personal: currentMode === "personal" || (currentMode === "months" && el("codePersonal").checked),
+      expiry: el("codeExpiry").value
+    };
 
     var ready;
     if (currentMode === "personal") {
@@ -648,7 +687,7 @@
 
     el("addCodeBtn").disabled = true;
     ready.then(function (id) {
-      return api("codes", codeBody(id));
+      return api("codes", codeBody(id, draft));
     }).then(onCodeCreated).catch(function (e) {
       setMsg("codeMsg", e.message);
       if (selectCreatorId) refresh();

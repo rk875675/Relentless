@@ -90,7 +90,15 @@ type PaywallSuperwallProps = {
 
 export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallProps) {
   const router = useRouter();
-  const { session, completeOnboarding, hasPremiumAccess, onboardingComplete, refreshUserState } = useAuth();
+  const {
+    session,
+    completeOnboarding,
+    hasPremiumAccess,
+    onboardingComplete,
+    refreshUserState,
+    updateCompetitionDate,
+    updateSport,
+  } = useAuth();
   const navigation = useNavigation();
 
   const [isOpening, setIsOpening] = useState(false);
@@ -122,6 +130,17 @@ export function PaywallSuperwall({ sport, competitionDate }: PaywallSuperwallPro
       step_index: ONBOARDING_PROGRESS.sportSelection + 1,
     });
   }, [sport, competitionDate]);
+
+  // Email confirmation has no session on the signup screen, so sport and
+  // competition date are not written there. Once this screen is open with a
+  // session, persist the answers the paywall route already carries.
+  useEffect(() => {
+    if (!session) return;
+    const comp = typeof competitionDate === 'string' ? competitionDate : '';
+    const sportTrim = typeof sport === 'string' ? sport.trim() : '';
+    if (comp) void updateCompetitionDate(comp).catch(() => {});
+    if (sportTrim) void updateSport(sportTrim).catch(() => {});
+  }, [session, sport, competitionDate, updateCompetitionDate, updateSport]);
 
   const { registerPlacement, preloadPaywalls, isConfigured, getPresentationResult, dismiss } = useSuperwall((s: any) => ({
     registerPlacement: s.registerPlacement,

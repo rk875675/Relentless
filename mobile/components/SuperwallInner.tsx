@@ -163,7 +163,7 @@ function summarizePurchaseError(merged: Record<string, unknown>): unknown {
     if (typeof value === 'object') {
       const out: Record<string, unknown> = {};
       for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-        if (/transaction|jws|token|receipt|signed/i.test(key)) continue;
+        if (/jws|token|receipt|signed/i.test(key)) continue;
         out[key] = redact(item, depth + 1);
       }
       return out;

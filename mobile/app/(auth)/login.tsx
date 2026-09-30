@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { trackSigninStarted, trackSigninCompleted, trackSigninFailed } from '@/lib/lifecycle-analytics';
 import { InlineErrorCard } from '@/components/InlineErrorCard';
 import { LEGAL_PRIVACY_POLICY_URL, LEGAL_TERMS_OF_USE_URL } from '@/lib/legal-urls';
+import { pendingPaywallResume } from '@/lib/pending-paywall-resume';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -30,6 +31,13 @@ export default function LoginScreen() {
         return;
       }
       trackSigninCompleted({ method: 'email' });
+      if (result.path === '/(onboarding)/welcome') {
+        const resume = await pendingPaywallResume();
+        if (resume) {
+          router.replace(resume as any);
+          return;
+        }
+      }
       if (result.path) router.replace(result.path as any);
     } catch {
       trackSigninFailed({ method: 'email', reason: 'exception' });

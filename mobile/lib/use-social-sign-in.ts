@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth, type SocialSignInResult } from '@/lib/auth-context';
 import { trackSigninStarted, trackSigninCompleted, trackSigninFailed } from '@/lib/lifecycle-analytics';
+import { pendingPaywallResume } from '@/lib/pending-paywall-resume';
 
 export function isSocialSignInCancelled(r: SocialSignInResult) {
   return r.ok === false && 'cancelled' in r && r.cancelled === true;
@@ -56,6 +57,14 @@ export function useSocialSignIn() {
           return;
         }
         trackSigninCompleted({ method });
+        if (r.path === '/(onboarding)/welcome') {
+          const resume = await pendingPaywallResume();
+          if (resume) {
+            attemptedSignIn.current = false;
+            router.replace(resume as any);
+            return;
+          }
+        }
         if (r.path) {
           attemptedSignIn.current = false;
           router.replace(r.path as any);
