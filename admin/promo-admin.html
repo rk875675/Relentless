@@ -10,21 +10,23 @@
     --bg: #0f1115; --card: #181b22; --border: #2a2f3a; --text: #e8eaf0;
     --muted: #9aa3b2; --accent: #6c8cff; --accent-press: #5677f0;
     --danger: #ff6b6b; --ok: #4cd08a;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
-  .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 16px 72px; }
   h1 { font-size: 22px; margin: 0 0 4px; }
-  h2 { font-size: 16px; margin: 0 0 12px; }
-  .sub { color: var(--muted); margin: 0 0 24px; }
+  h2 { font-size: 16px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0; font-size: 14px; }
   .card {
     background: var(--card); border: 1px solid var(--border);
-    border-radius: 12px; padding: 20px; margin-bottom: 20px;
+    border-radius: 12px; padding: 20px; margin-top: 16px;
   }
-  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  .card.primary { border-color: #3a4670; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 0 0 4px; }
   input[type="text"], input[type="password"], input[type="number"],
   input[type="date"], select {
     width: 100%; padding: 10px 12px; border-radius: 8px;
@@ -33,8 +35,15 @@
   }
   input:focus, select:focus { outline: 2px solid var(--accent); border-color: transparent; }
   .row { display: flex; gap: 12px; flex-wrap: wrap; }
-  .row > div { flex: 1 1 180px; }
-  .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .row > div { flex: 1 1 200px; min-width: 0; }
+  .fields { margin-top: 16px; }
+  .fields > .uses { flex: 0 1 132px; }
+  .uses input.is-default {
+    color: #c9d4ff;
+    border-color: #3d4d86;
+    background: #161c2e;
+  }
+  label.check { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; color: var(--text); font-size: 14px; cursor: pointer; }
   .check input { width: 18px; height: 18px; }
   .check span { font-size: 14px; }
   button {
@@ -44,34 +53,80 @@
   }
   button:hover { background: var(--accent-press); }
   button:disabled { opacity: 0.5; cursor: default; }
+  button.small, button.mode, button.chip {
+    margin: 0; font-weight: 600;
+  }
   button.small {
-    margin: 0; padding: 5px 10px; font-size: 13px; font-weight: 500;
+    padding: 10px 14px; font-size: 14px; font-weight: 600;
     background: #262b36; color: var(--text); border: 1px solid var(--border);
+    white-space: nowrap;
   }
   button.small:hover { background: #303645; }
+  button.mode {
+    flex: 1 1 160px; padding: 10px 12px; font-size: 14px;
+    background: #10131a; color: var(--text); border: 1px solid var(--border);
+  }
+  button.mode:hover { background: #1c2230; }
+  button.mode.on, button.mode.on:hover {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  button.chip {
+    padding: 4px 10px; font-size: 13px; font-weight: 500;
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+  }
+  button.chip:hover { color: var(--text); }
+  button.chip.on {
+    color: var(--text); border-color: #3d4d86; background: #1a2140;
+  }
+  .modes { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 8px; }
+  .hint { color: var(--muted); margin: 0; font-size: 14px; min-height: 1.4em; }
+  .field-hint { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+  details summary {
+    cursor: pointer; color: var(--muted); font-size: 14px; font-weight: 600;
+  }
+  details summary:hover { color: var(--text); }
+  details.add-person, details.limits { margin-top: 16px; }
+  details[open] summary { margin-bottom: 10px; }
+  .add-row { display: flex; gap: 8px; align-items: flex-end; }
+  .add-row > div { flex: 1; min-width: 0; }
+  .preview {
+    margin-top: 14px; padding: 10px 12px; border-radius: 8px;
+    background: #10131a; border: 1px solid var(--border);
+    color: var(--muted); font-size: 13px;
+  }
   a.linkbtn {
-    display: inline-block; margin-top: 8px; padding: 10px 18px; border-radius: 8px;
+    display: inline-block; padding: 8px 12px; border-radius: 8px;
     background: #262b36; border: 1px solid var(--border); color: var(--text);
     text-decoration: none; font-weight: 600; font-size: 14px;
   }
   a.linkbtn:hover { background: #303645; }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .table-scroll { overflow-x: auto; margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
   td.code { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 600; }
+  td.actions { white-space: nowrap; }
+  td.actions button { margin: 0 0 0 6px; padding: 5px 10px; font-size: 13px; font-weight: 500; }
   .pill {
     display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px;
-    border: 1px solid var(--border); color: var(--muted);
+    border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
   }
   .pill.on { color: var(--ok); border-color: var(--ok); }
   .pill.off { color: var(--danger); border-color: var(--danger); }
-  .msg { margin-top: 12px; font-size: 14px; min-height: 20px; }
+  .pill.kind { color: #c9d4ff; border-color: #3d4d86; background: #1a2140; }
+  .msg { margin-top: 12px; font-size: 14px; min-height: 0; }
+  .msg:empty { display: none; }
   .msg.err { color: var(--danger); }
   .msg.ok { color: var(--ok); }
-  .muted { color: var(--muted); }
-  .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .head-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
   #app { display: none; }
-  .empty { color: var(--muted); padding: 12px 0; }
+  .empty { color: var(--muted); padding: 12px 0 0; }
+  @media (max-width: 640px) {
+    .topbar { flex-direction: column; }
+    .head-actions { width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -79,96 +134,126 @@
 
   <div id="login" class="card" style="max-width:420px;margin:80px auto;">
     <h1>Relentless Admin</h1>
-    <p class="sub">Promo codes &amp; creators</p>
-    <label for="pw">Password</label>
-    <input type="password" id="pw" autocomplete="current-password" />
-    <button id="loginBtn">Sign in</button>
+    <p class="sub" style="margin-top:4px;">Promo codes</p>
+    <div style="margin-top:8px;">
+      <label for="pw">Password</label>
+      <input type="password" id="pw" autocomplete="current-password" />
+    </div>
+    <button type="button" id="loginBtn">Sign in</button>
     <div id="loginMsg" class="msg err"></div>
   </div>
 
   <div id="app">
     <div class="topbar">
       <div>
-        <h1>Promo Codes Admin</h1>
-        <p class="sub">Create creators, mint codes, and track redemptions.</p>
+        <h1>Promo codes</h1>
+        <p class="sub">Personal lifetime is the default. In analytics, filter by <b>promo_creator</b> (the person’s slug).</p>
       </div>
-      <button class="small" id="logoutBtn">Sign out</button>
-    </div>
-
-    <div class="card">
-      <h2>Analytics</h2>
-      <p class="muted" style="margin:0;">Redemptions, funnels, retention and creator comparisons live in PostHog. Filter any tile by the person property <b>promo_creator</b> to drill into one creator.</p>
-      <a class="linkbtn" id="dashLink" href="#" target="_blank" rel="noopener">Open Creator Codes dashboard →</a>
-    </div>
-
-    <div class="card">
-      <h2>Add a creator</h2>
-      <div class="row">
-        <div>
-          <label for="creatorName">Creator name</label>
-          <input type="text" id="creatorName" placeholder="e.g. Jane Doe" />
-        </div>
+      <div class="head-actions">
+        <a class="linkbtn" id="dashLink" href="#" target="_blank" rel="noopener">Analytics</a>
+        <button type="button" class="small" id="logoutBtn">Sign out</button>
       </div>
-      <button id="addCreatorBtn">Add creator</button>
-      <div id="creatorMsg" class="msg"></div>
-      <table id="creatorsTable">
-        <thead><tr><th>Name</th><th>Slug</th><th>Status</th></tr></thead>
-        <tbody></tbody>
-      </table>
-      <div id="creatorsEmpty" class="empty" style="display:none;">No creators yet.</div>
     </div>
 
-    <div class="card">
-      <h2>Mint a code</h2>
-      <div class="row">
-        <div>
-          <label for="codeText">Code (what people will type)</label>
-          <input type="text" id="codeText" placeholder="Type the exact code" autocapitalize="characters" />
+    <div class="card primary">
+      <h2>New code</h2>
+      <div class="modes" role="tablist" aria-label="Code type">
+        <button type="button" class="mode on" data-mode="personal" aria-pressed="true">Personal lifetime</button>
+        <button type="button" class="mode" data-mode="lifetime" aria-pressed="false">Lifetime, not personal</button>
+        <button type="button" class="mode" data-mode="months" aria-pressed="false">Months free</button>
+      </div>
+      <p class="hint" id="modeHint"></p>
+
+      <div class="fields row">
+        <div id="personNameWrap">
+          <label for="personName">Name</label>
+          <input type="text" id="personName" placeholder="Their name" autocomplete="off" />
         </div>
-        <div>
-          <label for="codeCreator">Creator</label>
+        <div id="personSelectWrap" style="display:none;">
+          <label for="codeCreator">Person</label>
           <select id="codeCreator"></select>
         </div>
-      </div>
-      <div class="row">
         <div>
-          <label for="codeType">Type</label>
-          <select id="codeType">
-            <option value="months_free">Months free (for the creator's audience)</option>
-            <option value="lifetime">Lifetime / free forever (for the creator)</option>
-          </select>
+          <label for="codeText">Code</label>
+          <input type="text" id="codeText" placeholder="What they will type" autocapitalize="characters" spellcheck="false" autocomplete="off" />
         </div>
-        <div id="monthsWrap">
-          <label for="codeMonths">Free months</label>
-          <input type="number" id="codeMonths" min="1" step="1" placeholder="e.g. 3" />
-        </div>
-        <div>
-          <label for="codeMax">Max redemptions (blank = unlimited)</label>
-          <input type="number" id="codeMax" min="1" step="1" placeholder="" />
-        </div>
-        <div>
-          <label for="codeExpiry">Code stops working after (optional)</label>
-          <input type="date" id="codeExpiry" />
+        <div class="uses">
+          <label for="codeMax">Uses</label>
+          <input type="number" id="codeMax" class="is-default" min="1" step="1" value="1" placeholder="Unlimited" />
+          <p class="field-hint" id="usesHint">Clear for unlimited.</p>
         </div>
       </div>
-      <div class="check">
+
+      <div id="monthsWrap" style="display:none;margin-top:12px;max-width:280px;">
+        <label for="codeMonths">Free months</label>
+        <input type="number" id="codeMonths" min="1" step="1" placeholder="e.g. 3" />
+      </div>
+
+      <label class="check" id="personalWrap" style="display:none;">
         <input type="checkbox" id="codePersonal" />
-        <span>Personal code (belongs to the creator themselves)</span>
-      </div>
-      <button id="addCodeBtn">Mint code</button>
+        <span>Personal code (belongs to this person)</span>
+      </label>
+
+      <select id="codeType" hidden aria-hidden="true" tabindex="-1">
+        <option value="lifetime" selected>Lifetime</option>
+        <option value="months_free">Months free</option>
+      </select>
+
+      <p class="preview" id="codePreview"></p>
+      <button type="button" id="addCodeBtn">Create personal lifetime code</button>
       <div id="codeMsg" class="msg"></div>
+
+      <details class="add-person" id="addPersonDetails">
+        <summary>Add a person who isn’t listed</summary>
+        <div class="add-row">
+          <div>
+            <label for="creatorName">Name</label>
+            <input type="text" id="creatorName" placeholder="e.g. Jane Doe" />
+          </div>
+          <button type="button" class="small" id="addCreatorBtn">Add person</button>
+        </div>
+        <div id="creatorMsg" class="msg"></div>
+      </details>
+
+      <details class="limits">
+        <summary>End date (optional)</summary>
+        <div style="max-width:280px;">
+          <label for="codeExpiry">Stops working after</label>
+          <input type="date" id="codeExpiry" />
+          <p class="field-hint">End of that day, UTC.</p>
+        </div>
+      </details>
     </div>
 
     <div class="card">
-      <h2>All codes</h2>
-      <table id="codesTable">
-        <thead><tr>
-          <th>Code</th><th>Creator</th><th>Type</th><th>Redemptions</th>
-          <th>Expires</th><th>Status</th><th></th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
+      <h2>Codes</h2>
+      <div class="filters" id="codeFilters">
+        <button type="button" class="chip on" id="filterAll" data-filter="all">All</button>
+        <button type="button" class="chip" id="filterPersonal" data-filter="personal">Personal lifetime</button>
+        <button type="button" class="chip" id="filterOther" data-filter="other">Other</button>
+      </div>
+      <div class="table-scroll">
+        <table id="codesTable">
+          <thead><tr>
+            <th>Code</th><th>Person</th><th>Kind</th><th>Uses</th>
+            <th>Stops</th><th>Status</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
       <div id="codesEmpty" class="empty" style="display:none;">No codes yet.</div>
+    </div>
+
+    <div class="card">
+      <h2>People</h2>
+      <p class="sub">Each code is tracked under a person. Slug is the <b>promo_creator</b> value in analytics.</p>
+      <div class="table-scroll">
+        <table id="creatorsTable">
+          <thead><tr><th>Name</th><th>Slug</th><th>Status</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="creatorsEmpty" class="empty" style="display:none;">No people yet. Add one in the form above.</div>
     </div>
   </div>
 
@@ -177,6 +262,12 @@
 (function () {
   var API = "https://tnetahaviblrrjixzvbd.supabase.co/functions/v1/promo-admin";
   var PW_KEY = "promo-admin-password";
+  var currentMode = "personal";
+  var maxTouched = false;
+  var latestCodes = [];
+  var codeFilter = "all";
+  var selectCreatorId = "";
+  var knownCreators = [];
 
   function el(id) { return document.getElementById(id); }
   function esc(s) {
@@ -229,6 +320,96 @@
     node.className = "msg " + (ok ? "ok" : "err");
   }
 
+  function slugify(name) {
+    return String(name || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  function creatorIdForName(name) {
+    var slug = slugify(name);
+    for (var i = 0; i < knownCreators.length; i++) {
+      var c = knownCreators[i];
+      if (c.active && c.slug === slug) return c.id;
+    }
+    return "";
+  }
+
+  function selectedPersonName() {
+    if (currentMode === "personal") return el("personName").value.trim();
+    var sel = el("codeCreator");
+    if (!sel || !sel.value) return "";
+    var opt = sel.options[sel.selectedIndex];
+    return opt ? opt.text : "";
+  }
+
+  function updatePreview() {
+    var person = selectedPersonName();
+    var code = el("codeText").value.trim();
+    var bits = [];
+    if (currentMode === "personal") {
+      bits.push("Personal lifetime");
+    } else if (currentMode === "lifetime") {
+      bits.push("Lifetime, not personal");
+    } else {
+      var months = parseInt(el("codeMonths").value, 10);
+      bits.push(months > 0 ? (months + " free months") : "Months free");
+      if (el("codePersonal").checked) bits.push("personal");
+    }
+    bits.push(person ? ("for " + person) : (currentMode === "personal" ? "type a name" : "add a person first"));
+    if (code) bits.push("code " + code);
+    var max = parseInt(el("codeMax").value, 10);
+    if (max > 0) bits.push(max === 1 ? "1 use" : (max + " uses"));
+    else bits.push("unlimited uses");
+    if (el("codeExpiry").value) bits.push("stops " + el("codeExpiry").value);
+    el("codePreview").textContent = bits.join(" · ");
+  }
+
+  function applyMode(mode) {
+    currentMode = mode;
+    var buttons = document.querySelectorAll("button.mode");
+    for (var i = 0; i < buttons.length; i++) {
+      var on = buttons[i].getAttribute("data-mode") === mode;
+      buttons[i].className = on ? "mode on" : "mode";
+      buttons[i].setAttribute("aria-pressed", on ? "true" : "false");
+    }
+    var isPersonal = mode === "personal";
+    var isMonths = mode === "months";
+    if (!isMonths) el("codePersonal").checked = false;
+    el("codeType").value = isMonths ? "months_free" : "lifetime";
+    el("monthsWrap").style.display = isMonths ? "" : "none";
+    el("personalWrap").style.display = isMonths ? "" : "none";
+    el("personNameWrap").style.display = isPersonal ? "" : "none";
+    el("personSelectWrap").style.display = isPersonal ? "none" : "";
+    el("addPersonDetails").style.display = isPersonal ? "none" : "";
+    el("modeHint").textContent = mode === "personal"
+      ? "Free forever. Type their name and the code. The person is saved when you create it."
+      : mode === "lifetime"
+        ? "Free forever. Not marked as their personal code."
+        : "Free for a set number of months. Usually for their audience.";
+    el("addCodeBtn").textContent = mode === "personal"
+      ? "Create personal lifetime code"
+      : mode === "lifetime"
+        ? "Create lifetime code"
+        : "Create months-free code";
+    syncUses(mode);
+    updatePreview();
+  }
+
+  // Lifetime codes start at 1 use. A cleared field stays unlimited.
+  // A number you type is kept when you switch tabs.
+  function syncUses(mode) {
+    var input = el("codeMax");
+    var lifetime = mode !== "months";
+    if (!maxTouched) input.value = lifetime ? "1" : "";
+    var raw = input.value.trim();
+    var showingDefault = lifetime && raw === "1" && !maxTouched;
+    if (showingDefault) input.classList.add("is-default");
+    else input.classList.remove("is-default");
+    el("usesHint").textContent = raw === "" ? "Unlimited." : "Clear for unlimited.";
+  }
+
   // ---- login ----
   function tryLogin() {
     var pw = el("pw").value;
@@ -261,6 +442,9 @@
   }
 
   function renderCreators(creators) {
+    knownCreators = creators || [];
+    var keep = selectCreatorId || el("codeCreator").value;
+    selectCreatorId = "";
     var tbody = el("creatorsTable").querySelector("tbody");
     var rows = "";
     var options = "";
@@ -275,38 +459,68 @@
     tbody.innerHTML = rows;
     el("creatorsEmpty").style.display = creators.length ? "none" : "block";
     el("codeCreator").innerHTML = options ||
-      "<option value=''>Add a creator first</option>";
+      "<option value=''>Add a person first</option>";
+    if (keep) el("codeCreator").value = keep;
+    if (!creators.length) el("addPersonDetails").open = true;
+    updatePreview();
+  }
+
+  function isPersonalLifetime(k) {
+    return k.type === "lifetime" && k.is_personal;
   }
 
   function renderCodes(codes) {
+    if (codes) latestCodes = codes;
+    var personalCount = 0;
+    for (var n = 0; n < latestCodes.length; n++) {
+      if (isPersonalLifetime(latestCodes[n])) personalCount++;
+    }
+    el("filterAll").textContent = "All (" + latestCodes.length + ")";
+    el("filterPersonal").textContent = "Personal lifetime (" + personalCount + ")";
+    el("filterOther").textContent = "Other (" + (latestCodes.length - personalCount) + ")";
+
+    var shown = [];
+    for (var i = 0; i < latestCodes.length; i++) {
+      var item = latestCodes[i];
+      var personalLife = isPersonalLifetime(item);
+      if (codeFilter === "personal" && !personalLife) continue;
+      if (codeFilter === "other" && personalLife) continue;
+      shown.push(item);
+    }
+
     var tbody = el("codesTable").querySelector("tbody");
     var rows = "";
-    for (var i = 0; i < codes.length; i++) {
-      var k = codes[i];
-      var typeLabel = k.type === "lifetime"
-        ? "Lifetime" + (k.is_personal ? " (personal)" : "")
-        : k.months + " mo free" + (k.is_personal ? " (personal)" : "");
-      var redemptions = k.redemption_count + " / " +
-        (k.max_redemptions == null ? "∞" : k.max_redemptions);
+    for (var r = 0; r < shown.length; r++) {
+      var k = shown[r];
+      var kind = k.type === "lifetime"
+        ? "<span class='pill kind'>" + (k.is_personal ? "Personal lifetime" : "Lifetime") + "</span>"
+        : "<span class='pill kind'>" + esc(k.months) + " mo</span>" +
+          (k.is_personal ? " <span class='pill kind'>Personal</span>" : "");
+      var uses = k.max_redemptions == null
+        ? (k.redemption_count + " used")
+        : (k.redemption_count + " of " + k.max_redemptions);
       rows += "<tr>" +
         "<td class='code'>" + esc(k.code) + "</td>" +
         "<td>" + esc(k.creator_name) + "</td>" +
-        "<td>" + esc(typeLabel) + "</td>" +
-        "<td>" + esc(redemptions) + "</td>" +
+        "<td>" + kind + "</td>" +
+        "<td>" + esc(uses) + "</td>" +
         "<td>" + esc(fmtDate(k.expires_at)) + "</td>" +
         "<td><span class='pill " + (k.active ? "on'>Active" : "off'>Off") + "</span></td>" +
-        "<td style='display:flex;gap:6px;align-items:center;'>" +
-          "<button class='small toggle-btn' data-id='" + esc(k.id) + "' data-active='" +
+        "<td class='actions'>" +
+          "<button type='button' class='small toggle-btn' data-id='" + esc(k.id) + "' data-active='" +
             (k.active ? "1" : "0") + "'>" + (k.active ? "Deactivate" : "Reactivate") +
           "</button>" +
           (k.redemption_count === 0
-            ? "<button class='small del-btn' data-id='" + esc(k.id) + "' data-code='" + esc(k.code) + "' style='color:var(--danger);border-color:var(--danger);'>Delete</button>"
+            ? "<button type='button' class='small del-btn' data-id='" + esc(k.id) + "' data-code='" + esc(k.code) + "' style='color:var(--danger);border-color:var(--danger);'>Delete</button>"
             : "") +
         "</td>" +
         "</tr>";
     }
     tbody.innerHTML = rows;
-    el("codesEmpty").style.display = codes.length ? "none" : "block";
+    el("codesEmpty").style.display = shown.length ? "none" : "block";
+    el("codesEmpty").textContent = latestCodes.length
+      ? "No codes in this view."
+      : "No codes yet.";
 
     var toggleBtns = tbody.querySelectorAll("button.toggle-btn");
     for (var j = 0; j < toggleBtns.length; j++) {
@@ -331,62 +545,146 @@
     }
   }
 
-  // ---- create creator ----
-  el("addCreatorBtn").addEventListener("click", function () {
+  // ---- create person ----
+  function addCreator() {
     var name = el("creatorName").value.trim();
     if (!name) { setMsg("creatorMsg", "Enter a name"); return; }
     el("addCreatorBtn").disabled = true;
     api("creators", { name: name }).then(function (data) {
       el("creatorName").value = "";
-      setMsg("creatorMsg", "Added " + data.creator.name, true);
+      selectCreatorId = data.creator.id;
+      setMsg("creatorMsg", "Added " + data.creator.name + ". They’re selected above.", true);
       refresh();
     }).catch(function (e) {
       setMsg("creatorMsg", e.message);
     }).finally(function () {
       el("addCreatorBtn").disabled = false;
     });
+  }
+  el("addCreatorBtn").addEventListener("click", addCreator);
+  el("creatorName").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") addCreator();
   });
 
-  // ---- mint code ----
-  el("codeType").addEventListener("change", function () {
-    el("monthsWrap").style.display = this.value === "months_free" ? "" : "none";
-  });
+  // ---- create code ----
+  var modeButtons = document.querySelectorAll("button.mode");
+  for (var m = 0; m < modeButtons.length; m++) {
+    modeButtons[m].addEventListener("click", function () {
+      applyMode(this.getAttribute("data-mode"));
+    });
+  }
 
-  el("addCodeBtn").addEventListener("click", function () {
+  function codeBody(creatorId) {
     var type = el("codeType").value;
     var body = {
       code: el("codeText").value.trim(),
       type: type,
-      creator_id: el("codeCreator").value
+      creator_id: creatorId
     };
-    if (!body.code) { setMsg("codeMsg", "Enter the code text"); return; }
-    if (!body.creator_id) { setMsg("codeMsg", "Pick a creator (add one first)"); return; }
+    if (type === "months_free") body.months = parseInt(el("codeMonths").value, 10);
+    var max = parseInt(el("codeMax").value, 10);
+    if (max && max > 0) body.max_redemptions = max;
+    if (currentMode === "personal" || (currentMode === "months" && el("codePersonal").checked)) {
+      body.is_personal = true;
+    }
+    var expiry = el("codeExpiry").value;
+    if (expiry) body.expires_at = new Date(expiry + "T23:59:59Z").toISOString();
+    return body;
+  }
+
+  function ensureCreator(name) {
+    var existing = creatorIdForName(name);
+    if (existing) {
+      selectCreatorId = existing;
+      return Promise.resolve(existing);
+    }
+    return api("creators", { name: name }).then(function (data) {
+      selectCreatorId = data.creator.id;
+      return data.creator.id;
+    }).catch(function (e) {
+      if (e.message.indexOf("already exists") === -1) throw e;
+      return api("overview").then(function (data) {
+        knownCreators = data.creators || [];
+        var id = creatorIdForName(name);
+        if (!id) throw e;
+        selectCreatorId = id;
+        return id;
+      });
+    });
+  }
+
+  function onCodeCreated(data) {
+    el("codeText").value = "";
+    el("codeMonths").value = "";
+    el("codeExpiry").value = "";
+    el("codePersonal").checked = false;
+    if (currentMode === "personal") el("personName").value = "";
+    maxTouched = false;
+    syncUses(currentMode);
+    setMsg("codeMsg", "Created " + data.code.code, true);
+    updatePreview();
+    refresh();
+  }
+
+  function createCode() {
+    var type = el("codeType").value;
+    if (!el("codeText").value.trim()) { setMsg("codeMsg", "Enter the code"); return; }
     if (type === "months_free") {
       var months = parseInt(el("codeMonths").value, 10);
       if (!months || months < 1) { setMsg("codeMsg", "Enter how many free months"); return; }
-      body.months = months;
     }
-    var max = parseInt(el("codeMax").value, 10);
-    if (max && max > 0) body.max_redemptions = max;
-    if (el("codePersonal").checked) body.is_personal = true;
-    var expiry = el("codeExpiry").value;
-    if (expiry) body.expires_at = new Date(expiry + "T23:59:59Z").toISOString();
+
+    var ready;
+    if (currentMode === "personal") {
+      var name = el("personName").value.trim();
+      if (!name) { setMsg("codeMsg", "Enter their name"); return; }
+      if (!slugify(name)) { setMsg("codeMsg", "Name must contain at least one letter or number"); return; }
+      ready = ensureCreator(name);
+    } else {
+      var creatorId = el("codeCreator").value;
+      if (!creatorId) { setMsg("codeMsg", "Pick a person, or add one first"); return; }
+      ready = Promise.resolve(creatorId);
+    }
 
     el("addCodeBtn").disabled = true;
-    api("codes", body).then(function (data) {
-      el("codeText").value = "";
-      el("codeMonths").value = "";
-      el("codeMax").value = "";
-      el("codeExpiry").value = "";
-      el("codePersonal").checked = false;
-      setMsg("codeMsg", "Minted " + data.code.code, true);
-      refresh();
-    }).catch(function (e) {
+    ready.then(function (id) {
+      return api("codes", codeBody(id));
+    }).then(onCodeCreated).catch(function (e) {
       setMsg("codeMsg", e.message);
+      if (selectCreatorId) refresh();
     }).finally(function () {
       el("addCodeBtn").disabled = false;
     });
+  }
+  el("addCodeBtn").addEventListener("click", createCode);
+  el("codeText").addEventListener("keydown", function (e) { if (e.key === "Enter") createCode(); });
+  el("personName").addEventListener("keydown", function (e) { if (e.key === "Enter") createCode(); });
+  el("codeMonths").addEventListener("keydown", function (e) { if (e.key === "Enter") createCode(); });
+  ["codeText", "codeMonths", "personName"].forEach(function (id) {
+    el(id).addEventListener("input", updatePreview);
   });
+  el("codeMax").addEventListener("input", function () {
+    maxTouched = true;
+    syncUses(currentMode);
+    updatePreview();
+  });
+  el("codeCreator").addEventListener("change", updatePreview);
+  el("codeExpiry").addEventListener("change", updatePreview);
+  el("codePersonal").addEventListener("change", updatePreview);
+
+  var filterBtns = document.querySelectorAll("#codeFilters button");
+  for (var f = 0; f < filterBtns.length; f++) {
+    filterBtns[f].addEventListener("click", function () {
+      codeFilter = this.getAttribute("data-filter");
+      var all = document.querySelectorAll("#codeFilters button");
+      for (var j = 0; j < all.length; j++) {
+        all[j].className = all[j] === this ? "chip on" : "chip";
+      }
+      renderCodes();
+    });
+  }
+
+  applyMode("personal");
 
   // auto-login if a password is already stored for this tab
   if (sessionStorage.getItem(PW_KEY)) {
